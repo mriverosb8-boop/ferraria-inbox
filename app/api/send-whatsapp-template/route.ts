@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
 import {
+  resolveActiveHotelId,
+  resolveAllowedHotelIds,
+  resolveAvailableHotels,
+} from "@/lib/inbox-tenant";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
+import {
   getWhatsappTemplate,
   normalizeColombianWhatsappNumber,
   type WhatsappTemplateVariables,
@@ -20,13 +26,33 @@ export async function POST(request: Request) {
       to?: string;
       templateName?: string;
       variables?: Record<string, unknown>;
+      activeHotelId?: string | null;
+      hotelId?: string | null;
     };
 
     const to = normalizeColombianWhatsappNumber(body.to ?? "");
     const templateName = body.templateName?.trim() ?? "";
+    const requestedHotelId =
+      (typeof body.activeHotelId === "string" ? body.activeHotelId : body.hotelId)?.trim() ?? "";
 
     if (!to) {
       return NextResponse.json({ error: "El número de WhatsApp es obligatorio" }, { status: 400 });
+    }
+
+    const supabase = getSupabaseServerClient();
+    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const availableHotels = await resolveAvailableHotels(supabase, allowedHotelIds);
+    const { activeHotelId, forbidden } = resolveActiveHotelId(
+      requestedHotelId,
+      allowedHotelIds,
+      availableHotels
+    );
+
+    if (forbidden) {
+      return NextResponse.json({ error: "No autorizado para este hotel" }, { status: 403 });
+    }
+    if (!activeHotelId) {
+      return NextResponse.json({ error: "activeHotelId es obligatorio" }, { status: 400 });
     }
 
     const template = getWhatsappTemplate(templateName);
@@ -49,6 +75,7 @@ export async function POST(request: Request) {
     const payload = {
       to,
       templateName,
+      activeHotelId,
       ...(template.variables.length > 0 ? { variables } : {}),
     };
 

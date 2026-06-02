@@ -6,6 +6,7 @@ import type {
 export async function sendWhatsappTemplate(payload: {
   to: string;
   templateName: WhatsappTemplateName;
+  activeHotelId: string;
   variables?: WhatsappTemplateVariables;
 }): Promise<void> {
   const res = await fetch("/api/send-whatsapp-template", {

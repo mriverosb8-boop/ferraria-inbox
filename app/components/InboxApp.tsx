@@ -2123,6 +2123,7 @@ export default function InboxApp() {
       )}
       <StartConversationModal
         open={startConversationOpen}
+        activeHotelId={conversationHotelId}
         onClose={() => setStartConversationOpen(false)}
         onSuccess={() =>
           setTemplateToast({ type: "success", message: "Plantilla enviada correctamente" })

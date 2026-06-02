@@ -12,6 +12,7 @@ import {
 
 type StartConversationModalProps = {
   open: boolean;
+  activeHotelId: string | null;
   onClose: () => void;
   onSuccess: () => void;
   onError: () => void;
@@ -19,6 +20,7 @@ type StartConversationModalProps = {
 
 export function StartConversationModal({
   open,
+  activeHotelId,
   onClose,
   onSuccess,
   onError,
@@ -59,6 +61,12 @@ export function StartConversationModal({
       return;
     }
 
+    const hotelId = activeHotelId?.trim();
+    if (!hotelId) {
+      setValidationError("Selecciona un hotel antes de enviar la plantilla.");
+      return;
+    }
+
     const variables: WhatsappTemplateVariables = {};
     for (const variable of selectedTemplate.variables) {
       const value = templateVariables[variable.key]?.trim() ?? "";
@@ -75,6 +83,7 @@ export function StartConversationModal({
       await sendWhatsappTemplate({
         to: normalizedPhone,
         templateName,
+        activeHotelId: hotelId,
         ...(selectedTemplate.variables.length > 0 ? { variables } : {}),
       });
       setPhone("");
