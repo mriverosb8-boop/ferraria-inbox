@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { User } from "@supabase/supabase-js";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { requireSessionUser } from "@/lib/auth/require-user";
 import {
   resolveActiveHotelId,
@@ -48,9 +48,14 @@ const RESERVA_SELECT = `
 `;
 
 type ReservasTenantContext =
-  | { forbidden: true }
-  | { activeHotelId: null; availableHotels: AvailableHotel[] }
-  | { activeHotelId: string; availableHotels: AvailableHotel[] };
+  | { kind: "forbidden" }
+  | { kind: "empty"; availableHotels: AvailableHotel[]; activeHotelId: null }
+  | {
+      kind: "ok";
+      supabase: SupabaseClient;
+      activeHotelId: string;
+      availableHotels: AvailableHotel[];
+    };
 
 async function resolveReservasTenant(request: Request, user: User): Promise<ReservasTenantContext> {
   const supabase = getSupabaseServerClient();
@@ -64,12 +69,12 @@ async function resolveReservasTenant(request: Request, user: User): Promise<Rese
   );
 
   if (forbidden) {
-    return { forbidden: true };
+    return { kind: "forbidden" };
   }
   if (!activeHotelId) {
-    return { activeHotelId: null, availableHotels };
+    return { kind: "empty", availableHotels, activeHotelId: null };
   }
-  return { activeHotelId, availableHotels };
+  return { kind: "ok", supabase, activeHotelId, availableHotels };
 }
 
 function baseReservasQuery(activeHotelId: string) {
@@ -89,20 +94,20 @@ export async function GET(request: Request) {
     const tab = url.searchParams.get("tab") === "procesadas" ? "procesadas" : "pendientes";
     const tenant = await resolveReservasTenant(request, auth.user);
 
-    if ("forbidden" in tenant && tenant.forbidden) {
+    if (tenant.kind === "forbidden") {
       return NextResponse.json({ error: "No autorizado para ver este hotel" }, { status: 403 });
     }
 
-    const { activeHotelId, availableHotels } = tenant;
-
-    if (!activeHotelId) {
+    if (tenant.kind === "empty") {
       return NextResponse.json({
         reservas: [],
         count: 0,
-        availableHotels,
-        activeHotelId: null,
+        availableHotels: tenant.availableHotels,
+        activeHotelId: tenant.activeHotelId,
       });
     }
+
+    const { activeHotelId, availableHotels } = tenant;
 
     if (countOnly) {
       const { count, error } = await getSupabaseServerClient()
