@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import type { User } from "@supabase/supabase-js";
 import { requireSessionUser } from "@/lib/auth/require-user";
-import { getSupabaseServerClient } from "@/lib/supabase-server";
 import {
-  IBIS_BARRANQUILLA_HOTEL_ID,
-  type Reserva,
-} from "@/app/reservas/lib/types";
+  resolveActiveHotelId,
+  resolveAllowedHotelIds,
+  resolveAvailableHotels,
+  type AvailableHotel,
+} from "@/lib/inbox-tenant";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
+import type { Reserva } from "@/app/reservas/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -43,11 +47,36 @@ const RESERVA_SELECT = `
   )
 `;
 
-function baseReservasQuery() {
+type ReservasTenantContext =
+  | { forbidden: true }
+  | { activeHotelId: null; availableHotels: AvailableHotel[] }
+  | { activeHotelId: string; availableHotels: AvailableHotel[] };
+
+async function resolveReservasTenant(request: Request, user: User): Promise<ReservasTenantContext> {
+  const supabase = getSupabaseServerClient();
+  const allowedHotelIds = await resolveAllowedHotelIds(supabase, user);
+  const requestedHotelId = new URL(request.url).searchParams.get("hotelId")?.trim() ?? "";
+  const availableHotels = await resolveAvailableHotels(supabase, allowedHotelIds);
+  const { activeHotelId, forbidden } = resolveActiveHotelId(
+    requestedHotelId,
+    allowedHotelIds,
+    availableHotels
+  );
+
+  if (forbidden) {
+    return { forbidden: true };
+  }
+  if (!activeHotelId) {
+    return { activeHotelId: null, availableHotels };
+  }
+  return { activeHotelId, availableHotels };
+}
+
+function baseReservasQuery(activeHotelId: string) {
   return getSupabaseServerClient()
     .from(RESERVAS_TABLE)
     .select(RESERVA_SELECT)
-    .eq("hotel_id", IBIS_BARRANQUILLA_HOTEL_ID);
+    .eq("hotel_id", activeHotelId);
 }
 
 export async function GET(request: Request) {
@@ -58,30 +87,49 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const countOnly = url.searchParams.get("count") === "1";
     const tab = url.searchParams.get("tab") === "procesadas" ? "procesadas" : "pendientes";
-    const supabase = getSupabaseServerClient();
+    const tenant = await resolveReservasTenant(request, auth.user);
+
+    if ("forbidden" in tenant && tenant.forbidden) {
+      return NextResponse.json({ error: "No autorizado para ver este hotel" }, { status: 403 });
+    }
+
+    const { activeHotelId, availableHotels } = tenant;
+
+    if (!activeHotelId) {
+      return NextResponse.json({
+        reservas: [],
+        count: 0,
+        availableHotels,
+        activeHotelId: null,
+      });
+    }
 
     if (countOnly) {
-      const { count, error } = await supabase
+      const { count, error } = await getSupabaseServerClient()
         .from(RESERVAS_TABLE)
         .select("id", { count: "exact", head: true })
-        .eq("hotel_id", IBIS_BARRANQUILLA_HOTEL_ID)
+        .eq("hotel_id", activeHotelId)
         .eq("status", "pendiente");
 
       if (error) {
         console.error("[reservas count GET]", error);
         return NextResponse.json({ error: error.message }, { status: 502 });
       }
-      return NextResponse.json({ count: count ?? 0 });
+      return NextResponse.json({
+        count: count ?? 0,
+        availableHotels,
+        activeHotelId,
+      });
     }
 
     const query =
       tab === "procesadas"
-        ? baseReservasQuery()
+        ? baseReservasQuery(activeHotelId)
             .in("status", ["completada", "rechazada"])
             .order("completed_at", { ascending: false, nullsFirst: false })
             .order("created_at", { ascending: false })
             .limit(100)
-        : baseReservasQuery()
+        : baseReservasQuery(activeHotelId)
             .eq("status", "pendiente")
             .order("created_at", { ascending: false });
 
@@ -91,7 +139,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 502 });
     }
 
-    return NextResponse.json({ reservas: (data ?? []) as unknown as Reserva[] });
+    return NextResponse.json({
+      reservas: (data ?? []) as unknown as Reserva[],
+      availableHotels,
+      activeHotelId,
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Error desconocido";
     console.error("[reservas GET]", e);
@@ -143,17 +195,42 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "action debe ser complete, reject o reopen" }, { status: 400 });
     }
 
-    const { data, error } = await getSupabaseServerClient()
+    const supabase = getSupabaseServerClient();
+    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+
+    const { data: reservaRow, error: fetchError } = await supabase
+      .from(RESERVAS_TABLE)
+      .select("id, hotel_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error("[reservas PATCH] fetch", fetchError);
+      return NextResponse.json({ error: fetchError.message }, { status: 502 });
+    }
+    if (!reservaRow) {
+      return NextResponse.json({ error: "Reserva no encontrada" }, { status: 404 });
+    }
+
+    const hotelId = reservaRow.hotel_id != null ? String(reservaRow.hotel_id).trim() : "";
+    if (!hotelId || !allowedHotelIds.includes(hotelId)) {
+      return NextResponse.json({ error: "No autorizado para este hotel" }, { status: 403 });
+    }
+
+    const { data, error } = await supabase
       .from(RESERVAS_TABLE)
       .update(patch)
       .eq("id", id)
-      .eq("hotel_id", IBIS_BARRANQUILLA_HOTEL_ID)
+      .eq("hotel_id", hotelId)
       .select(RESERVA_SELECT)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("[reservas PATCH]", error);
       return NextResponse.json({ error: error.message }, { status: 502 });
+    }
+    if (!data) {
+      return NextResponse.json({ error: "Reserva no encontrada" }, { status: 404 });
     }
 
     return NextResponse.json({ ok: true, reserva: data as unknown as Reserva });

@@ -3,27 +3,34 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { IBIS_BARRANQUILLA_HOTEL_ID } from "../lib/types";
 
-export function useReservasCount() {
+export function useReservasCount(hotelId: string | null | undefined) {
+  const scopedHotelId = typeof hotelId === "string" ? hotelId.trim() : "";
   const [count, setCount] = useState(0);
 
   const load = useCallback(async () => {
+    if (!scopedHotelId) {
+      setCount(0);
+      return;
+    }
     try {
-      const response = await fetch("/api/reservas?count=1", { cache: "no-store" });
+      const params = new URLSearchParams({ count: "1", hotelId: scopedHotelId });
+      const response = await fetch(`/api/reservas?${params.toString()}`, { cache: "no-store" });
       const payload = (await response.json()) as { count?: number; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "No se pudo cargar el contador");
       setCount(payload.count ?? 0);
     } catch (e) {
       console.warn("[useReservasCount] No se pudo actualizar el contador", e);
     }
-  }, []);
+  }, [scopedHotelId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   useEffect(() => {
+    if (!scopedHotelId) return;
+
     let supabase: ReturnType<typeof createClient> | null = null;
     let channel: RealtimeChannel | null = null;
 
@@ -35,14 +42,14 @@ export function useReservasCount() {
     }
 
     channel = supabase
-      .channel("reservas-count")
+      .channel(`reservas-count-${scopedHotelId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "reservas",
-          filter: `hotel_id=eq.${IBIS_BARRANQUILLA_HOTEL_ID}`,
+          filter: `hotel_id=eq.${scopedHotelId}`,
         },
         () => void load()
       )
@@ -52,7 +59,7 @@ export function useReservasCount() {
           event: "UPDATE",
           schema: "public",
           table: "reservas",
-          filter: `hotel_id=eq.${IBIS_BARRANQUILLA_HOTEL_ID}`,
+          filter: `hotel_id=eq.${scopedHotelId}`,
         },
         () => void load()
       )
@@ -63,7 +70,7 @@ export function useReservasCount() {
         void supabase.removeChannel(channel);
       }
     };
-  }, [load]);
+  }, [scopedHotelId, load]);
 
   return count;
 }

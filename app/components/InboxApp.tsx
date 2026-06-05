@@ -20,6 +20,7 @@ import { WUBBY_TABLE } from "@/lib/wubby-schema";
 import { BrandHeaderMark } from "./BrandHeaderMark";
 import { InboxHeaderTabs } from "./InboxHeaderTabs";
 import { LogoutButton } from "./LogoutButton";
+import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { StartConversationModal } from "./StartConversationModal";
 
 type StatusFilter = "all" | "unread" | "ai_active" | "requires_attention" | "closed";
@@ -28,6 +29,9 @@ type StatusFilter = "all" | "unread" | "ai_active" | "requires_attention" | "clo
 const META_INBOX_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Imágenes/PDFs más recientes que esto cargan signed-url al abrir; el resto espera clic del usuario. */
 const LAZY_MEDIA_AUTO_LOAD_MS = 24 * 60 * 60 * 1000;
+/** Composer humano: altura mínima (1 línea) y máxima (~6 líneas) antes de scroll interno. */
+const COMPOSER_MIN_HEIGHT_PX = 48;
+const COMPOSER_MAX_HEIGHT_PX = 168;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const PDF_MIME_TYPE = "application/pdf";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -729,7 +733,7 @@ function MessageBubble({
 export default function InboxApp() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [requestedConversationId, setRequestedConversationId] = useState<string | null>(null);
-  const [activeHotelId, setActiveHotelId] = useState<string | null>(null);
+  const [activeHotelId, setActiveHotelId] = useState<string | null>(() => readStoredActiveHotelId());
   const {
     conversations,
     setConversations,
@@ -777,6 +781,23 @@ export default function InboxApp() {
   const scrollEndRef = useRef<HTMLDivElement>(null);
   const globalActionsRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  const resizeComposer = useCallback(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    const next = Math.min(
+      Math.max(el.scrollHeight, COMPOSER_MIN_HEIGHT_PX),
+      COMPOSER_MAX_HEIGHT_PX
+    );
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT_PX ? "auto" : "hidden";
+  }, []);
+
+  useLayoutEffect(() => {
+    resizeComposer();
+  }, [draft, resizeComposer]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -787,6 +808,7 @@ export default function InboxApp() {
   useEffect(() => {
     if (resolvedActiveHotelId && activeHotelId === null) {
       setActiveHotelId(resolvedActiveHotelId);
+      writeStoredActiveHotelId(resolvedActiveHotelId);
     }
   }, [resolvedActiveHotelId, activeHotelId]);
 
@@ -943,7 +965,7 @@ export default function InboxApp() {
     setFilePreviewUrl(isPdf ? null : URL.createObjectURL(file));
   };
 
-  const handleComposerPaste = (event: ClipboardEvent<HTMLInputElement>) => {
+  const handleComposerPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(event.clipboardData?.items ?? []);
     const imageItem = items.find((item) => item.type.startsWith("image/"));
     if (!imageItem) return;
@@ -1339,6 +1361,10 @@ export default function InboxApp() {
                 operationalStatus: "closed",
                 unreadCount: 0,
                 dbStatus: "completed",
+                needsHuman: false,
+                aiActive: true,
+                controlMode: "ai",
+                request: null,
               }
             : c
         )
@@ -1514,7 +1540,7 @@ export default function InboxApp() {
             <h1 className="truncate text-[15px] font-semibold tracking-tight text-[#1f1f1c]">FerrarIA Inbox</h1>
             <p className="truncate text-[11px] leading-tight text-[#6b665e]">Recepción · IA + agente humano</p>
           </div>
-          <InboxHeaderTabs />
+          <InboxHeaderTabs hotelId={conversationHotelId} />
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span
@@ -1658,7 +1684,9 @@ export default function InboxApp() {
                   id="active-hotel-filter"
                   value={activeHotelId ?? resolvedActiveHotelId ?? ""}
                   onChange={(e) => {
-                    setActiveHotelId(e.target.value);
+                    const nextHotelId = e.target.value;
+                    setActiveHotelId(nextHotelId);
+                    writeStoredActiveHotelId(nextHotelId);
                     setSelectedId("");
                   }}
                   className="w-full cursor-pointer appearance-none rounded-xl border border-[#e7dfd4] bg-white py-2.5 pl-3.5 pr-10 text-[13px] text-[#1f1f1c] shadow-sm focus:border-[#c8a97e] focus:outline-none focus:ring-2 focus:ring-[#c8a97e]/20"
@@ -1959,8 +1987,9 @@ export default function InboxApp() {
                   >
                     <IconImage className="h-5 w-5" />
                   </button>
-                  <input
-                    type="text"
+                  <textarea
+                    ref={composerRef}
+                    rows={1}
                     enterKeyHint="send"
                     inputMode="text"
                     autoComplete="off"
@@ -1985,7 +2014,7 @@ export default function InboxApp() {
                               : "Caption opcional para la imagen…"
                           : "Responder como agente humano… (Enter para enviar)"
                     }
-                    className="min-h-[3rem] min-w-0 flex-1 touch-manipulation rounded-2xl border border-[#e7dfd4] bg-[#f8f6f2] px-4 py-3 text-base leading-normal text-[#1f1f1c] shadow-sm placeholder:text-[#9c968c] transition focus:border-[#c8a97e] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#c8a97e]/20 disabled:cursor-not-allowed lg:px-5 lg:text-[14px] lg:leading-snug"
+                    className="min-h-[3rem] min-w-0 flex-1 resize-none touch-manipulation rounded-2xl border border-[#e7dfd4] bg-[#f8f6f2] px-4 py-3 text-base leading-normal text-[#1f1f1c] shadow-sm placeholder:text-[#9c968c] transition focus:border-[#c8a97e] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#c8a97e]/20 disabled:cursor-not-allowed lg:px-5 lg:text-[14px] lg:leading-snug"
                   />
                   <button
                     type="button"

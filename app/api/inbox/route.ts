@@ -6,6 +6,7 @@ import {
   hotelWhatsappMapToRecord,
 } from "@/lib/hotel-whatsapp-map";
 import { fetchAllWubbyRowsForHotel } from "@/lib/inbox-fetch-messages";
+import { buildReactivateAiFields } from "@/lib/inbox-patch";
 import {
   resolveActiveHotelId,
   resolveAllowedHotelIds,
@@ -175,19 +176,16 @@ export async function PATCH(request: Request) {
       case "reactivate_ai":
         patch = {
           ...patch,
-          needs_human: false,
-          ai_active: true,
+          ...buildReactivateAiFields(now),
           status: "open",
-          unread_count: 0,
-          last_read_at: now,
         };
         break;
       case "completed":
         patch = {
           ...patch,
+          ...buildReactivateAiFields(now),
+          request: null,
           status: "completed",
-          unread_count: 0,
-          last_read_at: now,
         };
         break;
       case "resolve_request":
@@ -197,9 +195,8 @@ export async function PATCH(request: Request) {
         };
         break;
       case "reopen":
-        // Inversa de `completed`. `completed` solo toca `status`, así que reabrir
-        // pone `status = 'open'` y respeta `ai_active` / `needs_human` tal como
-        // estaban antes de cerrarse (los reconstruye `mapOperationalFromConversationRow`).
+        // Inversa de `completed`: reabrir pone `status = 'open'` y respeta
+        // `ai_active` / `needs_human` dejados al cerrar (p. ej. IA reactivada).
         patch = {
           ...patch,
           status: "open",
@@ -217,6 +214,53 @@ export async function PATCH(request: Request) {
     }
 
     const supabase = getSupabaseServerClient();
+
+    if (action === "completed") {
+      const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+      const { data: conversationRow, error: fetchError } = await supabase
+        .from(CONVERSATIONS_TABLE)
+        .select("id, hotel_id")
+        .eq("id", conversationId)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error("[inbox PATCH completed] fetch", fetchError);
+        return NextResponse.json({ error: fetchError.message }, { status: 502 });
+      }
+      if (!conversationRow) {
+        return NextResponse.json({ error: "Conversación no encontrada" }, { status: 404 });
+      }
+
+      const hotelId =
+        conversationRow.hotel_id != null ? String(conversationRow.hotel_id).trim() : "";
+      if (!hotelId || !allowedHotelIds.includes(hotelId)) {
+        return NextResponse.json({ error: "No autorizado para este hotel" }, { status: 403 });
+      }
+
+      const { data: updatedRow, error } = await supabase
+        .from(CONVERSATIONS_TABLE)
+        .update(patch)
+        .eq("id", conversationId)
+        .eq("hotel_id", hotelId)
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        console.error("[inbox PATCH completed]", error);
+        return NextResponse.json(
+          {
+            error: error.message || "No se pudo actualizar la conversación",
+          },
+          { status: 502 }
+        );
+      }
+      if (!updatedRow) {
+        return NextResponse.json({ error: "Conversación no encontrada" }, { status: 404 });
+      }
+
+      return NextResponse.json({ ok: true, conversationId, action });
+    }
+
     const { error } = await supabase.from(CONVERSATIONS_TABLE).update(patch).eq("id", conversationId);
 
     if (error) {

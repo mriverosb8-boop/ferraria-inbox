@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandHeaderMark } from "@/app/components/BrandHeaderMark";
+import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
+import { normalizePhoneDigits } from "@/lib/chat-utils";
 import { InboxHeaderTabs } from "@/app/components/InboxHeaderTabs";
 import { LogoutButton } from "@/app/components/LogoutButton";
 import { ChatPanel } from "./components/ChatPanel";
@@ -20,6 +22,8 @@ type Toast = {
 
 export default function ReservasPage() {
   const [activeTab, setActiveTab] = useState<ReservasTab>("pendientes");
+  const [activeHotelId, setActiveHotelId] = useState<string | null>(() => readStoredActiveHotelId());
+  const [phoneQuery, setPhoneQuery] = useState("");
   const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null);
   const [rejectingReserva, setRejectingReserva] = useState<Reserva | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -39,21 +43,43 @@ export default function ReservasPage() {
     pendingCount,
     loading,
     error,
+    availableHotels,
+    resolvedActiveHotelId,
     completeReserva,
     rejectReserva,
     reopenReserva,
   } = useReservas({
+    activeHotelId,
     onNewReserva: (reserva) => addToast(`Nueva reserva: ${reserva.titular_nombre ?? "Huésped"}`, "info"),
   });
 
+  const scopedHotelId = activeHotelId ?? resolvedActiveHotelId;
+
+  useEffect(() => {
+    if (resolvedActiveHotelId && activeHotelId === null) {
+      setActiveHotelId(resolvedActiveHotelId);
+      writeStoredActiveHotelId(resolvedActiveHotelId);
+    }
+  }, [resolvedActiveHotelId, activeHotelId]);
+
   const visibleReservas = activeTab === "pendientes" ? pendientes : procesadas;
+  const phoneQueryDigits = normalizePhoneDigits(phoneQuery);
+  const filteredReservas = useMemo(() => {
+    if (!phoneQueryDigits) return visibleReservas;
+    return visibleReservas.filter((reserva) => {
+      const reservaPhoneDigits = normalizePhoneDigits(reserva.quote_requests?.sender_phone);
+      return reservaPhoneDigits.includes(phoneQueryDigits);
+    });
+  }, [phoneQueryDigits, visibleReservas]);
+
   const emptyMessage = activeTab === "pendientes"
     ? "No hay reservas pendientes por procesar."
     : "No hay reservas procesadas recientes.";
+  const noPhoneMatchMessage = "No hay reservas que coincidan con ese teléfono.";
 
   const selectedStillVisible = useMemo(
-    () => visibleReservas.some((reserva) => reserva.id === selectedReserva?.id),
-    [selectedReserva?.id, visibleReservas]
+    () => filteredReservas.some((reserva) => reserva.id === selectedReserva?.id),
+    [selectedReserva?.id, filteredReservas]
   );
 
   const handleComplete = async (reserva: Reserva) => {
@@ -132,7 +158,7 @@ export default function ReservasPage() {
             <h1 className="truncate text-[15px] font-semibold tracking-tight text-[#1f1f1c]">FerrarIA Inbox</h1>
             <p className="truncate text-[11px] leading-tight text-[#6b665e]">Recepción · IA + agente humano</p>
           </div>
-          <InboxHeaderTabs />
+          <InboxHeaderTabs hotelId={scopedHotelId} />
         </div>
         <LogoutButton />
       </header>
@@ -145,6 +171,40 @@ export default function ReservasPage() {
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden lg:p-5">
         <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#e7dfd4] bg-[#f8f6f2] shadow-sm ring-1 ring-black/[0.03]">
+          {availableHotels.length >= 2 && (
+            <div className="shrink-0 border-b border-[#e7dfd4] bg-white/80 px-4 py-3">
+              <label
+                htmlFor="reservas-active-hotel"
+                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[#6b665e]"
+              >
+                Hotel activo
+              </label>
+              <select
+                id="reservas-active-hotel"
+                value={scopedHotelId ?? ""}
+                onChange={(event) => {
+                  const nextHotelId = event.target.value;
+                  setActiveHotelId(nextHotelId);
+                  writeStoredActiveHotelId(nextHotelId);
+                  setSelectedReserva(null);
+                }}
+                className="w-full cursor-pointer appearance-none rounded-xl border border-[#e7dfd4] bg-white py-2.5 pl-3.5 pr-10 text-[13px] text-[#1f1f1c] shadow-sm focus:border-[#c8a97e] focus:outline-none focus:ring-2 focus:ring-[#c8a97e]/20"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b665e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 0.75rem center",
+                  backgroundSize: "1rem",
+                }}
+              >
+                {availableHotels.map((hotel) => (
+                  <option key={hotel.id} value={hotel.id}>
+                    {hotel.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <TabsHeader
             activeTab={activeTab}
             pendingCount={pendingCount}
@@ -152,16 +212,30 @@ export default function ReservasPage() {
             onChange={setActiveTab}
           />
 
+          <div className="shrink-0 border-b border-[#e7dfd4] bg-white/80 px-4 py-3">
+            <input
+              type="search"
+              inputMode="tel"
+              autoComplete="off"
+              value={phoneQuery}
+              onChange={(event) => setPhoneQuery(event.target.value)}
+              placeholder="Buscar por teléfono…"
+              className="w-full rounded-xl border border-[#e7dfd4] bg-[#f8f6f2] px-3.5 py-2.5 text-[14px] text-[#1f1f1c] shadow-sm placeholder:text-[#9c968c] transition focus:border-[#c8a97e] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#c8a97e]/20"
+            />
+          </div>
+
           <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-app">
             {loading ? (
               <p className="py-12 text-center text-sm text-[#6b665e]">Cargando reservas...</p>
-            ) : visibleReservas.length === 0 ? (
+            ) : filteredReservas.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="text-sm font-medium text-[#6b665e]">{emptyMessage}</p>
+                <p className="text-sm font-medium text-[#6b665e]">
+                  {phoneQueryDigits && visibleReservas.length > 0 ? noPhoneMatchMessage : emptyMessage}
+                </p>
               </div>
             ) : (
               <div className="grid gap-3">
-                {visibleReservas.map((reserva) => (
+                {filteredReservas.map((reserva) => (
                   <ReservaCard
                     key={reserva.id}
                     reserva={reserva}

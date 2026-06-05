@@ -7,9 +7,9 @@ import type {
 } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import {
-  IBIS_BARRANQUILLA_HOTEL_ID,
   type Reserva,
   type ReservaActionResponse,
+  type ReservasAvailableHotel,
   type ReservasListResponse,
 } from "../lib/types";
 
@@ -19,6 +19,14 @@ type ReservaRealtimeRow = {
   status?: string | null;
   titular_nombre?: string | null;
 };
+
+function buildReservasUrl(tab: "pendientes" | "procesadas", hotelId: string | null) {
+  const params = new URLSearchParams({ tab });
+  if (hotelId) {
+    params.set("hotelId", hotelId);
+  }
+  return `/api/reservas?${params.toString()}`;
+}
 
 function sortPendientes(list: Reserva[]): Reserva[] {
   return [...list].sort((a, b) => {
@@ -40,16 +48,24 @@ function upsertReserva(list: Reserva[], reserva: Reserva, tab: "pendientes" | "p
   return tab === "pendientes" ? sortPendientes(withReserva) : sortProcesadas(withReserva);
 }
 
-async function fetchReservas(tab: "pendientes" | "procesadas") {
-  const response = await fetch(`/api/reservas?tab=${tab}`, { cache: "no-store" });
+async function fetchReservas(tab: "pendientes" | "procesadas", hotelId: string | null) {
+  const response = await fetch(buildReservasUrl(tab, hotelId), { cache: "no-store" });
   const payload = (await response.json()) as ReservasListResponse;
   if (!response.ok) throw new Error(payload.error ?? "No se pudieron cargar las reservas");
-  return payload.reservas ?? [];
+  return payload;
 }
 
-export function useReservas(options?: { onNewReserva?: (reserva: Pick<Reserva, "titular_nombre">) => void }) {
+type UseReservasOptions = {
+  activeHotelId?: string | null;
+  onNewReserva?: (reserva: Pick<Reserva, "titular_nombre">) => void;
+};
+
+export function useReservas(options?: UseReservasOptions) {
+  const requestedHotelId = options?.activeHotelId ?? null;
   const [pendientes, setPendientes] = useState<Reserva[]>([]);
   const [procesadas, setProcesadas] = useState<Reserva[]>([]);
+  const [availableHotels, setAvailableHotels] = useState<ReservasAvailableHotel[]>([]);
+  const [resolvedActiveHotelId, setResolvedActiveHotelId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const onNewReservaRef = useRef(options?.onNewReserva);
@@ -64,12 +80,18 @@ export function useReservas(options?: { onNewReserva?: (reserva: Pick<Reserva, "
       setError(null);
     }
     try {
-      const [pendingRows, processedRows] = await Promise.all([
-        fetchReservas("pendientes"),
-        fetchReservas("procesadas"),
+      const [pendingPayload, processedPayload] = await Promise.all([
+        fetchReservas("pendientes", requestedHotelId),
+        fetchReservas("procesadas", requestedHotelId),
       ]);
-      setPendientes(pendingRows);
-      setProcesadas(processedRows);
+      setPendientes(pendingPayload.reservas ?? []);
+      setProcesadas(processedPayload.reservas ?? []);
+      setAvailableHotels(
+        pendingPayload.availableHotels ?? processedPayload.availableHotels ?? []
+      );
+      setResolvedActiveHotelId(
+        pendingPayload.activeHotelId ?? processedPayload.activeHotelId ?? null
+      );
       setError(null);
     } catch (e) {
       if (!silent) {
@@ -80,13 +102,17 @@ export function useReservas(options?: { onNewReserva?: (reserva: Pick<Reserva, "
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [requestedHotelId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  const scopedHotelId = requestedHotelId ?? resolvedActiveHotelId;
+
   useEffect(() => {
+    if (!scopedHotelId) return;
+
     let supabase: ReturnType<typeof createClient> | null = null;
     let channel: RealtimeChannel | null = null;
 
@@ -101,7 +127,7 @@ export function useReservas(options?: { onNewReserva?: (reserva: Pick<Reserva, "
       payload: RealtimePostgresChangesPayload<Record<string, unknown>>
     ) => {
       const row = payload.new as ReservaRealtimeRow | null;
-      if (!row || row.hotel_id !== IBIS_BARRANQUILLA_HOTEL_ID) return;
+      if (!row || row.hotel_id !== scopedHotelId) return;
 
       await load(true);
       if (payload.eventType === "INSERT" && row.status === "pendiente") {
@@ -110,14 +136,14 @@ export function useReservas(options?: { onNewReserva?: (reserva: Pick<Reserva, "
     };
 
     channel = supabase
-      .channel("reservas-table")
+      .channel(`reservas-table-${scopedHotelId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "reservas",
-          filter: `hotel_id=eq.${IBIS_BARRANQUILLA_HOTEL_ID}`,
+          filter: `hotel_id=eq.${scopedHotelId}`,
         },
         (payload) => void applyRealtimeRow(payload)
       )
@@ -127,7 +153,7 @@ export function useReservas(options?: { onNewReserva?: (reserva: Pick<Reserva, "
           event: "UPDATE",
           schema: "public",
           table: "reservas",
-          filter: `hotel_id=eq.${IBIS_BARRANQUILLA_HOTEL_ID}`,
+          filter: `hotel_id=eq.${scopedHotelId}`,
         },
         (payload) => void applyRealtimeRow(payload)
       )
@@ -138,7 +164,7 @@ export function useReservas(options?: { onNewReserva?: (reserva: Pick<Reserva, "
         void supabase.removeChannel(channel);
       }
     };
-  }, [load]);
+  }, [scopedHotelId, load]);
 
   const completeReserva = useCallback(async (id: string) => {
     const response = await fetch("/api/reservas", {
@@ -191,6 +217,8 @@ export function useReservas(options?: { onNewReserva?: (reserva: Pick<Reserva, "
     pendingCount: pendientes.length,
     loading,
     error,
+    availableHotels,
+    resolvedActiveHotelId,
     refetch: load,
     completeReserva,
     rejectReserva,

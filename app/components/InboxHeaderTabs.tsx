@@ -4,9 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useReservasCount } from "@/app/reservas/hooks/useReservasCount";
 
-export function InboxHeaderTabs() {
+type InboxHeaderTabsProps = {
+  hotelId?: string | null;
+};
+
+export function InboxHeaderTabs({ hotelId }: InboxHeaderTabsProps) {
   const pathname = usePathname();
-  const reservasCount = useReservasCount();
+  const reservasCount = useReservasCount(hotelId);
   const isReservas = pathname?.startsWith("/reservas");
 
   const base =

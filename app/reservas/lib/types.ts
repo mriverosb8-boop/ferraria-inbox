@@ -39,9 +39,16 @@ export type Reserva = {
   quote_requests: ReservaQuoteRequest | null;
 };
 
+export type ReservasAvailableHotel = {
+  id: string;
+  name: string;
+};
+
 export type ReservasListResponse = {
-  reservas: Reserva[];
+  reservas?: Reserva[];
   count?: number;
+  availableHotels?: ReservasAvailableHotel[];
+  activeHotelId?: string | null;
   error?: string;
 };
 
