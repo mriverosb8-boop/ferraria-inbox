@@ -15,9 +15,12 @@ import { upsertConversationMessage } from "@/lib/message-upsert";
 import type { ControlMode, Conversation, Message, OperationalStatus } from "@/lib/inbox-types";
 import { CONVERSATIONS_TABLE } from "@/lib/conversation-schema";
 import { useConversations } from "@/hooks/useConversations";
+import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
 import { WUBBY_TABLE } from "@/lib/wubby-schema";
 import { BrandHeaderMark } from "./BrandHeaderMark";
+import { FollowupTimer } from "./FollowupTimer";
+import { InboxLoadingSkeleton } from "./InboxLoadingSkeleton";
 import { InboxHeaderTabs } from "./InboxHeaderTabs";
 import { LogoutButton } from "./LogoutButton";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
@@ -748,6 +751,7 @@ export default function InboxApp() {
     availableHotels,
     activeHotelId: resolvedActiveHotelId,
   } = useConversations({ activeConversationId: selectedId, activeHotelId });
+  const followupTimers = useFollowupTimers();
 
   const conversationHotelId = activeHotelId ?? resolvedActiveHotelId;
   useInboxConversationMessages(
@@ -1494,11 +1498,7 @@ export default function InboxApp() {
   const selectedFileSizeLabel = selectedFile ? formatFileSize(selectedFile.size) : "";
 
   if (loading && conversations.length === 0) {
-    return (
-      <div className="flex h-[100dvh] flex-col items-center justify-center gap-3 bg-[#f7f4ee] text-[#6b665e]">
-        <p className="text-sm font-medium">Cargando conversaciones…</p>
-      </div>
-    );
+    return <InboxLoadingSkeleton />;
   }
 
   return (
@@ -1727,6 +1727,7 @@ export default function InboxApp() {
                 const showProperty =
                   propertyLabel &&
                   !["sin propiedad indicada", "true", "false"].includes(propertyLabel.toLowerCase());
+                const followupTimer = followupTimers.get(c.id);
                 const baseClasses = active
                   ? "z-[1] bg-white shadow-[inset_3px_0_0_0_#c8a97e] ring-1 ring-inset ring-[#e7dfd4]"
                   : `hover:bg-white/70 ${op.listTint} border-l-2 border-l-transparent hover:border-l-[#e7dfd4]`;
@@ -1801,6 +1802,9 @@ export default function InboxApp() {
                     </div>
                     <div className="ml-2 flex min-w-[44px] shrink-0 flex-col items-end gap-1 pr-1">
                       <span className="pt-0.5 text-[11px] tabular-nums text-[#9c968c]">{c.lastMessageAt}</span>
+                      {followupTimer && (
+                        <FollowupTimer quoteCreatedAt={followupTimer.quoteCreatedAt} />
+                      )}
                       {hasUnread && (
                         <span
                           className="flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[10px] font-bold leading-none text-white shadow-sm ring-2 ring-white"
