@@ -53,12 +53,12 @@ export function FollowupTimer({ quoteCreatedAt }: FollowupTimerProps) {
   return (
     <svg
       aria-label="Seguimiento en preparación"
-      title="Seguimiento en preparación"
       width={SIZE}
       height={SIZE}
       viewBox={`0 0 ${SIZE} ${SIZE}`}
       className="h-5 w-5 shrink-0 -rotate-90"
     >
+      <title>Seguimiento en preparación</title>
       <circle
         cx={SIZE / 2}
         cy={SIZE / 2}
