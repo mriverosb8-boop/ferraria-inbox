@@ -18,9 +18,11 @@ export function buildGuestPhoneOrFilter(guestDigits: string): string {
 
 async function fetchWubbyPagesAscending(
   supabase: SupabaseClient,
-  hotelId: string,
+  hotelIds: string[],
   orFilter: string | null
 ): Promise<WubbyWhatsappRow[]> {
+  if (hotelIds.length === 0) return [];
+
   const all: WubbyWhatsappRow[] = [];
   let from = 0;
 
@@ -29,7 +31,7 @@ async function fetchWubbyPagesAscending(
     let query = supabase
       .from(WUBBY_TABLE)
       .select("*")
-      .eq("hotel_id", hotelId)
+      .in("hotel_id", hotelIds)
       .order("created_at", { ascending: true })
       .range(from, to);
 
@@ -97,5 +99,20 @@ export async function fetchWubbyRowsForGuestAtHotel(
 ): Promise<WubbyWhatsappRow[]> {
   const orFilter = buildGuestPhoneOrFilter(guestDigits);
   if (!orFilter) return [];
-  return fetchWubbyPagesAscending(supabase, hotelId, orFilter);
+  return fetchWubbyPagesAscending(supabase, [hotelId], orFilter);
+}
+
+/**
+ * Historial de un huésped acotado a un conjunto de hoteles permitidos
+ * (`.in("hotel_id", ...)`). Para el fallback por teléfono sin conversationId,
+ * donde el hotel no se puede derivar de una fila concreta.
+ */
+export async function fetchWubbyRowsForGuestAcrossHotels(
+  supabase: SupabaseClient,
+  hotelIds: string[],
+  guestDigits: string
+): Promise<WubbyWhatsappRow[]> {
+  const orFilter = buildGuestPhoneOrFilter(guestDigits);
+  if (!orFilter) return [];
+  return fetchWubbyPagesAscending(supabase, hotelIds, orFilter);
 }

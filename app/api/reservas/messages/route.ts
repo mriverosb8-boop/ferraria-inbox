@@ -1,20 +1,23 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
-import { buildHotelWhatsappByIdMap } from "@/lib/hotel-whatsapp-map";
+import { assertConversationInHotel, requireActiveHotel } from "@/lib/auth/require-hotel";
+import { buildHotelWhatsappByIdMap, resolveHotelWaIdentitiesForRow } from "@/lib/hotel-whatsapp-map";
 import {
   buildMessageFromWubbyRow,
   mergeConversationsTableWithMessages,
   normalizePhoneDigits,
-  resolveHotelWaIdentitiesSet,
 } from "@/lib/chat-utils";
 import { CONVERSATIONS_TABLE, type ConversationDbRow } from "@/lib/conversation-schema";
+import {
+  fetchWubbyRowsForGuestAcrossHotels,
+  fetchWubbyRowsForGuestAtHotel,
+} from "@/lib/inbox-fetch-messages";
+import type { Message } from "@/lib/inbox-types";
 import { MESSAGES_LIMIT } from "@/lib/message-limits";
-import { getSupabaseServerClient } from "@/lib/supabase-server";
-import { WUBBY_TABLE, type WubbyWhatsappRow } from "@/lib/wubby-schema";
 
 export const dynamic = "force-dynamic";
 
-const HOTEL_PHONE = "573002422890";
+const HOTELS_TABLE = "hotels";
 
 export async function GET(request: Request) {
   try {
@@ -23,36 +26,49 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const conversationId = url.searchParams.get("conversationId")?.trim();
-    const guestPhoneRaw = url.searchParams.get("guestPhone")?.trim();
-    const guestPhone = normalizePhoneDigits(guestPhoneRaw);
+    const guestPhone = normalizePhoneDigits(url.searchParams.get("guestPhone")?.trim());
 
     if (!conversationId && !guestPhone) {
-      return NextResponse.json({ error: "conversationId o guestPhone es obligatorio" }, { status: 400 });
+      return NextResponse.json(
+        { error: "conversationId o guestPhone es obligatorio" },
+        { status: 400 }
+      );
     }
 
-    const supabase = getSupabaseServerClient();
+    // El tenant NO se confía del cliente (el frontend no envía hotelId): en modo
+    // conversación se deriva de la propia fila; en el fallback por teléfono se
+    // acota a los hoteles permitidos del usuario.
+    const tenant = await requireActiveHotel(request, auth.user);
+    if (tenant.response) return tenant.response;
+    const { supabase, allowedHotelIds } = tenant;
 
+    // ── MODO SOLO TELÉFONO (sin conversationId) ────────────────────────────
     if (!conversationId) {
-      const hotelPhone = normalizePhoneDigits(HOTEL_PHONE);
-      const { data, error } = await supabase
-        .from(WUBBY_TABLE)
-        .select("*")
-        .or(
-          `and(sender.eq.${guestPhone},recipient.eq.${hotelPhone}),and(sender.eq.${hotelPhone},recipient.eq.${guestPhone})`
-        )
-        .order("created_at", { ascending: false })
-        .limit(MESSAGES_LIMIT);
-
-      if (error) {
-        console.error("[reservas messages GET] phone fallback", error);
-        return NextResponse.json({ error: error.message }, { status: 502 });
+      if (allowedHotelIds.length === 0) {
+        return NextResponse.json({
+          conversation: null,
+          messages: [],
+          messageLimit: MESSAGES_LIMIT,
+        });
       }
 
-      const rows = ((data ?? []) as WubbyWhatsappRow[]).reverse();
-      const hotelIdentities = resolveHotelWaIdentitiesSet({ extraCsvEnv: hotelPhone });
-      const messages = rows.map(
-        (row) => buildMessageFromWubbyRow(row, `+${guestPhone}`, hotelIdentities).message
+      const rows = await fetchWubbyRowsForGuestAcrossHotels(
+        supabase,
+        allowedHotelIds,
+        guestPhone
       );
+
+      const { data: hotelRows } = await supabase
+        .from(HOTELS_TABLE)
+        .select("id, whatsapp_number")
+        .in("id", allowedHotelIds);
+      const hotelWhatsappById = buildHotelWhatsappByIdMap(hotelRows ?? []);
+
+      const guestPlus = `+${guestPhone}`;
+      const messages: Message[] = rows.map((row) => {
+        const identities = resolveHotelWaIdentitiesForRow(row, hotelWhatsappById);
+        return buildMessageFromWubbyRow(row, guestPlus, identities).message;
+      });
 
       return NextResponse.json({
         conversation: null,
@@ -61,35 +77,44 @@ export async function GET(request: Request) {
       });
     }
 
-    const [convResult, msgResult] = await Promise.all([
-      supabase.from(CONVERSATIONS_TABLE).select("*").eq("id", conversationId).single(),
-      supabase
-        .from(WUBBY_TABLE)
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(MESSAGES_LIMIT),
-    ]);
+    // ── MODO CONVERSACIÓN ──────────────────────────────────────────────────
+    // 1) Ownership: deriva y valida el hotel de la conversación.
+    const ownership = await assertConversationInHotel(supabase, conversationId, allowedHotelIds);
+    if (ownership.response) return ownership.response;
+    const activeHotelId = ownership.hotelId;
 
-    if (convResult.error) {
-      console.error("[reservas messages GET] conversation", convResult.error);
-      return NextResponse.json({ error: convResult.error.message }, { status: 502 });
+    // 2) Conversación acotada por hotel.
+    const { data: convRow, error: convError } = await supabase
+      .from(CONVERSATIONS_TABLE)
+      .select("*")
+      .eq("id", conversationId)
+      .eq("hotel_id", activeHotelId)
+      .maybeSingle();
+
+    if (convError) {
+      console.error("[reservas messages GET] conversation", convError);
+      return NextResponse.json({ error: convError.message }, { status: 502 });
     }
-    if (msgResult.error) {
-      console.error("[reservas messages GET] messages", msgResult.error);
-      return NextResponse.json({ error: msgResult.error.message }, { status: 502 });
+    if (!convRow) {
+      return NextResponse.json({ error: "Conversación no encontrada" }, { status: 404 });
     }
 
-    const { data: hotelRows } = await supabase.from("hotels").select("id, whatsapp_number");
+    const cr = convRow as ConversationDbRow;
+    const guestDigits = normalizePhoneDigits(cr.guest_phone ?? "") || guestPhone;
+
+    // 3) Mensajes SOLO del huésped y SOLO de ese hotel.
+    const { data: hotelRows } = await supabase
+      .from(HOTELS_TABLE)
+      .select("id, whatsapp_number")
+      .eq("id", activeHotelId);
     const hotelWhatsappById = buildHotelWhatsappByIdMap(hotelRows ?? []);
 
-    const conversations = mergeConversationsTableWithMessages(
-      [convResult.data as ConversationDbRow],
-      ((msgResult.data ?? []) as WubbyWhatsappRow[]).reverse(),
-      {
-        hotelWhatsappById,
-        messageLimit: MESSAGES_LIMIT,
-      }
-    );
+    const msgRows = await fetchWubbyRowsForGuestAtHotel(supabase, activeHotelId, guestDigits);
+
+    const conversations = mergeConversationsTableWithMessages([cr], msgRows, {
+      hotelWhatsappById,
+      messageLimit: MESSAGES_LIMIT,
+    });
 
     return NextResponse.json({
       conversation: conversations[0] ?? null,
