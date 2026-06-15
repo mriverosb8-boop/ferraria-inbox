@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
+import { assertStoragePathInHotel } from "@/lib/auth/require-hotel";
+import { resolveAllowedHotelIds } from "@/lib/inbox-tenant";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +33,12 @@ export async function GET(request: Request) {
 
   try {
     const supabase = getSupabaseServerClient();
+
+    // Ownership: el objeto debe pertenecer a una conversación de un hotel permitido.
+    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const ownership = await assertStoragePathInHotel(supabase, path, allowedHotelIds);
+    if (ownership.response) return ownership.response;
+
     const { data, error } = await supabase
       .storage
       .from(bucket)

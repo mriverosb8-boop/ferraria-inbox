@@ -8,6 +8,7 @@ import {
   type AvailableHotel,
 } from "@/lib/inbox-tenant";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { WUBBY_TABLE } from "@/lib/wubby-schema";
 
 /**
  * Resuelve el hotel activo de la petición y valida que el usuario tenga acceso.
@@ -119,4 +120,44 @@ export function assertConversationInHotel(
   allowedHotelIds: string[]
 ): Promise<HotelOwnershipResult> {
   return assertRowInAllowedHotel(supabase, CONVERSATIONS_TABLE, id, allowedHotelIds);
+}
+
+/**
+ * Confirma que un objeto de storage (por su `media_storage_path`) pertenece a un
+ * hotel permitido. El path SIEMPRE proviene de una fila de `Wubby_Whatsapp`, así
+ * que validamos esa fila — funciona igual para media entrante (n8n) y saliente
+ * (esta app), sin depender del formato del nombre del objeto.
+ */
+export async function assertStoragePathInHotel(
+  supabase: SupabaseClient,
+  storagePath: string,
+  allowedHotelIds: string[]
+): Promise<HotelOwnershipResult> {
+  // Lookups .eq parametrizados (sin inyección PostgREST: el path es del cliente).
+  let row: { hotel_id?: string | null } | null = null;
+  for (const column of ["media_storage_path", "storage_path"] as const) {
+    const { data, error } = await supabase
+      .from(WUBBY_TABLE)
+      .select("hotel_id")
+      .eq(column, storagePath)
+      .limit(1)
+      .maybeSingle();
+    // `storage_path` puede no existir como columna: ese error es best-effort.
+    if (error && column === "media_storage_path") {
+      return { response: NextResponse.json({ error: error.message }, { status: 502 }), hotelId: null };
+    }
+    if (data) {
+      row = data;
+      break;
+    }
+  }
+
+  if (!row) {
+    return { response: NextResponse.json({ error: "Recurso no encontrado" }, { status: 404 }), hotelId: null };
+  }
+  const hotelId = row.hotel_id != null ? String(row.hotel_id).trim() : "";
+  if (!hotelId || !allowedHotelIds.includes(hotelId)) {
+    return { response: NextResponse.json({ error: "No autorizado para este hotel" }, { status: 403 }), hotelId: null };
+  }
+  return { response: null, hotelId };
 }
