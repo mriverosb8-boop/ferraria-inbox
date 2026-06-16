@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
+import { assertConversationInHotel } from "@/lib/auth/require-hotel";
+import { resolveAllowedHotelIds } from "@/lib/inbox-tenant";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +20,13 @@ export async function POST(request: Request) {
     if (!conversation_id) {
       return NextResponse.json({ error: "conversation_id es obligatorio" }, { status: 400 });
     }
+
+    // Ownership antes de disparar el webhook de IA (evita generar resúmenes de
+    // conversaciones de otros hoteles / abuso de recurso).
+    const supabase = getSupabaseServerClient();
+    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const ownership = await assertConversationInHotel(supabase, conversation_id, allowedHotelIds);
+    if (ownership.response) return ownership.response;
 
     const res = await fetch(WEBHOOK_URL, {
       method: "POST",

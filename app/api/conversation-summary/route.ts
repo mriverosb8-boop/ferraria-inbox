@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
+import { assertConversationInHotel } from "@/lib/auth/require-hotel";
+import { resolveAllowedHotelIds } from "@/lib/inbox-tenant";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +21,13 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "conversation_id es obligatorio" }, { status: 400 });
     }
 
-    console.log("[conversation-summaries] query conversation_id =", conversationId);
-
     const supabase = getSupabaseServerClient();
+
+    // Ownership: la conversación debe ser de un hotel permitido.
+    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const ownership = await assertConversationInHotel(supabase, conversationId, allowedHotelIds);
+    if (ownership.response) return ownership.response;
+
     const result = await supabase
       .from("conversation_summaries")
       .select("summary")
@@ -43,8 +49,6 @@ export async function GET(request: Request) {
       supabaseStatus: status,
       supabaseStatusText: statusText,
     };
-
-    console.log("[conversation-summaries] Supabase result (full):", JSON.stringify(payload, null, 2));
 
     return NextResponse.json(payload);
   } catch (e) {
