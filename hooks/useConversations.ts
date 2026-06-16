@@ -66,6 +66,13 @@ export function useConversations(options?: UseConversationsOptions) {
     setRealtimeErrorDetail(status === "error" ? detail : undefined);
   }, []);
 
+  // Ref siempre-actualizado de la conversación activa. Permite que `load` lea el
+  // valor vigente SIN listar activeConversationId en sus deps, evitando recrear
+  // `load` —y re-disparar el efecto [load], que recarga /api/inbox completo— en
+  // cada cambio de conversación seleccionada. Se sincroniza en cada render.
+  const activeConversationIdRef = useRef(options?.activeConversationId);
+  activeConversationIdRef.current = options?.activeConversationId;
+
   const load = useCallback(async (refetchOptions?: RefetchOptions) => {
     const silent = refetchOptions?.silent === true;
     if (!silent) {
@@ -84,7 +91,7 @@ export function useConversations(options?: UseConversationsOptions) {
         throw new Error(json.error ?? "No se pudo cargar la bandeja");
       }
       const sorted = sortByLastActivity(json.conversations ?? []);
-      const activeId = options?.activeConversationId?.trim();
+      const activeId = activeConversationIdRef.current?.trim();
       setConversations((prev) => {
         if (!activeId) return sorted;
         const prevActive = prev.find((c) => c.id === activeId);
@@ -107,7 +114,7 @@ export function useConversations(options?: UseConversationsOptions) {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [activeHotelId, options?.activeConversationId]);
+  }, [activeHotelId]);
 
   useEffect(() => {
     void load();
