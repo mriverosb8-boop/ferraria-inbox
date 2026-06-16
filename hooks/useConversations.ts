@@ -40,6 +40,9 @@ export type UseConversationsOptions = {
   activeHotelId?: string | null;
 };
 
+/** Ventana de coalescing para recargas por reconciliación Realtime sin contexto local. */
+const MISSING_CONTEXT_DEBOUNCE_MS = 800;
+
 export type { AvailableHotel };
 
 export function useConversations(options?: UseConversationsOptions) {
@@ -113,6 +116,32 @@ export function useConversations(options?: UseConversationsOptions) {
   const loadRef = useRef(load);
   loadRef.current = load;
 
+  // Debounce trailing-edge SOLO para el camino de reconciliación Realtime
+  // (`onMissingContext`): si llegan varios eventos sin contexto en una ventana
+  // corta, se colapsan en UNA sola recarga al final de la ráfaga, en vez de una
+  // recarga completa por evento. No afecta montaje ni visibilitychange.
+  const missingContextTimerRef = useRef<number | null>(null);
+
+  const scheduleMissingContextReload = useCallback(() => {
+    if (missingContextTimerRef.current != null) {
+      window.clearTimeout(missingContextTimerRef.current);
+    }
+    missingContextTimerRef.current = window.setTimeout(() => {
+      missingContextTimerRef.current = null;
+      void loadRef.current({ silent: true });
+    }, MISSING_CONTEXT_DEBOUNCE_MS);
+  }, []);
+
+  // Limpia el timer pendiente al desmontar: evita recargas tras unmount y fugas.
+  useEffect(() => {
+    return () => {
+      if (missingContextTimerRef.current != null) {
+        window.clearTimeout(missingContextTimerRef.current);
+        missingContextTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const markConversationRead = useCallback(async (conversationId: string) => {
     const id = conversationId.trim();
     if (!id) return;
@@ -167,7 +196,7 @@ export function useConversations(options?: UseConversationsOptions) {
     activeHotelId: resolvedActiveHotelId,
     hotelWhatsappById,
     onMissingContext: () => {
-      void loadRef.current({ silent: true });
+      scheduleMissingContextReload();
     },
     onUrgentHandoffBanner: () => {
       setUrgentHandoffBannerVisible(true);
