@@ -310,9 +310,25 @@ function shouldAutoLoadMedia(message: Message): boolean {
   return Date.now() - createdMs < LAZY_MEDIA_AUTO_LOAD_MS;
 }
 
+/**
+ * Caché en memoria de signed URLs, compartida entre todas las instancias de
+ * `useLazySignedMediaUrl`, indexada por `storagePath`. Evita re-pedir al endpoint
+ * una URL ya firmada y vigente al re-seleccionar conversaciones dentro de la misma
+ * sesión. Vive solo en memoria de la página (se pierde al refrescar).
+ */
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+/** TTL cliente conservador: el server firma a 1h; cacheamos ~55 min para nunca servir una URL a punto de expirar. */
+const SIGNED_URL_CLIENT_TTL_MS = 55 * 60 * 1000;
+
 async function fetchSignedMediaUrl(message: Message, signal?: AbortSignal): Promise<string> {
   if (!message.mediaStoragePath) {
     throw new Error("missing storage path");
+  }
+
+  const cacheKey = message.mediaStoragePath;
+  const cached = signedUrlCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.url;
   }
 
   const params = new URLSearchParams();
@@ -328,6 +344,11 @@ async function fetchSignedMediaUrl(message: Message, signal?: AbortSignal): Prom
   if (!payload.signedUrl) {
     throw new Error("signed-url vacío");
   }
+
+  signedUrlCache.set(cacheKey, {
+    url: payload.signedUrl,
+    expiresAt: Date.now() + SIGNED_URL_CLIENT_TTL_MS,
+  });
 
   return payload.signedUrl;
 }
