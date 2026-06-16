@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
+import { assertConversationInHotel, requireActiveHotel } from "@/lib/auth/require-hotel";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -71,15 +72,43 @@ export async function POST(request: Request) {
       );
     }
 
-    const hotelWhatsapp = await readHotelWhatsappConfig(body.hotelId);
-
     const clientTempId = body.clientTempId?.trim() || null;
+
+    // GATE de tenancy completo, ANTES del fetch a n8n (este endpoint no escribe
+    // en DB; n8n hace la inserción, por eso no hay candado de update aquí).
+    // 1) el hotelId del cliente debe pertenecer al usuario;
+    const tenant = await requireActiveHotel(request, auth.user, {
+      requestedHotelId: body.hotelId ?? undefined,
+    });
+    if (tenant.response) return tenant.response;
+
+    // 2) ownership del conversationId → su hotel_id es el AUTORITATIVO.
+    //    assertConversationInHotel hace: conversations.select("id, hotel_id")
+    //    .eq("id", conversationId) y valida hotel_id ∈ allowedHotelIds.
+    const conversationId = body.conversationId?.trim() || null;
+    let hotelId: string;
+    if (conversationId) {
+      const ownership = await assertConversationInHotel(
+        tenant.supabase,
+        conversationId,
+        tenant.allowedHotelIds
+      );
+      if (ownership.response) return ownership.response;
+      hotelId = ownership.hotelId;
+    } else if (tenant.activeHotelId) {
+      hotelId = tenant.activeHotelId;
+    } else {
+      return NextResponse.json({ error: "hotelId es obligatorio" }, { status: 400 });
+    }
+
+    // 3) config de WhatsApp derivada del hotel autoritativo, nunca del cliente.
+    const hotelWhatsapp = await readHotelWhatsappConfig(hotelId);
 
     const payload = {
       guestPhone,
       message,
-      conversationId: body.conversationId ?? null,
-      hotelId: body.hotelId ?? null,
+      conversationId,
+      hotelId,
       whatsappPhoneNumberId: hotelWhatsapp.whatsappPhoneNumberId,
       whatsappNumber: hotelWhatsapp.whatsappNumber,
       source: "FerrarIA-inbox",

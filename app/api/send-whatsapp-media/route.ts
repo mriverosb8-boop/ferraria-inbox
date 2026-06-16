@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
+import { assertConversationInHotel, requireActiveHotel } from "@/lib/auth/require-hotel";
 import { nowInColombiaNaive } from "@/lib/colombia-time";
 import { normalizePhoneDigits, normalizeWaIdentity } from "@/lib/chat-utils";
 import { CONVERSATIONS_TABLE } from "@/lib/conversation-schema";
@@ -165,7 +166,6 @@ export async function POST(request: Request) {
     const toRaw = String(formData.get("to") ?? "").trim();
     const caption = String(formData.get("caption") ?? "").trim();
     const hotelIdRaw = String(formData.get("hotelId") ?? "").trim();
-    const hotelId = hotelIdRaw || null;
     const clientTempId = String(formData.get("clientTempId") ?? "").trim() || null;
     const file = formData.get("file");
 
@@ -183,6 +183,19 @@ export async function POST(request: Request) {
     if (!validation.ok) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
+
+    // GATE de tenancy ANTES de cualquier efecto (storage/Meta/insert):
+    // 1) el hotelId del formData debe pertenecer al usuario;
+    // 2) la conversación debe ser suya, y SU hotel es el autoritativo para enviar.
+    const tenant = await requireActiveHotel(request, auth.user, { requestedHotelId: hotelIdRaw });
+    if (tenant.response) return tenant.response;
+    const ownership = await assertConversationInHotel(
+      tenant.supabase,
+      conversationId,
+      tenant.allowedHotelIds
+    );
+    if (ownership.response) return ownership.response;
+    const hotelId = ownership.hotelId;
 
     const hotelWhatsapp = await readHotelWhatsappConfig(hotelId);
     if (!hotelWhatsapp.ok) {
@@ -329,7 +342,8 @@ export async function POST(request: Request) {
         ai_active: false,
         status: "human_control",
       })
-      .eq("id", conversationId);
+      .eq("id", conversationId)
+      .eq("hotel_id", hotelId);
 
     return NextResponse.json({
       ok: true,
