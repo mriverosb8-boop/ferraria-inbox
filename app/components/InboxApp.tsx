@@ -23,6 +23,7 @@ import { FollowupTimer } from "./FollowupTimer";
 import { InboxLoadingSkeleton } from "./InboxLoadingSkeleton";
 import { InboxHeaderTabs } from "./InboxHeaderTabs";
 import { LogoutButton } from "./LogoutButton";
+import { Spinner } from "./Spinner";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { StartConversationModal } from "./StartConversationModal";
 
@@ -455,10 +456,7 @@ function LazyImagePlaceholder({
 function LazyMediaLoadingState({ label }: { label: string }) {
   return (
     <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-[#e7dfd4] bg-[#f8f6f2] px-4 text-[#6b665e]">
-      <svg className="h-6 w-6 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" aria-hidden>
-        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-        <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-      </svg>
+      <Spinner className="h-6 w-6 animate-spin opacity-70" />
       <span className="text-sm">{label}</span>
     </div>
   );
@@ -2049,10 +2047,7 @@ export default function InboxApp() {
                     aria-label="Enviar"
                   >
                     {sendingMedia ? (
-                      <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden>
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-                        <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                      </svg>
+                      <Spinner className="h-5 w-5 animate-spin" />
                     ) : (
                       <IconSend className="h-5 w-5" />
                     )}
@@ -2442,15 +2437,7 @@ function GuestPanelContent({
                 >
                   {resolvingRequest ? (
                     <>
-                      <svg
-                        className="h-3.5 w-3.5 animate-spin"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        aria-hidden
-                      >
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-                        <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                      </svg>
+                      <Spinner className="h-3.5 w-3.5 animate-spin" />
                       Resolviendo…
                     </>
                   ) : (
@@ -2493,27 +2480,7 @@ function GuestPanelContent({
           >
             {summaryLoading ? (
               <>
-                <svg
-                  className="h-3.5 w-3.5 shrink-0 animate-spin text-[#6b7d8f]"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-hidden
-                >
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    className="opacity-25"
-                  />
-                  <path
-                    d="M22 12a10 10 0 0 1-10 10"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                <Spinner className="h-3.5 w-3.5 shrink-0 animate-spin text-[#6b7d8f]" />
                 Generando resumen…
               </>
             ) : (
@@ -2538,15 +2505,7 @@ function GuestPanelContent({
               role="status"
               aria-live="polite"
             >
-              <svg className="h-4 w-4 shrink-0 animate-spin text-[#6b7d8f]" viewBox="0 0 24 24" fill="none" aria-hidden>
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-                <path
-                  d="M22 12a10 10 0 0 1-10 10"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-              </svg>
+              <Spinner className="h-4 w-4 shrink-0 animate-spin text-[#6b7d8f]" />
               <span>
                 {summaryLoadMode === "initial"
                   ? "Cargando resumen…"

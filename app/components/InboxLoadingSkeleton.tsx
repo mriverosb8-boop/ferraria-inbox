@@ -1,3 +1,5 @@
+import { Spinner } from "./Spinner";
+
 const SKELETON_ITEMS = [
   { nameWidth: "w-28", previewWidth: "w-52" },
   { nameWidth: "w-36", previewWidth: "w-64" },
@@ -13,10 +15,7 @@ export function InboxLoadingSkeleton() {
     <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#f7f4ee] px-4 text-[#6b665e] supports-[height:100dvh]:min-h-[100dvh]">
       <div className="w-full max-w-[min(100%,28rem)] overflow-hidden rounded-2xl border border-[#e7dfd4] bg-[#f8f6f2] shadow-sm ring-1 ring-black/[0.02]">
         <div className="flex items-center justify-center gap-2 border-b border-[#e7dfd4] bg-white/50 px-4 py-4">
-          <svg className="h-4 w-4 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" aria-hidden>
-            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" className="opacity-25" />
-            <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-          </svg>
+          <Spinner className="h-4 w-4 animate-spin opacity-70" />
           <p className="text-sm font-medium">Cargando conversaciones…</p>
         </div>
 
