@@ -2,6 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { cookieDomainOption } from "./cookie-domain";
+
 const GET_USER_TIMEOUT_MS = 8_000;
 
 function copyCookies(from: NextResponse, to: NextResponse) {
@@ -60,7 +62,7 @@ export async function updateSession(request: NextRequest) {
         });
         supabaseResponse = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) => {
-          supabaseResponse.cookies.set(name, value, options);
+          supabaseResponse.cookies.set(name, value, { ...options, ...cookieDomainOption() });
         });
       },
     },
