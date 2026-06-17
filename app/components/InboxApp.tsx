@@ -791,6 +791,9 @@ export default function InboxApp() {
   const [sendingMedia, setSendingMedia] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [resolvingRequest, setResolvingRequest] = useState(false);
+  const [pendingAction, setPendingAction] = useState<null | "human" | "ai" | "complete" | "reopen">(
+    null
+  );
   const [globalActionsOpen, setGlobalActionsOpen] = useState(false);
   const [startConversationOpen, setStartConversationOpen] = useState(false);
   const [moderationDialogAction, setModerationDialogAction] = useState<"block" | "unblock" | null>(
@@ -1228,7 +1231,9 @@ export default function InboxApp() {
     if (!selectedId) return;
     const conv = conversations.find((c) => c.id === selectedId);
     if (!conv) return;
+    if (pendingAction) return;
     setActionError(null);
+    setPendingAction("human");
     try {
       const res = await fetch("/api/inbox", {
         method: "PATCH",
@@ -1257,6 +1262,8 @@ export default function InboxApp() {
       await refetch({ silent: true });
     } catch {
       setActionError("Error de red al actualizar la conversación");
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -1264,7 +1271,9 @@ export default function InboxApp() {
     if (!selectedId) return;
     const conv = conversations.find((c) => c.id === selectedId);
     if (!conv || conv.operationalStatus === "closed") return;
+    if (pendingAction) return;
     setActionError(null);
+    setPendingAction("ai");
     try {
       const res = await fetch("/api/inbox", {
         method: "PATCH",
@@ -1293,6 +1302,8 @@ export default function InboxApp() {
       await refetch({ silent: true });
     } catch {
       setActionError("Error de red al reactivar la IA");
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -1300,7 +1311,9 @@ export default function InboxApp() {
     if (!selectedId) return;
     const conv = conversations.find((c) => c.id === selectedId);
     if (!conv || conv.operationalStatus !== "closed") return;
+    if (pendingAction) return;
     setActionError(null);
+    setPendingAction("reopen");
 
     const nextOperational: OperationalStatus =
       conv.needsHuman || !conv.aiActive ? "requires_attention" : "ai_active";
@@ -1357,6 +1370,8 @@ export default function InboxApp() {
         )
       );
       setActionError("Error de red al reactivar la conversación");
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -1364,7 +1379,9 @@ export default function InboxApp() {
     if (!selectedId) return;
     const conv = conversations.find((c) => c.id === selectedId);
     if (!conv) return;
+    if (pendingAction) return;
     setActionError(null);
+    setPendingAction("complete");
     try {
       const res = await fetch("/api/inbox", {
         method: "PATCH",
@@ -1395,6 +1412,8 @@ export default function InboxApp() {
       await refetch({ silent: true });
     } catch {
       setActionError("Error de red al completar la conversación");
+    } finally {
+      setPendingAction(null);
     }
   };
 
@@ -2079,6 +2098,7 @@ export default function InboxApp() {
               onResolveRequest={resolveRequest}
               onReopen={reopenConversation}
               resolvingRequest={resolvingRequest}
+              pendingAction={pendingAction}
             />
           )}
         </aside>
@@ -2113,6 +2133,7 @@ export default function InboxApp() {
                 onResolveRequest={resolveRequest}
                 onReopen={reopenConversation}
                 resolvingRequest={resolvingRequest}
+                pendingAction={pendingAction}
               />
             </div>
           </div>
@@ -2251,6 +2272,7 @@ function GuestPanelContent({
   onResolveRequest,
   onReopen,
   resolvingRequest,
+  pendingAction,
 }: {
   conversation: Conversation;
   onTakeHuman: () => void;
@@ -2259,6 +2281,7 @@ function GuestPanelContent({
   onResolveRequest: () => void;
   onReopen: () => void;
   resolvingRequest: boolean;
+  pendingAction: null | "human" | "ai" | "complete" | "reopen";
 }) {
   const { guest } = conversation;
   const grad = avatarGradientClass(guest.id);
@@ -2267,6 +2290,7 @@ function GuestPanelContent({
   const notesAreDefault = guest.internalNotes.startsWith("Sin notas");
   const isPendingRequest = conversation.request === "pending";
   const isClosed = conversation.operationalStatus === "closed";
+  const actionsBusy = pendingAction !== null || resolvingRequest;
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryLoadMode, setSummaryLoadMode] = useState<"initial" | "regenerate">("initial");
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -2421,9 +2445,18 @@ function GuestPanelContent({
             <button
               type="button"
               onClick={onReopen}
-              className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 py-2.5 text-[12px] font-semibold text-white shadow-md shadow-emerald-500/25 ring-1 ring-emerald-700/40 transition hover:from-emerald-700 hover:to-emerald-600"
+              disabled={actionsBusy}
+              aria-busy={pendingAction === "reopen"}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 py-2.5 text-[12px] font-semibold text-white shadow-md shadow-emerald-500/25 ring-1 ring-emerald-700/40 transition hover:from-emerald-700 hover:to-emerald-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Reactivar conversación
+              {pendingAction === "reopen" ? (
+                <>
+                  <Spinner className="h-3.5 w-3.5 animate-spin" />
+                  Reactivando…
+                </>
+              ) : (
+                "Reactivar conversación"
+              )}
             </button>
           ) : (
             <>
@@ -2431,7 +2464,7 @@ function GuestPanelContent({
                 <button
                   type="button"
                   onClick={onResolveRequest}
-                  disabled={resolvingRequest}
+                  disabled={actionsBusy}
                   aria-busy={resolvingRequest}
                   className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 py-2.5 text-[12px] font-semibold text-white shadow-md shadow-rose-500/25 ring-1 ring-rose-700/40 transition hover:from-rose-700 hover:to-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -2451,23 +2484,50 @@ function GuestPanelContent({
               <button
                 type="button"
                 onClick={onTakeHuman}
-                className="w-full rounded-xl bg-gradient-to-r from-[#c4a574] to-[#b8956a] py-2.5 text-[12px] font-semibold text-white shadow-md shadow-[#c8a97e]/25 ring-1 ring-[#b8956a]/40 transition hover:from-[#b8956a] hover:to-[#a8825c]"
+                disabled={actionsBusy}
+                aria-busy={pendingAction === "human"}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#c4a574] to-[#b8956a] py-2.5 text-[12px] font-semibold text-white shadow-md shadow-[#c8a97e]/25 ring-1 ring-[#b8956a]/40 transition hover:from-[#b8956a] hover:to-[#a8825c] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Tomar control humano
+                {pendingAction === "human" ? (
+                  <>
+                    <Spinner className="h-3.5 w-3.5 animate-spin" />
+                    Tomando control…
+                  </>
+                ) : (
+                  "Tomar control humano"
+                )}
               </button>
               <button
                 type="button"
                 onClick={onReactivateAi}
-                className="w-full rounded-xl border border-violet-200 bg-violet-50 py-2.5 text-[12px] font-semibold text-violet-900 transition hover:bg-violet-100"
+                disabled={actionsBusy}
+                aria-busy={pendingAction === "ai"}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 py-2.5 text-[12px] font-semibold text-violet-900 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Reactivar IA
+                {pendingAction === "ai" ? (
+                  <>
+                    <Spinner className="h-3.5 w-3.5 animate-spin" />
+                    Reactivando IA…
+                  </>
+                ) : (
+                  "Reactivar IA"
+                )}
               </button>
               <button
                 type="button"
                 onClick={onComplete}
-                className="w-full rounded-xl border border-[#e7dfd4] bg-[#f1ece4] py-2.5 text-[12px] font-semibold text-[#1f1f1c] transition hover:bg-[#ebe3d8]"
+                disabled={actionsBusy}
+                aria-busy={pendingAction === "complete"}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#e7dfd4] bg-[#f1ece4] py-2.5 text-[12px] font-semibold text-[#1f1f1c] transition hover:bg-[#ebe3d8] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Marcar como completado
+                {pendingAction === "complete" ? (
+                  <>
+                    <Spinner className="h-3.5 w-3.5 animate-spin" />
+                    Completando…
+                  </>
+                ) : (
+                  "Marcar como completado"
+                )}
               </button>
             </>
           )}
