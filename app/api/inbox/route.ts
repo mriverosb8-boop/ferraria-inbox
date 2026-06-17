@@ -41,7 +41,6 @@ function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelI
 
 export async function GET(request: Request) {
   try {
-    const __cpuT0 = performance.now();
     const auth = await requireSessionUser();
     if (auth.response) return auth.response;
 
@@ -96,7 +95,6 @@ export async function GET(request: Request) {
     }
 
     let msgRows;
-    const __fetchStart = performance.now();
     try {
       msgRows = await fetchAllWubbyRowsForHotel(supabase, activeHotelId);
     } catch (e) {
@@ -104,33 +102,17 @@ export async function GET(request: Request) {
       console.error("[inbox GET] messages", e);
       return NextResponse.json({ error: msg }, { status: 502 });
     }
-    console.log("[CPU-MEASURE] fetchAllWubbyRowsForHotel", {
-      hotelId: activeHotelId,
-      msgRows: msgRows.length,
-      ms: Math.round(performance.now() - __fetchStart),
-    });
 
     const convRows = (convResult.data ?? []) as ConversationDbRow[];
 
-    const __mergeStart = performance.now();
     const conversations = mergeConversationsTableWithMessages(convRows, msgRows, {
       hotelWhatsappById,
       messageLimit: MESSAGES_LIMIT,
-    });
-    console.log("[CPU-MEASURE] merge", {
-      ms: Math.round(performance.now() - __mergeStart),
-      conversations: conversations.length,
     });
     conversations.sort((a, b) => {
       return getConversationDisplayActivityMs(b) - getConversationDisplayActivityMs(a);
     });
 
-    console.log("[CPU-MEASURE] GET /api/inbox total", {
-      hotelId: activeHotelId,
-      totalMs: Math.round(performance.now() - __cpuT0),
-      fetchedConversations: convRows.length,
-      fetchedMessages: msgRows.length,
-    });
     return NextResponse.json({
       conversations,
       fetchedConversations: convRows.length,
