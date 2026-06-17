@@ -1,17 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type FollowupRow = {
   conversation_id: string;
   quote_created_at: string;
+  quote_request_id: string;
   stage: string;
 };
 
 export type FollowupTimerEntry = {
   quoteCreatedAt: string;
+  quoteRequestId: string;
   stage: string;
+};
+
+export type UseFollowupTimersResult = {
+  followups: Map<string, FollowupTimerEntry>;
+  removeFollowup: (conversationId: string) => void;
 };
 
 const FOLLOWUP_REFRESH_MS = 60 * 1000;
@@ -23,6 +30,7 @@ function buildFollowupMap(rows: FollowupRow[] | null): Map<string, FollowupTimer
     if (!row.conversation_id || !row.quote_created_at) continue;
     next.set(row.conversation_id, {
       quoteCreatedAt: row.quote_created_at,
+      quoteRequestId: row.quote_request_id,
       stage: row.stage,
     });
   }
@@ -30,8 +38,17 @@ function buildFollowupMap(rows: FollowupRow[] | null): Map<string, FollowupTimer
   return next;
 }
 
-export function useFollowupTimers(): Map<string, FollowupTimerEntry> {
+export function useFollowupTimers(): UseFollowupTimersResult {
   const [followups, setFollowups] = useState<Map<string, FollowupTimerEntry>>(() => new Map());
+
+  const removeFollowup = useCallback((conversationId: string) => {
+    setFollowups((prev) => {
+      if (!prev.has(conversationId)) return prev;
+      const next = new Map(prev);
+      next.delete(conversationId);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,5 +84,5 @@ export function useFollowupTimers(): Map<string, FollowupTimerEntry> {
     };
   }, []);
 
-  return followups;
+  return { followups, removeFollowup };
 }

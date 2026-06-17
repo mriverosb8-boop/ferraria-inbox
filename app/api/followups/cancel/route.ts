@@ -1,0 +1,84 @@
+import { NextResponse } from "next/server";
+import { requireSessionUser } from "@/lib/auth/require-user";
+import {
+  resolveActiveHotelId,
+  resolveAllowedHotelIds,
+  resolveAvailableHotels,
+} from "@/lib/inbox-tenant";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
+
+export const dynamic = "force-dynamic";
+
+type CancelBody = {
+  conversationId?: unknown;
+  quoteRequestId?: unknown;
+  stage?: unknown;
+};
+
+export async function POST(request: Request) {
+  try {
+    const auth = await requireSessionUser();
+    if (auth.response) return auth.response;
+
+    let body: CancelBody;
+    try {
+      body = (await request.json()) as CancelBody;
+    } catch {
+      return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
+    }
+
+    const conversationId =
+      typeof body.conversationId === "string" ? body.conversationId.trim() : "";
+    const quoteRequestId =
+      typeof body.quoteRequestId === "string" ? body.quoteRequestId.trim() : "";
+    const stage = typeof body.stage === "string" ? body.stage.trim() : "";
+
+    if (!conversationId || !quoteRequestId || !stage) {
+      return NextResponse.json(
+        { error: "conversationId, quoteRequestId y stage son obligatorios" },
+        { status: 400 }
+      );
+    }
+
+    const requestedHotelId = new URL(request.url).searchParams.get("hotelId")?.trim() ?? "";
+
+    const supabase = getSupabaseServerClient();
+    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const availableHotels = await resolveAvailableHotels(supabase, allowedHotelIds);
+    const { activeHotelId, forbidden } = resolveActiveHotelId(
+      requestedHotelId,
+      allowedHotelIds,
+      availableHotels
+    );
+
+    if (forbidden) {
+      return NextResponse.json({ error: "No autorizado para este hotel" }, { status: 403 });
+    }
+    if (!activeHotelId) {
+      return NextResponse.json({ error: "hotelId es obligatorio" }, { status: 400 });
+    }
+
+    const { error } = await supabase.from("followup_log").insert({
+      hotel_id: activeHotelId,
+      conversation_id: conversationId,
+      quote_request_id: quoteRequestId,
+      stage,
+    });
+
+    if (error) {
+      // Índice único en (quote_request_id, stage): si ya existe, el seguimiento ya
+      // fue atendido — no es un error real.
+      if (error.code === "23505") {
+        return NextResponse.json({ ok: true, alreadyExists: true });
+      }
+      console.error("[followups cancel POST]", error);
+      return NextResponse.json({ error: error.message }, { status: 502 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Error desconocido";
+    console.error("[followups cancel POST]", e);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

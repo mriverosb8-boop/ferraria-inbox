@@ -770,9 +770,30 @@ export default function InboxApp() {
     availableHotels,
     activeHotelId: resolvedActiveHotelId,
   } = useConversations({ activeConversationId: selectedId, activeHotelId });
-  const followupTimers = useFollowupTimers();
+  const { followups: followupTimers, removeFollowup } = useFollowupTimers();
 
   const conversationHotelId = activeHotelId ?? resolvedActiveHotelId;
+
+  const cancelFollowup = useCallback(
+    async (conversationId: string, quoteRequestId: string, stage: string) => {
+      // Remoción optimista: el círculo desaparece al instante.
+      removeFollowup(conversationId);
+      try {
+        const params = new URLSearchParams({ hotelId: conversationHotelId ?? "" });
+        const res = await fetch(`/api/followups/cancel?${params}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId, quoteRequestId, stage }),
+        });
+        if (!res.ok) {
+          console.error("[cancelFollowup] respuesta no ok", res.status);
+        }
+      } catch (e) {
+        console.error("[cancelFollowup] error de red", e);
+      }
+    },
+    [conversationHotelId, removeFollowup]
+  );
   useInboxConversationMessages(
     selectedId,
     conversationHotelId,
@@ -1841,7 +1862,12 @@ export default function InboxApp() {
                     <div className="ml-2 flex min-w-[44px] shrink-0 flex-col items-end gap-1 pr-1">
                       <span className="pt-0.5 text-[11px] tabular-nums text-[#9c968c]">{c.lastMessageAt}</span>
                       {followupTimer && (
-                        <FollowupTimer quoteCreatedAt={followupTimer.quoteCreatedAt} />
+                        <FollowupTimer
+                          quoteCreatedAt={followupTimer.quoteCreatedAt}
+                          onCancel={() =>
+                            cancelFollowup(c.id, followupTimer.quoteRequestId, followupTimer.stage)
+                          }
+                        />
                       )}
                       {hasUnread && (
                         <span
