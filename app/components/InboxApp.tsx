@@ -20,7 +20,7 @@ import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessag
 import { WUBBY_TABLE } from "@/lib/wubby-schema";
 import { BrandHeaderMark } from "./BrandHeaderMark";
 import { FollowupTimer } from "./FollowupTimer";
-import { InboxLoadingSkeleton } from "./InboxLoadingSkeleton";
+import { InboxListSkeleton, InboxLoadingSkeleton } from "./InboxLoadingSkeleton";
 import { InboxHeaderTabs } from "./InboxHeaderTabs";
 import { LogoutButton } from "./LogoutButton";
 import { Spinner } from "./Spinner";
@@ -146,6 +146,14 @@ function IconMore(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
       <path d="M12 8.25a1.5 1.5 0 110-3 1.5 1.5 0 010 3zM12 13.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zM12 18.75a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
+    </svg>
+  );
+}
+
+function IconChevronDown(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
     </svg>
   );
 }
@@ -816,6 +824,7 @@ export default function InboxApp() {
     null
   );
   const [globalActionsOpen, setGlobalActionsOpen] = useState(false);
+  const [hotelSelectOpen, setHotelSelectOpen] = useState(false);
   const [startConversationOpen, setStartConversationOpen] = useState(false);
   const [moderationDialogAction, setModerationDialogAction] = useState<"block" | "unblock" | null>(
     null
@@ -827,6 +836,7 @@ export default function InboxApp() {
   } | null>(null);
   const scrollEndRef = useRef<HTMLDivElement>(null);
   const globalActionsRef = useRef<HTMLDivElement>(null);
+  const hotelSelectRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
 
@@ -878,6 +888,21 @@ export default function InboxApp() {
     document.addEventListener("mousedown", closeOnOutsideClick);
     return () => document.removeEventListener("mousedown", closeOnOutsideClick);
   }, [globalActionsOpen]);
+
+  useEffect(() => {
+    if (!hotelSelectOpen) return;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!hotelSelectRef.current?.contains(target)) {
+        setHotelSelectOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [hotelSelectOpen]);
 
   useEffect(() => {
     if (!templateToast) return;
@@ -1731,44 +1756,76 @@ export default function InboxApp() {
               })}
             </div>
 
-            {availableHotels.length >= 2 && (
-              <div>
-                <label
-                  htmlFor="active-hotel-filter"
-                  className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[#6b665e]"
-                >
-                  Hotel activo
-                </label>
-                <select
-                  id="active-hotel-filter"
-                  value={activeHotelId ?? resolvedActiveHotelId ?? ""}
-                  onChange={(e) => {
-                    const nextHotelId = e.target.value;
-                    setActiveHotelId(nextHotelId);
-                    writeStoredActiveHotelId(nextHotelId);
-                    setSelectedId("");
-                  }}
-                  className="w-full cursor-pointer appearance-none rounded-xl border border-[#e7dfd4] bg-white py-2.5 pl-3.5 pr-10 text-[13px] text-[#1f1f1c] shadow-sm focus:border-[#c8a97e] focus:outline-none focus:ring-2 focus:ring-[#c8a97e]/20"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b665e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "right 0.75rem center",
-                    backgroundSize: "1rem",
-                  }}
-                >
-                  {availableHotels.map((hotel) => (
-                    <option key={hotel.id} value={hotel.id}>
-                      {hotel.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            {availableHotels.length >= 2 && (() => {
+              const selectedHotelId = activeHotelId ?? resolvedActiveHotelId ?? "";
+              const selectedHotel = availableHotels.find((hotel) => hotel.id === selectedHotelId);
+              return (
+                <div>
+                  <span
+                    id="active-hotel-label"
+                    className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[#6b665e]"
+                  >
+                    Hotel activo
+                  </span>
+                  <div ref={hotelSelectRef} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setHotelSelectOpen((open) => !open)}
+                      className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-xl border border-[#e7dfd4] bg-white py-2.5 pl-3.5 pr-3 text-[13px] text-[#1f1f1c] shadow-sm transition focus:border-[#c8a97e] focus:outline-none focus:ring-2 focus:ring-[#c8a97e]/20"
+                      aria-haspopup="listbox"
+                      aria-expanded={hotelSelectOpen}
+                      aria-labelledby="active-hotel-label"
+                    >
+                      <span className="truncate">{selectedHotel?.name ?? "Seleccionar hotel"}</span>
+                      <IconChevronDown
+                        className={`h-4 w-4 shrink-0 text-[#6b665e] transition-transform ${
+                          hotelSelectOpen ? "rotate-180" : ""
+                        }`}
+                        aria-hidden
+                      />
+                    </button>
+                    {hotelSelectOpen && (
+                      <div
+                        className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-[230] overflow-hidden rounded-xl border border-[#e7dfd4] bg-white py-1.5 shadow-xl shadow-[#1f1f1c]/10 ring-1 ring-black/[0.04]"
+                        role="listbox"
+                        aria-labelledby="active-hotel-label"
+                      >
+                        {availableHotels.map((hotel) => {
+                          const isSelected = hotel.id === selectedHotelId;
+                          return (
+                            <button
+                              key={hotel.id}
+                              type="button"
+                              role="option"
+                              aria-selected={isSelected}
+                              onClick={() => {
+                                setActiveHotelId(hotel.id);
+                                writeStoredActiveHotelId(hotel.id);
+                                setSelectedId("");
+                                setHotelSelectOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left text-[13px] transition hover:bg-[#f8f6f2] ${
+                                isSelected ? "bg-[#f1ece4] font-semibold text-[#1f1f1c]" : "text-[#1f1f1c]"
+                              }`}
+                            >
+                              <span className="truncate">{hotel.name}</span>
+                              {isSelected && <IconCheck className="h-4 w-4 shrink-0 text-[#c8a97e]" aria-hidden />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
 
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-[#f8f6f2] scrollbar-app">
-            {filtered.length === 0 ? (
+            {loading ? (
+              <InboxListSkeleton />
+            ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
                 <p className="text-sm font-medium text-[#6b665e]">No hay conversaciones</p>
                 <p className="max-w-[240px] text-[13px] leading-relaxed text-[#9c968c]">
