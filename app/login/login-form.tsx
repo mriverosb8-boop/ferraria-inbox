@@ -9,6 +9,19 @@ function sanitizeNextPath(raw: string | null | undefined) {
   return t.startsWith("/") && !t.startsWith("//") ? t : "/";
 }
 
+/** Traduce el error crudo de Supabase Auth a un mensaje propio en español.
+ *  No se expone nunca el message/details/hint crudo al usuario (hallazgo B-1). */
+function mapAuthError(rawMessage: string): string {
+  const msg = rawMessage.toLowerCase();
+  if (msg.includes("request rate limit reached")) {
+    return "Demasiados intentos. Espera unos minutos e intenta de nuevo.";
+  }
+  if (msg.includes("invalid login credentials")) {
+    return "Correo o contraseña incorrectos.";
+  }
+  return "No se pudo iniciar sesión. Revisa tus datos e intenta de nuevo.";
+}
+
 export function LoginForm() {
   const router = useRouter();
 
@@ -19,26 +32,36 @@ export function LoginForm() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (loading) return;
     setError(null);
     setLoading(true);
 
-    const supabase = createClient();
-    const { error: signError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    try {
+      const supabase = createClient();
+      const { error: signError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    setLoading(false);
+      if (signError) {
+        setLoading(false);
+        setError(mapAuthError(signError.message));
+        return;
+      }
 
-    if (signError) {
-      setError(signError.message);
-      return;
+      // Éxito: NO llamamos setLoading(false) a propósito. Dejamos loading=true
+      // y el redirect desmonta el componente, eliminando la ventana de
+      // re-disparo del submit entre setLoading(false) y la navegación.
+      const params = new URLSearchParams(window.location.search);
+      const next = sanitizeNextPath(params.get("next"));
+      router.push(next);
+      router.refresh();
+    } catch {
+      // La promesa rechazó (fallo de red, etc.): rehabilitamos el botón para
+      // que no quede colgado en "Entrando…" para siempre.
+      setLoading(false);
+      setError("Error de conexión. Revisa tu internet e intenta de nuevo.");
     }
-
-    const params = new URLSearchParams(window.location.search);
-    const next = sanitizeNextPath(params.get("next"));
-    router.push(next);
-    router.refresh();
   }
 
   return (
