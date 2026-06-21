@@ -26,6 +26,7 @@ import { LogoutButton } from "./LogoutButton";
 import { Spinner } from "./Spinner";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { StartConversationModal } from "./StartConversationModal";
+import { HelpModal } from "./HelpModal";
 
 type StatusFilter = "all" | "unread" | "ai_active" | "requires_attention" | "closed";
 
@@ -138,6 +139,16 @@ function IconSearch(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+    </svg>
+  );
+}
+
+function IconHelp(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 9a2.5 2.5 0 014.6 1.3c0 1.7-2.6 2-2.6 3.7" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 17h.01" />
     </svg>
   );
 }
@@ -826,6 +837,7 @@ export default function InboxApp() {
   const [globalActionsOpen, setGlobalActionsOpen] = useState(false);
   const [hotelSelectOpen, setHotelSelectOpen] = useState(false);
   const [startConversationOpen, setStartConversationOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [moderationDialogAction, setModerationDialogAction] = useState<"block" | "unblock" | null>(
     null
   );
@@ -1646,10 +1658,11 @@ export default function InboxApp() {
           </span>
           <button
             type="button"
-            onClick={() => void refetch({ silent: true })}
-            className="rounded-lg border border-[#e7dfd4] bg-white px-2.5 py-1 text-[11px] font-medium text-[#6b665e] shadow-sm transition hover:bg-[#f1ece4] hover:text-[#1f1f1c]"
+            onClick={() => setHelpOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#d8bd93] bg-[#faf6ee] px-2.5 py-1 text-[11px] font-semibold text-[#8a6d3f] shadow-sm transition hover:border-[#c8a97e] hover:bg-[#f3e9d6] hover:text-[#6f562f]"
           >
-            Actualizar
+            <IconHelp className="h-3.5 w-3.5" />
+            Ayuda
           </button>
           <LogoutButton />
         </div>
@@ -2288,6 +2301,7 @@ export default function InboxApp() {
           })
         }
       />
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
