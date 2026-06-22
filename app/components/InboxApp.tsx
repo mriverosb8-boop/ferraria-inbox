@@ -874,16 +874,22 @@ export default function InboxApp() {
     if (conversationId) setRequestedConversationId(conversationId);
   }, []);
 
-  // Sincroniza el hotel activo en memoria con el que resuelve el server. Cubre el
-  // arranque (activeHotelId === null) y la auto-recuperación: si el hook descartó
-  // un hotelId stale (403) y reintentó, resolvedActiveHotelId trae el hotel correcto
-  // y aquí lo adoptamos sin reload, dejando estado y storage coherentes.
+  // Sincroniza el hotel activo en memoria con el que resuelve el server, pero SOLO
+  // cuando la selección en memoria no es válida: arranque (activeHotelId === null) o
+  // un hotelId stale que el usuario actual ya no tiene permitido (auto-recuperación
+  // tras 403). Si el activeHotelId actual sigue estando en availableHotels es una
+  // elección legítima del usuario: NO la pisamos aunque el server todavía responda
+  // con el hotel anterior (su respuesta llega un tick después del cambio). Eso evita
+  // el flicker "abre el hotel nuevo y vuelve al viejo".
   useEffect(() => {
-    if (resolvedActiveHotelId && resolvedActiveHotelId !== activeHotelId) {
+    if (!resolvedActiveHotelId || resolvedActiveHotelId === activeHotelId) return;
+    const activeStillValid =
+      activeHotelId != null && availableHotels.some((h) => h.id === activeHotelId);
+    if (!activeStillValid) {
       setActiveHotelId(resolvedActiveHotelId);
       writeStoredActiveHotelId(resolvedActiveHotelId);
     }
-  }, [resolvedActiveHotelId, activeHotelId]);
+  }, [resolvedActiveHotelId, activeHotelId, availableHotels]);
 
   useEffect(() => {
     setActionError(null);
