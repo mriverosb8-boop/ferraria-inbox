@@ -34,6 +34,8 @@ function sortByLastActivity(list: Conversation[]): Conversation[] {
 export type RefetchOptions = {
   /** Si es true, no muestra el estado global de carga ni vacía la lista en error (ideal para reconciliación). */
   silent?: boolean;
+  /** Señal para abortar el fetch en vuelo (p. ej. cuando un cambio de hotel recrea `load`). */
+  signal?: AbortSignal;
 };
 
 export type UseConversationsOptions = {
@@ -76,6 +78,7 @@ export function useConversations(options?: UseConversationsOptions) {
 
   const load = useCallback(async (refetchOptions?: RefetchOptions) => {
     const silent = refetchOptions?.silent === true;
+    const signal = refetchOptions?.signal;
     if (!silent) {
       setLoading(true);
       setError(null);
@@ -91,6 +94,7 @@ export function useConversations(options?: UseConversationsOptions) {
         const query = params.toString();
         const res = await fetch(query ? `/api/inbox?${query}` : "/api/inbox", {
           cache: "no-store",
+          signal,
         });
         const json = (await res.json()) as InboxResponse;
         return { res, json };
@@ -125,6 +129,9 @@ export function useConversations(options?: UseConversationsOptions) {
       setHotelWhatsappById(hotelWhatsappMapFromRecord(json.hotelWhatsappById ?? {}));
       setError(null);
     } catch (e) {
+      // Fetch abortado (p. ej. un cambio de hotel recreó `load` y canceló este):
+      // no es un error de UI, simplemente quedó obsoleto.
+      if (e instanceof DOMException && e.name === "AbortError") return;
       if (!silent) {
         setError(e instanceof Error ? e.message : "Error de red");
         setConversations([]);
@@ -132,12 +139,16 @@ export function useConversations(options?: UseConversationsOptions) {
         console.warn("[useConversations] Refresco silencioso falló", e);
       }
     } finally {
-      if (!silent) setLoading(false);
+      // Si se abortó, un nuevo `load` ya tomó el control del estado de carga:
+      // no lo apaguemos por debajo del fetch vigente.
+      if (!silent && !signal?.aborted) setLoading(false);
     }
   }, [activeHotelId]);
 
   useEffect(() => {
-    void load();
+    const controller = new AbortController();
+    void load({ signal: controller.signal });
+    return () => controller.abort();
   }, [load]);
 
   const loadRef = useRef(load);
