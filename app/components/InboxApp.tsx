@@ -629,35 +629,47 @@ function ActionChip({
   onClick?: () => void;
   disabled?: boolean;
 }) {
+  const [hover, setHover] = useState(false);
+  const iconColor = primary ? "#fff" : hover ? "var(--red-deep)" : "var(--ink-2)";
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled || busy}
-      className={`grotesk ${primary ? "d-chip d-prim" : "ibx-chip"} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50`}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="grotesk inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
       style={
         primary
           ? {
               padding: "8px 13px",
               border: "none",
               borderRadius: 999,
-              background: "var(--red)",
+              background: hover ? "var(--red-deep)" : "var(--red)",
               color: "#fff",
               fontSize: 12,
               fontWeight: 700,
               boxShadow: "var(--shadow)",
+              transition: "background .12s, transform .1s",
+              transform: hover ? "translateY(-1px)" : "none",
             }
-          : undefined
+          : {
+              padding: "8px 12px",
+              border: `1px solid ${hover ? "var(--red)" : "var(--line)"}`,
+              borderRadius: 999,
+              background: hover ? "var(--red-soft)" : "var(--panel)",
+              color: hover ? "var(--red-deep)" : "var(--ink)",
+              fontSize: 12,
+              fontWeight: 600,
+              transition: "background .12s, border-color .12s, color .12s, transform .1s",
+              transform: hover ? "translateY(-1px)" : "none",
+            }
       }
     >
       {busy ? (
         <Spinner className="h-3.5 w-3.5 animate-spin" />
       ) : (
-        <Ic
-          className="h-3.5 w-3.5 shrink-0"
-          style={primary ? { color: "#fff" } : undefined}
-          aria-hidden
-        />
+        <Ic className="h-3.5 w-3.5 shrink-0" style={{ color: iconColor }} aria-hidden />
       )}
       {label}
     </button>
@@ -680,19 +692,31 @@ function CmdAction({
   onClick?: () => void;
   disabled?: boolean;
 }) {
+  const [hover, setHover] = useState(false);
+  const iconColor = hover ? "var(--red-deep)" : "var(--ink-2)";
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled || busy}
       aria-busy={busy}
-      className="ibx-cmd flex flex-col items-start gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="flex flex-col items-start gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
+      style={{
+        padding: "12px 13px",
+        borderRadius: 11,
+        border: `1px solid ${hover ? "var(--red)" : "var(--line)"}`,
+        background: hover ? "var(--red-soft)" : "var(--panel-2)",
+        color: hover ? "var(--red-deep)" : "var(--ink)",
+        transition: "background .12s, border-color .12s, color .12s",
+      }}
     >
       <div className="flex w-full items-center justify-between">
         {busy ? (
-          <Spinner className="ibx-cmd-icon h-4 w-4 animate-spin" />
+          <Spinner className={`h-4 w-4 animate-spin ${hover ? "text-[var(--red-deep)]" : "text-[var(--ink-2)]"}`} />
         ) : (
-          <Ic className="ibx-cmd-icon h-[17px] w-[17px]" aria-hidden />
+          <Ic className="h-[17px] w-[17px]" style={{ color: iconColor }} aria-hidden />
         )}
         <span
           className="ibx-mono"
