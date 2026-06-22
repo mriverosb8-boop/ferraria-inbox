@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 
 export function LogoutButton({ onRed = false }: { onRed?: boolean }) {
   const router = useRouter();
@@ -10,6 +11,9 @@ export function LogoutButton({ onRed = false }: { onRed?: boolean }) {
 
   async function handleSignOut() {
     setLoading(true);
+    // Limpia el hotel activo guardado para que el próximo usuario que inicie
+    // sesión en esta pestaña no herede un hotelId que no le pertenece.
+    writeStoredActiveHotelId(null);
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");
