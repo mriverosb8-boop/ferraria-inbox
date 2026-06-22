@@ -8,13 +8,35 @@
   --surface-muted: #f1ece4;
   --border: #e7dfd4;
   --accent: #c8a97e;
+
+  /* ── Rediseño Inbox · Dirección D · tema CLARO ──────────────────────── */
+  --ink: #211c18;
+  --ink-2: #6b6259;
+  --ink-3: #9c9085;
+  --bg: #ece7e0;
+  --panel: #fffdfb;
+  --panel-2: #f5f0ea;
+  --panel-3: #ece6df;
+  --line: #e8dfd5;
+  --line-2: #f1ebe3;
+  --sel: #fffdfb;
+  --red: #ec5346;
+  --red-deep: #d23d31;
+  --red-soft: #fcebe8;
+  --live: #1f9d63;
+  --live-soft: #e6f3ec;
+  --gold: #b07d2b;
+  --shadow-sm: 0 1px 2px rgba(40, 30, 20, 0.06);
+  --shadow: 0 2px 8px rgba(40, 30, 20, 0.07), 0 1px 2px rgba(40, 30, 20, 0.05);
+  --shadow-lg: 0 12px 36px rgba(40, 30, 20, 0.14), 0 2px 8px rgba(40, 30, 20, 0.06);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-space-mono);
+  --font-grotesk: var(--font-grotesk);
 }
 
 html {
@@ -25,7 +47,16 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-archivo), system-ui, sans-serif;
+}
+
+/* Tipografías del rediseño (Dirección D). */
+.grotesk {
+  font-family: var(--font-grotesk), "Space Grotesk", sans-serif;
+}
+
+.ibx-mono {
+  font-family: var(--font-space-mono), "Space Mono", ui-monospace, monospace;
 }
 
 /* Scrollbars discretos (Firefox + WebKit) — listas, chat, paneles */
@@ -51,3 +82,60 @@ body {
 .scrollbar-app::-webkit-scrollbar-thumb:hover {
   background: #c4b8aa;
 }
+
+/* Alias del rediseño: mismo look fino de scroll. */
+.ibx-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d4cbc0 transparent;
+}
+.ibx-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.ibx-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ibx-scroll::-webkit-scrollbar-thumb {
+  background: #d4cbc0;
+  border-radius: 9999px;
+}
+.ibx-scroll::-webkit-scrollbar-thumb:hover {
+  background: #c4b8aa;
+}
+
+/* Interacciones del rediseño (Dirección D). */
+.d-row {
+  transition: background 0.12s;
+}
+.d-row:hover {
+  background: var(--panel-2);
+}
+.d-row.sel {
+  background: var(--sel);
+}
+.d-act {
+  transition: background 0.12s, border-color 0.12s;
+}
+.d-act:hover {
+  background: var(--panel);
+  border-color: var(--ink-3);
+}
+.d-soft {
+  transition: background 0.12s;
+}
+.d-soft:hover {
+  background: var(--panel-2);
+}
+.d-chip {
+  transition: transform 0.1s, background 0.12s;
+}
+.d-chip:hover {
+  transform: translateY(-1px);
+}
+.d-prim {
+  transition: background 0.12s;
+}
+.d-prim:hover {
+  background: var(--red-deep);
+}
+

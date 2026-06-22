@@ -1,15 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Archivo, Space_Grotesk, Space_Mono } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/** Cuerpo / texto base del rediseño (Dirección D). */
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+/** Nombres, títulos, botones y etiquetas UI. */
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-grotesk",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
+/** Horas, teléfonos, contadores, badges de atajo, etiquetas de sección. */
+const spaceMono = Space_Mono({
+  variable: "--font-space-mono",
+  subsets: ["latin"],
+  weight: ["400", "700"],
 });
 
 export const metadata: Metadata = {
@@ -30,7 +41,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="es"
+      className={`${archivo.variable} ${spaceGrotesk.variable} ${spaceMono.variable} h-full antialiased`}
+    >
       <body className="h-full overflow-x-hidden overflow-y-hidden bg-[#f7f4ee] font-sans text-[#1f1f1c] antialiased">{children}</body>
     </html>
   );
