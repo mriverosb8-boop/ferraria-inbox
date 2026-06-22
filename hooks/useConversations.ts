@@ -8,6 +8,7 @@ import {
 } from "@/lib/hotel-whatsapp-map";
 import { getConversationDisplayActivityMs } from "@/lib/chat-utils";
 import { MESSAGES_LIMIT } from "@/lib/message-limits";
+import { writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { type RealtimeUiStatus, useInboxRealtime } from "@/hooks/useInboxRealtime";
 
 type AvailableHotel = {
@@ -80,13 +81,32 @@ export function useConversations(options?: UseConversationsOptions) {
       setError(null);
     }
     try {
-      const params = new URLSearchParams();
-      if (activeHotelId) {
-        params.set("hotelId", activeHotelId);
+      // Hace un GET a /api/inbox. `useStoredHotelId=false` fuerza la petición sin
+      // ?hotelId= (usado por el reintento de auto-recuperación).
+      const fetchInbox = async (useStoredHotelId: boolean) => {
+        const params = new URLSearchParams();
+        if (useStoredHotelId && activeHotelId) {
+          params.set("hotelId", activeHotelId);
+        }
+        const query = params.toString();
+        const res = await fetch(query ? `/api/inbox?${query}` : "/api/inbox", {
+          cache: "no-store",
+        });
+        const json = (await res.json()) as InboxResponse;
+        return { res, json };
+      };
+
+      let { res, json } = await fetchInbox(true);
+
+      // Auto-recuperación: si el hotelId almacenado es de un hotel que el usuario
+      // actual no tiene permitido, el server responde 403. Descartamos el id stale
+      // y reintentamos UNA sola vez sin él → cae a availableHotels[0] (su hotel).
+      // El reintento nunca manda hotelId, así que no puede re-disparar este 403.
+      if (!res.ok && res.status === 403 && activeHotelId) {
+        writeStoredActiveHotelId(null);
+        ({ res, json } = await fetchInbox(false));
       }
-      const query = params.toString();
-      const res = await fetch(query ? `/api/inbox?${query}` : "/api/inbox", { cache: "no-store" });
-      const json = (await res.json()) as InboxResponse;
+
       if (!res.ok) {
         throw new Error(json.error ?? "No se pudo cargar la bandeja");
       }
