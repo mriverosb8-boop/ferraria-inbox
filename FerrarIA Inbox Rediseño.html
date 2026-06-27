@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FerrarIA Inbox · Rediseño</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400..800;1,500..700&family=Space+Grotesk:wght@400..700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #ece7e0; }
+  :root[data-theme="dark"] body { background: #15110e; }
+</style>
+<script>
+  (function () {
+    var t = 'light';
+    try { var s = localStorage.getItem('ibx-theme'); if (s === 'dark') t = 'dark'; } catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div id="root"></div>
+
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#211c18"/>
+    <path d="M50,24 C52.5,42 58,47.5 76,50 C58,52.5 52.5,58 50,76 C47.5,58 42,52.5 24,50 C42,47.5 47.5,42 50,24 Z" fill="#e5372a"/>
+  </svg>
+</template>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script src="inbox-data.js"></script>
+<script type="text/babel" src="inbox-shared.jsx"></script>
+<script type="text/babel" src="inbox-dir-a.jsx"></script>
+<script type="text/babel" src="inbox-dir-b.jsx"></script>
+<script type="text/babel" src="inbox-dir-c.jsx"></script>
+<script type="text/babel" src="inbox-dir-d.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+  (function () {
+  const { DesignCanvas, DCSection, DCArtboard, ThemeToggle, InboxA, InboxB, InboxC, InboxD } = window;
+
+  function App() {
+    const [theme, setTheme] = React.useState(
+      () => document.documentElement.getAttribute('data-theme') || 'light');
+    return (
+      <>
+        <DesignCanvas>
+          <DCSection id="combo" title="D · Combinada — lista de A · hilo de C · panel de B"
+            subtitle="La recomendada: lo que pediste, integrado en un solo inbox">
+            <DCArtboard id="d" label="D · Combinada" width={1440} height={912}>
+              <InboxD key={theme} />
+            </DCArtboard>
+          </DCSection>
+          <DCSection id="inbox" title="Las tres direcciones originales"
+            subtitle="Tres direcciones lado a lado · cambia claro/oscuro abajo · doble clic en el título de una tarjeta para abrirla a pantalla completa">
+            <DCArtboard id="a" label="A · Sereno — editorial premium" width={1440} height={912}>
+              <InboxA key={theme} />
+            </DCArtboard>
+            <DCArtboard id="b" label="B · Centro de mando — cockpit operativo" width={1440} height={912}>
+              <InboxB key={theme} />
+            </DCArtboard>
+            <DCArtboard id="c" label="C · Conversacional — mensajería cálida" width={1440} height={912}>
+              <InboxC key={theme} />
+            </DCArtboard>
+          </DCSection>
+        </DesignCanvas>
+        <ThemeToggle value={theme} onChange={setTheme} />
+      </>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  })();
+</script>
+</body>
+</html>
