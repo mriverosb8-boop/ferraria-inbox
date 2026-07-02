@@ -6,6 +6,7 @@ import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-
 import { normalizePhoneDigits } from "@/lib/chat-utils";
 import { InboxHeaderTabs } from "@/app/components/InboxHeaderTabs";
 import { LogoutButton } from "@/app/components/LogoutButton";
+import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { ChatPanel } from "./components/ChatPanel";
 import { RejectModal } from "./components/RejectModal";
 import { ReservaCard } from "./components/ReservaCard";
@@ -169,7 +170,10 @@ export default function ReservasPage() {
           </div>
           <InboxHeaderTabs hotelId={scopedHotelId} onRed />
         </div>
-        <LogoutButton onRed />
+        <div className="flex shrink-0 items-center gap-1">
+          <ThemeToggle />
+          <LogoutButton onRed />
+        </div>
       </header>
 
       {error && (

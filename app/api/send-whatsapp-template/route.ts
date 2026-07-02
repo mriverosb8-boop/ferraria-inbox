@@ -6,11 +6,8 @@ import {
   resolveAvailableHotels,
 } from "@/lib/inbox-tenant";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-import {
-  getWhatsappTemplate,
-  normalizeColombianWhatsappNumber,
-  type WhatsappTemplateVariables,
-} from "@/lib/whatsapp-templates";
+import { fetchHotelMessageTemplateByName } from "@/lib/message-templates";
+import { normalizeColombianWhatsappNumber } from "@/lib/whatsapp-templates";
 
 export const dynamic = "force-dynamic";
 
@@ -55,12 +52,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "activeHotelId es obligatorio" }, { status: 400 });
     }
 
-    const template = getWhatsappTemplate(templateName);
-    if (!template) {
-      return NextResponse.json({ error: "Plantilla no válida" }, { status: 400 });
+    if (!templateName) {
+      return NextResponse.json({ error: "La plantilla es obligatoria" }, { status: 400 });
     }
 
-    const variables: WhatsappTemplateVariables = {};
+    const template = await fetchHotelMessageTemplateByName(supabase, activeHotelId, templateName);
+    if (!template) {
+      return NextResponse.json({ error: "Plantilla no válida para este hotel" }, { status: 400 });
+    }
+
+    const variables: Record<string, string> = {};
     for (const variable of template.variables) {
       const value = String(body.variables?.[variable.key] ?? "").trim();
       if (!value) {

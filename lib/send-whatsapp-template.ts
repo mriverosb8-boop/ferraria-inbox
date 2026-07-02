@@ -1,13 +1,9 @@
-import type {
-  WhatsappTemplateName,
-  WhatsappTemplateVariables,
-} from "@/lib/whatsapp-templates";
-
 export async function sendWhatsappTemplate(payload: {
   to: string;
-  templateName: WhatsappTemplateName;
+  /** Nombre de la plantilla en Meta (columna `name` de `message_templates`). */
+  templateName: string;
   activeHotelId: string;
-  variables?: WhatsappTemplateVariables;
+  variables?: Record<string, string>;
 }): Promise<void> {
   const res = await fetch("/api/send-whatsapp-template", {
     method: "POST",

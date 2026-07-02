@@ -26,6 +26,8 @@ import { LogoutButton } from "./LogoutButton";
 import { Spinner } from "./Spinner";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { StartConversationModal } from "./StartConversationModal";
+import { FeedbackModal } from "./FeedbackModal";
+import { ThemeToggle } from "./ThemeToggle";
 import { HelpModal } from "./HelpModal";
 
 type StatusFilter = "all" | "unread" | "ai_active" | "requires_attention" | "closed";
@@ -1144,6 +1146,7 @@ export default function InboxApp() {
   const [globalActionsOpen, setGlobalActionsOpen] = useState(false);
   const [hotelSelectOpen, setHotelSelectOpen] = useState(false);
   const [startConversationOpen, setStartConversationOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [moderationDialogAction, setModerationDialogAction] = useState<"block" | "unblock" | null>(
     null
@@ -2115,6 +2118,7 @@ export default function InboxApp() {
                 ? "Error"
                 : "Esperando"}
           </span>
+          <ThemeToggle />
           <button
             type="button"
             onClick={() => setHelpOpen(true)}
@@ -2219,6 +2223,18 @@ export default function InboxApp() {
                       role="menuitem"
                     >
                       Comenzar conversación
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGlobalActionsOpen(false);
+                        setFeedbackOpen(true);
+                      }}
+                      className="d-soft grotesk flex w-full items-center px-3.5 py-2.5 text-left"
+                      style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", borderTop: "1px solid var(--line)" }}
+                      role="menuitem"
+                    >
+                      Enviar feedback
                     </button>
                   </div>
                 )}
@@ -3009,6 +3025,14 @@ export default function InboxApp() {
             type: "error",
             message: "No se pudo enviar la plantilla. Intenta nuevamente.",
           })
+        }
+      />
+      <FeedbackModal
+        open={feedbackOpen}
+        activeHotelId={conversationHotelId}
+        onClose={() => setFeedbackOpen(false)}
+        onSuccess={() =>
+          setTemplateToast({ type: "success", message: "¡Gracias! Tu feedback fue enviado." })
         }
       />
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />

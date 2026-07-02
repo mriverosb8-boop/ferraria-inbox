@@ -32,6 +32,42 @@
   --shadow-lg: 0 12px 36px rgba(40, 30, 20, 0.14), 0 2px 8px rgba(40, 30, 20, 0.06);
 }
 
+/* ── Modo oscuro (Dirección D) ─────────────────────────────────────────
+   Se activa con la clase `dark` en <html> (ver lib/theme.ts). Solo
+   redefine los tokens: los componentes ya consumen var(--…). */
+html.dark {
+  color-scheme: dark;
+
+  --background: #17130f;
+  --foreground: #f2ede7;
+  --muted: #b3a89d;
+  --surface: #221d19;
+  --surface-muted: #2a231e;
+  --border: #3a322b;
+  --accent: #d6a24a;
+
+  --ink: #f2ede7;
+  --ink-2: #b8ada2;
+  --ink-3: #8a8074;
+  --bg: #17130f;
+  --panel: #221d19;
+  --panel-2: #2a231e;
+  --panel-3: #332b25;
+  --line: #3a322b;
+  --line-2: #2c251f;
+  --sel: #2f2721;
+  --red: #f0655a;
+  --red-deep: #d8483c;
+  --red-soft: #3b201c;
+  --live: #35b87a;
+  --live-soft: #163021;
+  --gold: #d6a24a;
+  --gold-soft: #33280f;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

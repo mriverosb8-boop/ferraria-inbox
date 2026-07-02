@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo, Space_Grotesk, Space_Mono } from "next/font/google";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 /** Cuerpo / texto base del rediseño (Dirección D). */
@@ -45,7 +46,12 @@ export default function RootLayout({
       lang="es"
       className={`${archivo.variable} ${spaceGrotesk.variable} ${spaceMono.variable} h-full antialiased`}
     >
-      <body className="h-full overflow-x-hidden overflow-y-hidden bg-[#f7f4ee] font-sans text-[#1f1f1c] antialiased">{children}</body>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
+      <body className="h-full overflow-x-hidden overflow-y-hidden bg-[var(--bg)] font-sans text-[var(--ink)] antialiased">
+        {children}
+      </body>
     </html>
   );
 }
