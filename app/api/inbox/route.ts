@@ -15,6 +15,7 @@ import {
 } from "@/lib/inbox-tenant";
 import {
   CONVERSATIONS_TABLE,
+  GUEST_NAME_MAX_LENGTH,
   type ConversationDbRow,
   type InboxPatchAction,
 } from "@/lib/conversation-schema";
@@ -137,6 +138,7 @@ export async function PATCH(request: Request) {
     const body = (await request.json()) as {
       conversationId?: string;
       action?: InboxPatchAction;
+      guestName?: string;
     };
 
     const conversationId = body.conversationId?.trim();
@@ -151,12 +153,13 @@ export async function PATCH(request: Request) {
       action !== "completed" &&
       action !== "resolve_request" &&
       action !== "reopen" &&
-      action !== "mark_read"
+      action !== "mark_read" &&
+      action !== "rename"
     ) {
       return NextResponse.json(
         {
           error:
-            "action debe ser human_control, reactivate_ai, completed, resolve_request, reopen o mark_read",
+            "action debe ser human_control, reactivate_ai, completed, resolve_request, reopen, mark_read o rename",
         },
         { status: 400 }
       );
@@ -210,6 +213,26 @@ export async function PATCH(request: Request) {
           last_read_at: now,
         };
         break;
+      case "rename": {
+        const guestName = typeof body.guestName === "string" ? body.guestName.trim() : "";
+        if (!guestName) {
+          return NextResponse.json(
+            { error: "El nombre del huésped no puede estar vacío" },
+            { status: 400 }
+          );
+        }
+        if (guestName.length > GUEST_NAME_MAX_LENGTH) {
+          return NextResponse.json(
+            { error: `El nombre no puede superar ${GUEST_NAME_MAX_LENGTH} caracteres` },
+            { status: 400 }
+          );
+        }
+        patch = {
+          ...patch,
+          guest_name: guestName,
+        };
+        break;
+      }
       default:
         return NextResponse.json({ error: "Acción no válida" }, { status: 400 });
     }

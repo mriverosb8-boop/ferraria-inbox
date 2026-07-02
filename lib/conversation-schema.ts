@@ -30,4 +30,8 @@ export type InboxPatchAction =
   | "completed"
   | "resolve_request"
   | "reopen"
-  | "mark_read";
+  | "mark_read"
+  | "rename";
+
+/** Largo máximo permitido para `guest_name` editado desde el inbox. */
+export const GUEST_NAME_MAX_LENGTH = 80;

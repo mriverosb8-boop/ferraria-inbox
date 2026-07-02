@@ -132,7 +132,7 @@ export default function ReservasPage() {
   };
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[#f7f4ee] text-[#1f1f1c]">
+    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--ink)]">
       <div className="fixed right-4 top-4 z-[600] flex max-w-[min(100vw-2rem,24rem)] flex-col gap-2">
         {toasts.map((toast) => (
           <div
@@ -151,16 +151,25 @@ export default function ReservasPage() {
         ))}
       </div>
 
-      <header className="flex h-[52px] shrink-0 items-center border-b border-[#e7dfd4] bg-white/90 px-4 shadow-[0_1px_0_rgba(31,31,28,0.04)] backdrop-blur-xl lg:h-14 lg:px-6">
+      <header
+        className="flex h-[52px] shrink-0 items-center px-4 lg:h-14 lg:px-6"
+        style={{
+          background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
+          borderBottom: "1px solid var(--red-deep)",
+          boxShadow: "0 1px 8px rgba(196,43,32,.25)",
+        }}
+      >
         <div className="flex min-w-0 flex-1 items-center gap-3.5">
           <BrandHeaderMark size="sm" />
           <div className="min-w-0">
-            <h1 className="truncate text-[15px] font-semibold tracking-tight text-[#1f1f1c]">FerrarIA Inbox</h1>
-            <p className="truncate text-[11px] leading-tight text-[#6b665e]">Recepción · IA + agente humano</p>
+            <h1 className="grotesk truncate text-[16px] font-bold tracking-tight text-white">
+              Ferrar<span style={{ color: "rgba(255,255,255,.82)" }}>IA</span>
+            </h1>
+            <p className="truncate text-[11px] leading-tight text-white/80">Recepción · IA + agente humano</p>
           </div>
-          <InboxHeaderTabs hotelId={scopedHotelId} />
+          <InboxHeaderTabs hotelId={scopedHotelId} onRed />
         </div>
-        <LogoutButton />
+        <LogoutButton onRed />
       </header>
 
       {error && (
@@ -170,12 +179,12 @@ export default function ReservasPage() {
       )}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden lg:p-5">
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[#e7dfd4] bg-[#f8f6f2] shadow-sm ring-1 ring-black/[0.03]">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--panel-2)] shadow-sm ring-1 ring-black/[0.03]">
           {availableHotels.length >= 2 && (
-            <div className="shrink-0 border-b border-[#e7dfd4] bg-white/80 px-4 py-3">
+            <div className="shrink-0 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
               <label
                 htmlFor="reservas-active-hotel"
-                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[#6b665e]"
+                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--ink-2)]"
               >
                 Hotel activo
               </label>
@@ -188,7 +197,7 @@ export default function ReservasPage() {
                   writeStoredActiveHotelId(nextHotelId);
                   setSelectedReserva(null);
                 }}
-                className="w-full cursor-pointer appearance-none rounded-xl border border-[#e7dfd4] bg-white py-2.5 pl-3.5 pr-10 text-[13px] text-[#1f1f1c] shadow-sm focus:border-[#c8a97e] focus:outline-none focus:ring-2 focus:ring-[#c8a97e]/20"
+                className="w-full cursor-pointer appearance-none rounded-xl border border-[var(--line)] bg-[var(--panel)] py-2.5 pl-3.5 pr-10 text-[13px] text-[var(--ink)] shadow-sm focus:border-[var(--red)] focus:outline-none focus:ring-2 focus:ring-[var(--red)]/20"
                 style={{
                   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b665e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
                   backgroundRepeat: "no-repeat",
@@ -212,7 +221,7 @@ export default function ReservasPage() {
             onChange={setActiveTab}
           />
 
-          <div className="shrink-0 border-b border-[#e7dfd4] bg-white/80 px-4 py-3">
+          <div className="shrink-0 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
             <input
               type="search"
               inputMode="tel"
@@ -220,16 +229,16 @@ export default function ReservasPage() {
               value={phoneQuery}
               onChange={(event) => setPhoneQuery(event.target.value)}
               placeholder="Buscar por teléfono…"
-              className="w-full rounded-xl border border-[#e7dfd4] bg-[#f8f6f2] px-3.5 py-2.5 text-[14px] text-[#1f1f1c] shadow-sm placeholder:text-[#9c968c] transition focus:border-[#c8a97e] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#c8a97e]/20"
+              className="w-full rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3.5 py-2.5 text-[14px] text-[var(--ink)] shadow-sm placeholder:text-[var(--ink-3)] transition focus:border-[var(--red)] focus:bg-[var(--panel)] focus:outline-none focus:ring-2 focus:ring-[var(--red)]/20"
             />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-app">
             {loading ? (
-              <p className="py-12 text-center text-sm text-[#6b665e]">Cargando reservas...</p>
+              <p className="py-12 text-center text-sm text-[var(--ink-2)]">Cargando reservas...</p>
             ) : filteredReservas.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="text-sm font-medium text-[#6b665e]">
+                <p className="text-sm font-medium text-[var(--ink-2)]">
                   {phoneQueryDigits && visibleReservas.length > 0 ? noPhoneMatchMessage : emptyMessage}
                 </p>
               </div>

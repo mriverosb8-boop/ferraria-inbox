@@ -13,7 +13,7 @@ import {
 import { appendConversationMessages } from "@/lib/message-limits";
 import { upsertConversationMessage } from "@/lib/message-upsert";
 import type { ControlMode, Conversation, Message, OperationalStatus } from "@/lib/inbox-types";
-import { CONVERSATIONS_TABLE } from "@/lib/conversation-schema";
+import { CONVERSATIONS_TABLE, GUEST_NAME_MAX_LENGTH } from "@/lib/conversation-schema";
 import { useConversations } from "@/hooks/useConversations";
 import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
@@ -389,6 +389,27 @@ function IconUserCircle(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function IconPencil(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 8.25L15.75 4.5" />
+    </svg>
+  );
+}
+
+/** Icono para "Reactivar IA": robot con antena (distinto de las estrellas de resumen). */
+function IconRobot(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25" />
+      <circle cx="12" cy="2.25" r="0.9" fill="currentColor" stroke="none" />
+      <rect x="4.5" y="6.75" width="15" height="11.25" rx="3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h.008M15 12h.008M9.75 15.75h4.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 11.25v3M21.75 11.25v3" />
+    </svg>
+  );
+}
+
 function getMessageAgeMs(message: Message): number | null {
   const raw = message.sentAtIso;
   if (typeof raw !== "string" || !raw.trim()) return null;
@@ -536,17 +557,18 @@ function LazyImagePlaceholder({
     <button
       type="button"
       onClick={onLoad}
-      className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[#c8a97e]/60 bg-[#f8f6f2] px-4 text-[#6b665e] shadow-sm transition hover:border-[#c8a97e] hover:bg-[#f1ece4]"
+      className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 shadow-sm transition hover:border-[var(--red)] hover:bg-[var(--panel-3)]"
+      style={{ borderColor: "color-mix(in srgb, var(--red) 45%, var(--line))", background: "var(--panel-2)", color: "var(--ink-2)" }}
     >
       <IconImage className="h-8 w-8 opacity-70" aria-hidden />
-      <span className="text-sm font-medium text-[#1f1f1c]">{label}</span>
+      <span className="text-sm font-medium" style={{ color: "var(--ink)" }}>{label}</span>
     </button>
   );
 }
 
 function LazyMediaLoadingState({ label }: { label: string }) {
   return (
-    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-[#e7dfd4] bg-[#f8f6f2] px-4 text-[#6b665e]">
+    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl px-4" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }}>
       <Spinner className="h-6 w-6 animate-spin opacity-70" />
       <span className="text-sm">{label}</span>
     </div>
@@ -614,6 +636,21 @@ function Avatar({
 }
 
 /** Chip de acción rápida del pie del hilo (Dirección D). `primary` = rojo sólido. */
+/** Tono de color por acción para distinguir cada botón (Dirección D). */
+type ActionTone = "human" | "ai" | "complete" | "summary" | "neutral";
+
+const ACTION_TONES: Record<ActionTone, { base: string; soft: string; deep: string; border: string }> = {
+  // Tomar control humano → ámbar/dorado de marca.
+  human: { base: "var(--gold)", soft: "var(--gold-soft)", deep: "#8a5f1e", border: "var(--gold)" },
+  // Reactivar IA → verde (mismo color que el estado "IA activa").
+  ai: { base: "var(--live)", soft: "var(--live-soft)", deep: "#17784b", border: "var(--live)" },
+  // Marcar como completado → gris neutro (mismo color que "Resuelto").
+  complete: { base: "var(--ink-2)", soft: "var(--panel-3)", deep: "var(--ink)", border: "var(--ink-3)" },
+  // Crear resumen → rojo de marca.
+  summary: { base: "var(--red)", soft: "var(--red-soft)", deep: "var(--red-deep)", border: "var(--red)" },
+  neutral: { base: "var(--ink-2)", soft: "var(--panel-2)", deep: "var(--red-deep)", border: "var(--red)" },
+};
+
 function ActionChip({
   icon: Ic,
   label,
@@ -621,6 +658,7 @@ function ActionChip({
   busy = false,
   onClick,
   disabled = false,
+  tone = "neutral",
 }: {
   icon: (props: SVGProps<SVGSVGElement>) => React.JSX.Element;
   label: string;
@@ -628,9 +666,11 @@ function ActionChip({
   busy?: boolean;
   onClick?: () => void;
   disabled?: boolean;
+  tone?: ActionTone;
 }) {
   const [hover, setHover] = useState(false);
-  const iconColor = primary ? "#fff" : hover ? "var(--red-deep)" : "var(--ink-2)";
+  const t = ACTION_TONES[tone];
+  const iconColor = primary ? "#fff" : hover ? t.deep : t.base;
   return (
     <button
       type="button"
@@ -655,10 +695,10 @@ function ActionChip({
             }
           : {
               padding: "8px 12px",
-              border: `1px solid ${hover ? "var(--red)" : "var(--line)"}`,
+              border: `1px solid ${hover ? t.border : `color-mix(in srgb, ${t.base} 30%, var(--line))`}`,
               borderRadius: 999,
-              background: hover ? "var(--red-soft)" : "var(--panel)",
-              color: hover ? "var(--red-deep)" : "var(--ink)",
+              background: hover ? t.soft : "var(--panel)",
+              color: hover ? t.deep : "var(--ink)",
               fontSize: 12,
               fontWeight: 600,
               transition: "background .12s, border-color .12s, color .12s, transform .1s",
@@ -684,6 +724,7 @@ function CmdAction({
   busy = false,
   onClick,
   disabled = false,
+  tone = "neutral",
 }: {
   icon: (props: SVGProps<SVGSVGElement>) => React.JSX.Element;
   label: string;
@@ -691,9 +732,11 @@ function CmdAction({
   busy?: boolean;
   onClick?: () => void;
   disabled?: boolean;
+  tone?: ActionTone;
 }) {
   const [hover, setHover] = useState(false);
-  const iconColor = hover ? "var(--red-deep)" : "var(--ink-2)";
+  const t = ACTION_TONES[tone];
+  const iconColor = hover ? t.deep : t.base;
   return (
     <button
       type="button"
@@ -706,15 +749,15 @@ function CmdAction({
       style={{
         padding: "12px 13px",
         borderRadius: 11,
-        border: `1px solid ${hover ? "var(--red)" : "var(--line)"}`,
-        background: hover ? "var(--red-soft)" : "var(--panel-2)",
-        color: hover ? "var(--red-deep)" : "var(--ink)",
+        border: `1px solid ${hover ? t.border : `color-mix(in srgb, ${t.base} 25%, var(--line))`}`,
+        background: hover ? t.soft : "var(--panel-2)",
+        color: hover ? t.deep : "var(--ink)",
         transition: "background .12s, border-color .12s, color .12s",
       }}
     >
       <div className="flex w-full items-center justify-between">
         {busy ? (
-          <Spinner className={`h-4 w-4 animate-spin ${hover ? "text-[var(--red-deep)]" : "text-[var(--ink-2)]"}`} />
+          <Spinner className="h-4 w-4 animate-spin" style={{ color: iconColor }} />
         ) : (
           <Ic className="h-[17px] w-[17px]" style={{ color: iconColor }} aria-hidden />
         )}
@@ -913,9 +956,9 @@ function MessageBubble({
       }
     : isAi
       ? {
-          background: "var(--red-soft)",
+          background: "var(--gold-soft)",
           color: "var(--ink)",
-          border: "1.5px solid color-mix(in srgb, var(--red) 35%, transparent)",
+          border: "1.5px solid color-mix(in srgb, var(--gold) 40%, transparent)",
           borderRadius: "16px 16px 5px 16px",
           ...(isHandoffCause ? { boxShadow: "inset -3px 0 0 0 var(--red)" } : null),
         }
@@ -942,12 +985,12 @@ function MessageBubble({
               width: 30,
               height: 30,
               borderRadius: 10,
-              background: isAi ? "var(--red-soft)" : "var(--red)",
-              border: isAi ? "1.5px solid var(--red)" : "none",
+              background: isAi ? "var(--gold-soft)" : "var(--red)",
+              border: isAi ? "1.5px solid var(--gold)" : "none",
             }}
           >
             {isAi ? (
-              <Spark className="h-4 w-4" style={{ color: "var(--red)" }} aria-hidden />
+              <Spark className="h-4 w-4" style={{ color: "var(--gold)" }} aria-hidden />
             ) : (
               <IconUserCircle className="h-4 w-4" style={{ color: "#fff" }} aria-hidden />
             )}
@@ -964,7 +1007,7 @@ function MessageBubble({
               fontSize: 10,
               fontWeight: 700,
               letterSpacing: "0.02em",
-              color: isAi ? "var(--red)" : "var(--ink-2)",
+              color: isAi ? "var(--gold)" : "var(--ink-2)",
               margin: "0 5px 3px",
             }}
           >
@@ -1106,6 +1149,10 @@ export default function InboxApp() {
     null
   );
   const [moderationInProgress, setModerationInProgress] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [templateToast, setTemplateToast] = useState<{
     type: "success" | "error";
     message: string;
@@ -1199,6 +1246,8 @@ export default function InboxApp() {
   useEffect(() => {
     setActionError(null);
     setModerationDialogAction(null);
+    setEditingName(false);
+    setNameError(null);
   }, [selectedId]);
 
   useEffect(() => {
@@ -1787,6 +1836,78 @@ export default function InboxApp() {
       setActionError("Error de red al completar la conversación");
     } finally {
       setPendingAction(null);
+    }
+  };
+
+  const startEditingName = () => {
+    if (!selected) return;
+    setNameDraft(selected.guest.name === selected.guestPhone ? "" : selected.guest.name);
+    setNameError(null);
+    setEditingName(true);
+  };
+
+  const cancelEditingName = () => {
+    setEditingName(false);
+    setNameError(null);
+  };
+
+  const renameGuest = async () => {
+    if (!selectedId) return;
+    const conv = conversations.find((c) => c.id === selectedId);
+    if (!conv) return;
+    if (savingName) return;
+
+    const nextName = nameDraft.trim();
+    if (!nextName) {
+      setNameError("El nombre no puede estar vacío");
+      return;
+    }
+    if (nextName.length > GUEST_NAME_MAX_LENGTH) {
+      setNameError(`Máximo ${GUEST_NAME_MAX_LENGTH} caracteres`);
+      return;
+    }
+    if (nextName === conv.guest.name) {
+      cancelEditingName();
+      return;
+    }
+
+    const previousName = conv.guest.name;
+    setSavingName(true);
+    setNameError(null);
+    // Optimista: el nombre cambia al instante en lista y cabecera.
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === selectedId ? { ...c, guest: { ...c.guest, name: nextName } } : c
+      )
+    );
+
+    try {
+      const res = await fetch("/api/inbox", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: conv.id, action: "rename", guestName: nextName }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === selectedId ? { ...c, guest: { ...c.guest, name: previousName } } : c
+          )
+        );
+        setNameError(j.error ?? "No se pudo actualizar el nombre");
+        return;
+      }
+      setEditingName(false);
+      await refetch({ silent: true });
+    } catch {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedId ? { ...c, guest: { ...c.guest, name: previousName } } : c
+        )
+      );
+      setNameError("Error de red al actualizar el nombre");
+    } finally {
+      setSavingName(false);
     }
   };
 
@@ -2390,10 +2511,78 @@ export default function InboxApp() {
                 <Avatar name={selected.guest.name} seed={selected.guest.id} size={44} ring />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="grotesk truncate" style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--ink)" }}>
-                      {selected.guest.name}
-                    </h2>
-                    {selected.blocked && <BlockedBadge />}
+                    {editingName ? (
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            autoFocus
+                            value={nameDraft}
+                            onChange={(e) => setNameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void renameGuest();
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                cancelEditingName();
+                              }
+                            }}
+                            maxLength={GUEST_NAME_MAX_LENGTH}
+                            disabled={savingName}
+                            placeholder="Nombre del huésped"
+                            className="grotesk min-w-0 flex-1 rounded-lg px-2 py-1 outline-none disabled:opacity-60"
+                            style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", background: "var(--panel-2)", border: "1px solid var(--red)" }}
+                            aria-label="Editar nombre del huésped"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void renameGuest()}
+                            disabled={savingName}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
+                            style={{ background: "var(--red)", color: "#fff" }}
+                            aria-label="Guardar nombre"
+                            title="Guardar"
+                          >
+                            {savingName ? (
+                              <Spinner className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <IconCheck className="h-4 w-4" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditingName}
+                            disabled={savingName}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
+                            style={{ background: "var(--panel-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}
+                            aria-label="Cancelar edición"
+                            title="Cancelar"
+                          >
+                            <IconClose className="h-4 w-4" />
+                          </button>
+                        </div>
+                        {nameError && (
+                          <span style={{ fontSize: 11, color: "var(--red-deep)" }}>{nameError}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <h2 className="grotesk truncate" style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--ink)" }}>
+                          {selected.guest.name}
+                        </h2>
+                        <button
+                          type="button"
+                          onClick={startEditingName}
+                          className="d-soft flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                          style={{ color: "var(--ink-3)" }}
+                          aria-label="Editar nombre del huésped"
+                          title="Editar nombre"
+                        >
+                          <IconPencil className="h-4 w-4" />
+                        </button>
+                        {selected.blocked && <BlockedBadge />}
+                      </>
+                    )}
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     {selected.operationalStatus === "requires_attention" ? (
@@ -2505,13 +2694,15 @@ export default function InboxApp() {
                           <ActionChip
                             icon={IconUserCircle}
                             label="Tomar control humano"
+                            tone="human"
                             busy={pendingAction === "human"}
                             onClick={() => void takeHumanControl()}
                             disabled={actionsBusy}
                           />
                           <ActionChip
-                            icon={IconSparkles}
+                            icon={IconRobot}
                             label="Reactivar IA"
+                            tone="ai"
                             busy={pendingAction === "ai"}
                             onClick={() => void reactivateAi()}
                             disabled={actionsBusy}
@@ -2519,6 +2710,7 @@ export default function InboxApp() {
                           <ActionChip
                             icon={IconCheck}
                             label="Marcar como completado"
+                            tone="complete"
                             busy={pendingAction === "complete"}
                             onClick={() => void markCompleted()}
                             disabled={actionsBusy}
@@ -3109,14 +3301,16 @@ function GuestPanelContent({
                 icon={IconUserCircle}
                 label="Tomar control humano"
                 hint="⌘H"
+                tone="human"
                 busy={pendingAction === "human"}
                 onClick={onTakeHuman}
                 disabled={actionsBusy}
               />
               <CmdAction
-                icon={IconSparkles}
+                icon={IconRobot}
                 label="Reactivar IA"
                 hint="⌘R"
+                tone="ai"
                 busy={pendingAction === "ai"}
                 onClick={onReactivateAi}
                 disabled={actionsBusy}
@@ -3125,6 +3319,7 @@ function GuestPanelContent({
                 icon={IconCheck}
                 label="Marcar como completado"
                 hint="⌘D"
+                tone="complete"
                 busy={pendingAction === "complete"}
                 onClick={onComplete}
                 disabled={actionsBusy}
@@ -3133,6 +3328,7 @@ function GuestPanelContent({
                 icon={IconSparkles}
                 label="Crear resumen del chat"
                 hint="⌘S"
+                tone="summary"
                 busy={summaryLoading}
                 onClick={() => void createChatSummary()}
                 disabled={summaryLoading}

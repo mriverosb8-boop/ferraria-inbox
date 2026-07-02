@@ -16,14 +16,14 @@ export function TabsHeader({ activeTab, pendingCount, processedCount, onChange }
   ];
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e7dfd4] bg-white/80 px-4 py-3">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
       <div>
-        <h2 className="text-[13px] font-semibold uppercase tracking-wider text-[#6b665e]">
+        <h2 className="text-[13px] font-semibold uppercase tracking-wider text-[var(--ink-2)]">
           Reservas por subir a Opera
         </h2>
-        <p className="mt-0.5 text-[12px] text-[#9c968c]">Ibis Barranquilla · WhatsApp Flows</p>
+        <p className="mt-0.5 text-[12px] text-[var(--ink-3)]">Ibis Barranquilla · WhatsApp Flows</p>
       </div>
-      <div className="flex gap-1.5 rounded-xl border border-[#e7dfd4] bg-[#f8f6f2] p-1">
+      <div className="flex gap-1.5 rounded-xl border border-[var(--line)] bg-[var(--panel-2)] p-1">
         {tabs.map((tab) => {
           const active = activeTab === tab.id;
           return (
@@ -33,12 +33,12 @@ export function TabsHeader({ activeTab, pendingCount, processedCount, onChange }
               onClick={() => onChange(tab.id)}
               className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition ${
                 active
-                  ? "border border-[#c8a97e]/50 bg-white text-[#1f1f1c] shadow-sm ring-1 ring-[#c8a97e]/20"
-                  : "border border-transparent text-[#6b665e] hover:bg-white/70"
+                  ? "border border-[var(--red)]/50 bg-[var(--panel)] text-[var(--ink)] shadow-sm ring-1 ring-[var(--red)]/20"
+                  : "border border-transparent text-[var(--ink-2)] hover:bg-[var(--panel)]/70"
               }`}
             >
               {tab.label}
-              <span className={`ml-1.5 font-mono text-[11px] ${active ? "text-[#8a7a62]" : "text-[#9c968c]"}`}>
+              <span className={`ml-1.5 font-mono text-[11px] ${active ? "text-[var(--ink-2)]" : "text-[var(--ink-3)]"}`}>
                 {tab.count}
               </span>
             </button>

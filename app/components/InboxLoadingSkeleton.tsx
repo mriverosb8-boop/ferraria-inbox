@@ -1,3 +1,4 @@
+import { BrandHeaderMark } from "./BrandHeaderMark";
 import { Spinner } from "./Spinner";
 
 const SKELETON_ITEMS = [
@@ -14,23 +15,26 @@ const SKELETON_ITEMS = [
  * dentro del panel de la lista (cambio de hotel) manteniendo header/dropdown. */
 export function InboxListSkeleton() {
   return (
-    <div className="text-[#6b665e]">
-      <div className="flex items-center justify-center gap-2 border-b border-[#e7dfd4] bg-white/50 px-4 py-4">
-        <Spinner className="h-4 w-4 animate-spin opacity-70" />
+    <div style={{ color: "var(--ink-2)" }}>
+      <div
+        className="flex items-center justify-center gap-2 px-4 py-4"
+        style={{ borderBottom: "1px solid var(--line)", background: "color-mix(in srgb, var(--panel) 50%, transparent)" }}
+      >
+        <Spinner className="h-4 w-4 animate-spin" style={{ color: "var(--red)" }} />
         <p className="text-sm font-medium">Cargando conversaciones…</p>
       </div>
 
-      <div className="divide-y divide-[#ebe5dc]">
+      <div className="divide-y" style={{ borderColor: "var(--line-2)" }}>
         {SKELETON_ITEMS.map((item, index) => (
-          <div key={index} className="flex items-start gap-3.5 px-4 py-3.5">
-            <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-[#e7dfd4]" />
+          <div key={index} className="flex items-start gap-3.5 px-4 py-3.5" style={{ borderColor: "var(--line-2)" }}>
+            <div className="h-10 w-10 shrink-0 animate-pulse rounded-full" style={{ background: "var(--panel-3)" }} />
             <div className="min-w-0 flex-1 space-y-2 pt-1">
-              <div className={`h-3.5 max-w-full animate-pulse rounded bg-[#e7dfd4] ${item.nameWidth}`} />
-              <div className={`h-3 max-w-full animate-pulse rounded bg-[#ece6dc] ${item.previewWidth}`} />
+              <div className={`h-3.5 max-w-full animate-pulse rounded ${item.nameWidth}`} style={{ background: "var(--panel-3)" }} />
+              <div className={`h-3 max-w-full animate-pulse rounded ${item.previewWidth}`} style={{ background: "var(--line-2)" }} />
             </div>
             <div className="flex min-w-[44px] shrink-0 flex-col items-end gap-2 pt-1">
-              <div className="h-2.5 w-9 animate-pulse rounded bg-[#ece6dc]" />
-              <div className="h-4 w-4 animate-pulse rounded-full bg-[#e7dfd4]" />
+              <div className="h-2.5 w-9 animate-pulse rounded" style={{ background: "var(--line-2)" }} />
+              <div className="h-4 w-4 animate-pulse rounded-full" style={{ background: "var(--panel-3)" }} />
             </div>
           </div>
         ))}
@@ -39,11 +43,33 @@ export function InboxListSkeleton() {
   );
 }
 
-/** Carga full-screen (montaje inicial): la tarjeta envuelve a InboxListSkeleton. */
+/** Carga full-screen (montaje inicial): la tarjeta envuelve a InboxListSkeleton
+ * con la cabecera de marca FerrarIA (identidad roja del rediseño). */
 export function InboxLoadingSkeleton() {
   return (
-    <div className="flex h-[100dvh] flex-col items-center justify-center bg-[#f7f4ee] px-4 text-[#6b665e] supports-[height:100dvh]:min-h-[100dvh]">
-      <div className="w-full max-w-[min(100%,28rem)] overflow-hidden rounded-2xl border border-[#e7dfd4] bg-[#f8f6f2] shadow-sm ring-1 ring-black/[0.02]">
+    <div
+      className="flex h-[100dvh] flex-col items-center justify-center px-4 supports-[height:100dvh]:min-h-[100dvh]"
+      style={{ background: "var(--bg)", color: "var(--ink-2)" }}
+    >
+      <div
+        className="w-full max-w-[min(100%,28rem)] overflow-hidden rounded-2xl"
+        style={{ border: "1px solid var(--line)", background: "var(--panel-2)", boxShadow: "var(--shadow-lg)" }}
+      >
+        <div
+          className="flex items-center gap-3 px-5 py-4"
+          style={{
+            background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
+            boxShadow: "0 1px 8px rgba(196,43,32,.25)",
+          }}
+        >
+          <BrandHeaderMark size="sm" />
+          <div className="min-w-0">
+            <div className="grotesk truncate text-[16px] font-bold tracking-tight text-white">
+              Ferrar<span style={{ color: "rgba(255,255,255,.82)" }}>IA</span>
+            </div>
+            <p className="truncate text-[11px] leading-tight text-white/80">Preparando tu inbox…</p>
+          </div>
+        </div>
         <InboxListSkeleton />
       </div>
     </div>

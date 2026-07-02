@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { BrandHeaderMark } from "../components/BrandHeaderMark";
 
 function sanitizeNextPath(raw: string | null | undefined) {
   const t = raw?.trim() || "/";
@@ -67,55 +68,91 @@ export function LoginForm() {
   return (
     <form
       onSubmit={(e) => void handleSubmit(e)}
-      className="w-full max-w-[380px] space-y-5 rounded-2xl border border-[#e7dfd4] bg-white p-8 shadow-[0_8px_30px_-12px_rgba(31,31,28,0.08)] ring-1 ring-black/[0.03]"
+      className="w-full max-w-[380px] overflow-hidden rounded-2xl border shadow-[0_18px_50px_-20px_rgba(196,43,32,0.35)]"
+      style={{ borderColor: "var(--line)", background: "var(--panel)" }}
     >
-      <div className="space-y-1">
-        <h1 className="text-lg font-semibold tracking-tight text-[#1f1f1c]">Iniciar sesión</h1>
-        <p className="text-[13px] text-[#6b665e]">Accede al inbox con tu cuenta de FerrarIA.</p>
-      </div>
-
-      {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-900">
-          {error}
-        </div>
-      )}
-
-      <div className="space-y-4">
-        <label className="block space-y-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6b665e]">Email</span>
-          <input
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-xl border border-[#e7dfd4] bg-[#f8f6f2] px-3 py-2.5 text-[14px] text-[#1f1f1c] outline-none ring-[#c8a97e]/0 transition placeholder:text-[#9c968c] focus:border-[#c8a97e] focus:bg-white focus:ring-2 focus:ring-[#c8a97e]/25"
-            placeholder="tu@email.com"
-          />
-        </label>
-        <label className="block space-y-1.5">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-[#6b665e]">Contraseña</span>
-          <input
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-xl border border-[#e7dfd4] bg-[#f8f6f2] px-3 py-2.5 text-[14px] text-[#1f1f1c] outline-none ring-[#c8a97e]/0 transition placeholder:text-[#9c968c] focus:border-[#c8a97e] focus:bg-white focus:ring-2 focus:ring-[#c8a97e]/25"
-            placeholder="••••••••"
-          />
-        </label>
-      </div>
-
-      <button
-        type="submit"
-        disabled={loading}
-        className="flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#c8a97e] to-[#b89a6e] py-2.5 text-[14px] font-semibold text-white shadow-md shadow-[#c8a97e]/25 transition hover:from-[#b89a6e] hover:to-[#a88b60] disabled:cursor-not-allowed disabled:opacity-50"
+      <div
+        className="flex items-center gap-3 px-6 py-5"
+        style={{
+          background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
+          boxShadow: "0 1px 8px rgba(196,43,32,.25)",
+        }}
       >
-        {loading ? "Entrando…" : "Entrar"}
-      </button>
+        <BrandHeaderMark size="sm" />
+        <div className="min-w-0">
+          <div className="grotesk truncate text-[18px] font-bold tracking-tight text-white">
+            Ferrar<span style={{ color: "rgba(255,255,255,.82)" }}>IA</span>
+          </div>
+          <p className="truncate text-[12px] leading-tight text-white/80">Inbox de recepción</p>
+        </div>
+      </div>
+
+      <div className="space-y-5 p-8">
+        <div className="space-y-1">
+          <h1 className="grotesk text-lg font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
+            Iniciar sesión
+          </h1>
+          <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+            Accede al inbox con tu cuenta de FerrarIA.
+          </p>
+        </div>
+
+        {error && (
+          <div
+            className="rounded-lg px-3 py-2 text-[13px]"
+            style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+          >
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <label className="block space-y-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--ink-2)" }}>
+              Email
+            </span>
+            <input
+              name="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none transition focus:ring-2 focus:ring-[var(--red)]/25"
+              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
+              placeholder="tu@email.com"
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--ink-2)" }}>
+              Contraseña
+            </span>
+            <input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none transition focus:ring-2 focus:ring-[var(--red)]/25"
+              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
+              placeholder="••••••••"
+            />
+          </label>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="grotesk flex w-full items-center justify-center rounded-xl py-2.5 text-[14px] font-semibold text-white shadow-md transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+          style={{
+            background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 100%)",
+            boxShadow: "0 6px 16px -6px rgba(196,43,32,.5)",
+          }}
+        >
+          {loading ? "Entrando…" : "Entrar"}
+        </button>
+      </div>
     </form>
   );
 }
