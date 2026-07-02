@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { Message } from "@/lib/inbox-types";
+import { WhatsappText } from "@/app/components/WhatsappText";
 import { useConversationMessages } from "../hooks/useConversationMessages";
 import type { Reserva } from "../lib/types";
 
@@ -23,7 +24,15 @@ function MessageBubble({ message }: { message: Message }) {
             : "rounded-br-md bg-[var(--red-soft)] text-[var(--ink)] ring-[var(--red)]"
         }`}
       >
-        <p className="whitespace-pre-wrap break-words">{message.body || (message.messageType === "image" ? "Imagen" : "—")}</p>
+        <p className="whitespace-pre-wrap break-words">
+          {message.body ? (
+            <WhatsappText text={message.body} />
+          ) : message.messageType === "image" ? (
+            "Imagen"
+          ) : (
+            "—"
+          )}
+        </p>
         <time className="mt-1 block text-[10px] font-medium text-[var(--ink-2)]">{message.sentAt}</time>
       </div>
     </div>

@@ -28,6 +28,7 @@ import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-
 import { StartConversationModal } from "./StartConversationModal";
 import { FeedbackModal } from "./FeedbackModal";
 import { ThemeToggle } from "./ThemeToggle";
+import { WhatsappText, stripWhatsappMarkup } from "./WhatsappText";
 import { HelpModal } from "./HelpModal";
 
 type StatusFilter = "all" | "unread" | "ai_active" | "requires_attention" | "closed";
@@ -1053,10 +1054,16 @@ function MessageBubble({
           ) : m.messageType === "image" && hasImageSource ? (
             <div className="flex max-w-full flex-col gap-2">
               <PrivateWhatsAppImage key={m.id} message={m} />
-              {m.body ? <p className="mt-2 whitespace-pre-wrap break-words">{m.body}</p> : null}
+              {m.body ? (
+                <p className="mt-2 whitespace-pre-wrap break-words">
+                  <WhatsappText text={m.body} />
+                </p>
+              ) : null}
             </div>
           ) : (
-            <p className="whitespace-pre-wrap break-words">{m.body}</p>
+            <p className="whitespace-pre-wrap break-words">
+              <WhatsappText text={m.body} />
+            </p>
           )}
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <time className="ibx-mono min-w-0 shrink text-[10px] tabular-nums" style={{ color: metaColor }}>
@@ -2439,7 +2446,7 @@ export default function InboxApp() {
                           fontWeight: hasUnread ? 600 : 400,
                         }}
                       >
-                        {c.lastMessagePreview}
+                        {stripWhatsappMarkup(c.lastMessagePreview)}
                       </p>
                       <div className="flex items-center gap-2">
                         <StatusToken kind={op.kind} pending={isPending} />
