@@ -1018,7 +1018,7 @@ function MessageBubble({
           </span>
         )}
         <div
-          className="flex w-fit min-w-0 max-w-full flex-col gap-0.5 break-words px-3.5 py-2 text-[14px] [overflow-wrap:anywhere]"
+          className="flex w-fit min-w-0 max-w-full flex-col gap-0.5 break-words px-3.5 py-2 text-[15.5px] [overflow-wrap:anywhere]"
           style={{ lineHeight: 1.45, ...bubbleStyle }}
         >
           {isHandoffCause && (
