@@ -27,6 +27,7 @@ import { Spinner } from "./Spinner";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { StartConversationModal } from "./StartConversationModal";
 import { FeedbackModal } from "./FeedbackModal";
+import { ChangelogButton } from "./ChangelogModal";
 import { ThemeToggle } from "./ThemeToggle";
 import { WhatsappText, stripWhatsappMarkup } from "./WhatsappText";
 import { HelpModal } from "./HelpModal";
@@ -206,6 +207,16 @@ function IconHelp(props: SVGProps<SVGSVGElement>) {
       <circle cx="12" cy="12" r="9" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 9a2.5 2.5 0 014.6 1.3c0 1.7-2.6 2-2.6 3.7" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 17h.01" />
+    </svg>
+  );
+}
+
+/** Redactar nuevo mensaje / comenzar conversación (lápiz sobre recuadro). */
+function IconCompose(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 15v3.75A2.25 2.25 0 0116.75 21H5.25A2.25 2.25 0 013 18.75V7.25A2.25 2.25 0 015.25 5H9" />
     </svg>
   );
 }
@@ -2125,6 +2136,24 @@ export default function InboxApp() {
                 ? "Error"
                 : "Esperando"}
           </span>
+          <button
+            type="button"
+            onClick={() => setStartConversationOpen(true)}
+            className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
+            style={{
+              padding: "7px 12px",
+              borderRadius: 8,
+              border: "none",
+              background: "transparent",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            <IconCompose className="h-4 w-4" />
+            <span className="hidden sm:inline">Comenzar conversación</span>
+          </button>
+          <ChangelogButton onRed />
           <ThemeToggle />
           <button
             type="button"
@@ -2223,22 +2252,10 @@ export default function InboxApp() {
                       type="button"
                       onClick={() => {
                         setGlobalActionsOpen(false);
-                        setStartConversationOpen(true);
-                      }}
-                      className="d-soft grotesk flex w-full items-center px-3.5 py-2.5 text-left"
-                      style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}
-                      role="menuitem"
-                    >
-                      Comenzar conversación
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGlobalActionsOpen(false);
                         setFeedbackOpen(true);
                       }}
                       className="d-soft grotesk flex w-full items-center px-3.5 py-2.5 text-left"
-                      style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)", borderTop: "1px solid var(--line)" }}
+                      style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}
                       role="menuitem"
                     >
                       Enviar feedback
