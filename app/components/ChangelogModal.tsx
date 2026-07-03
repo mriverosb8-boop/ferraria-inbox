@@ -25,7 +25,14 @@ const CHANGELOG_ENTRIES: ChangelogEntry[] = [
     titulo: "Rediseño del inbox",
     tipo: "mejora",
     descripcion:
-      "Renovamos el inbox para que sea más claro, rápido y cómodo de usar al atender a tus huéspedes.",
+      "Renovamos el inbox para que sea más claro, rápido y cómodo al atender a tus huéspedes. Además sumamos nuevas funciones: modo claro y oscuro, más plantillas de mensajes, esta sección de Novedades y un botón para enviarnos tu feedback.",
+  },
+  {
+    fecha: "2026-07-03",
+    titulo: "Mensajes de traspaso personalizados",
+    tipo: "mejora",
+    descripcion:
+      "Cuando una conversación necesita que intervengas, el huésped ya no recibe el mensaje genérico de siempre. Ahora la IA le responde algo acorde a su situación mientras te avisa para que la atiendas.",
   },
 ];
 
@@ -113,26 +120,34 @@ function SparkMark(props: React.SVGProps<SVGSVGElement>) {
  * propio estado de apertura y el badge de no-leído (localStorage).
  */
 export function ChangelogButton({ onRed = false }: { onRed?: boolean }) {
-  const [open, setOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const signature = useMemo(() => latestSignature(), []);
-  // En el servidor devolvemos la firma actual → sin badge hasta hidratar.
+  // En el servidor devolvemos la firma actual → sin badge/popup hasta hidratar.
   const seen = useSyncExternalStore(subscribeSeen, readSeen, () => signature);
+  const hasUnseen = seen !== signature;
+
+  // El panel se abre solo la primera vez que hay una novedad sin ver (popup)
+  // y también manualmente desde el botón. Al cerrarlo, queda marcado como visto.
+  const open = manualOpen || hasUnseen;
+
+  const close = () => {
+    setManualOpen(false);
+    markSeen(signature);
+  };
 
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setManualOpen(false);
+        markSeen(signature);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open]);
+  }, [open, signature]);
 
-  const hasUnseen = seen !== signature;
-
-  const handleOpen = () => {
-    setOpen(true);
-    markSeen(signature);
-  };
+  const handleOpen = () => setManualOpen(true);
 
   return (
     <>
@@ -170,7 +185,7 @@ export function ChangelogButton({ onRed = false }: { onRed?: boolean }) {
             className="absolute inset-0 backdrop-blur-sm"
             style={{ background: "color-mix(in srgb, var(--ink) 35%, transparent)" }}
             aria-label="Cerrar actualizaciones"
-            onClick={() => setOpen(false)}
+            onClick={close}
           />
           <div
             className="absolute left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[min(calc(100vw-2rem),30rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl"
@@ -194,7 +209,7 @@ export function ChangelogButton({ onRed = false }: { onRed?: boolean }) {
               </div>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={close}
                 aria-label="Cerrar"
                 className="-mr-1 -mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/80 transition hover:bg-white/15 hover:text-white"
               >
@@ -243,7 +258,7 @@ export function ChangelogButton({ onRed = false }: { onRed?: boolean }) {
             >
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={close}
                 className="grotesk rounded-xl px-4 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)]"
                 style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-2)" }}
               >
