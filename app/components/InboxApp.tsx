@@ -112,16 +112,8 @@ function isReplyBlockedByMetaPolicy(messages: Message[]): boolean {
   return Date.now() - ms > META_INBOX_REPLY_WINDOW_MS;
 }
 
-/** Descriptor de estado operativo en tokens del rediseño (Dirección D). */
-type StatusKind = "attention" | "ia" | "done";
-const operationalConfig: Record<
-  OperationalStatus,
-  { label: string; short: string; kind: StatusKind }
-> = {
-  ai_active: { label: "IA activa", short: "IA", kind: "ia" },
-  requires_attention: { label: "Requiere atención", short: "Atención", kind: "attention" },
-  closed: { label: "Resuelto", short: "Hecho", kind: "done" },
-};
+/** Estado visible de la conversación en la cola (una sola etiqueta clara). */
+type StatusVariant = "pending" | "attention" | "human" | "ia" | "done";
 
 /** Punto de color sólido (token D). */
 function Dot({ size = 7, color }: { size?: number; color: string }) {
@@ -135,60 +127,71 @@ function Dot({ size = 7, color }: { size?: number; color: string }) {
 }
 
 /**
- * Token de estado de la conversación.
- * `attention` → pill rojo sólido; `ia` → verde; `pending` → dorado; `done` → gris ink-3.
+ * Token de estado de la conversación — una sola etiqueta, sin duplicados:
+ * `pending`/`attention` → pill rojo sólido (necesita acción, aún sin humano);
+ * `human` → pill dorado con fondo (la atiende una persona);
+ * `ia` → pill verde con fondo (la maneja el agente); `done` → texto gris discreto.
  */
-function StatusToken({ kind, pending }: { kind: StatusKind; pending?: boolean }) {
-  if (pending) {
-    return (
-      <span
-        className="grotesk inline-flex items-center gap-1.5"
-        style={{
-          padding: "3px 9px 3px 7px",
-          background: "var(--red)",
-          color: "#fff",
-          borderRadius: 999,
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.01em",
-        }}
-      >
-        <Dot size={6} color="rgba(255,255,255,.85)" />
-        Pendiente
-      </span>
-    );
-  }
-  if (kind === "attention") {
-    return (
-      <span
-        className="grotesk inline-flex items-center gap-1.5"
-        style={{
-          padding: "3px 9px 3px 7px",
-          background: "var(--red)",
-          color: "#fff",
-          borderRadius: 999,
-          fontSize: 11,
-          fontWeight: 700,
-          letterSpacing: "0.01em",
-        }}
-      >
-        <Dot size={6} color="rgba(255,255,255,.85)" />
-        Atención
-      </span>
-    );
-  }
-  const map: Record<Exclude<StatusKind, "attention">, { color: string; label: string }> = {
-    ia: { color: "var(--live)", label: "IA activa" },
-    done: { color: "var(--ink-3)", label: "Resuelto" },
+function StatusToken({ variant }: { variant: StatusVariant }) {
+  const pill: React.CSSProperties = {
+    padding: "3px 9px 3px 7px",
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.01em",
+    border: "1px solid transparent",
   };
-  const { color, label } = map[kind];
+
+  if (variant === "pending" || variant === "attention") {
+    return (
+      <span
+        className="grotesk inline-flex items-center gap-1.5"
+        style={{ ...pill, background: "var(--red)", color: "#fff" }}
+      >
+        <Dot size={6} color="rgba(255,255,255,.85)" />
+        {variant === "pending" ? "Pendiente" : "Atención"}
+      </span>
+    );
+  }
+  if (variant === "human") {
+    return (
+      <span
+        className="grotesk inline-flex items-center gap-1.5"
+        style={{
+          ...pill,
+          background: "var(--gold-soft)",
+          color: "var(--gold)",
+          borderColor: "color-mix(in srgb, var(--gold) 45%, transparent)",
+        }}
+      >
+        <Dot size={6} color="var(--gold)" />
+        Humano
+      </span>
+    );
+  }
+  if (variant === "ia") {
+    return (
+      <span
+        className="grotesk inline-flex items-center gap-1.5"
+        style={{
+          ...pill,
+          background: "var(--live-soft)",
+          color: "var(--live)",
+          borderColor: "color-mix(in srgb, var(--live) 35%, transparent)",
+        }}
+      >
+        <Dot size={6} color="var(--live)" />
+        IA activa
+      </span>
+    );
+  }
   return (
     <span
       className="inline-flex items-center gap-1.5"
       style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-3)", letterSpacing: "0.01em" }}
     >
-      <Dot color={color} />
-      {label}
+      <Dot color="var(--ink-3)" />
+      Resuelto
     </span>
   );
 }
@@ -2405,11 +2408,24 @@ export default function InboxApp() {
             ) : (
               filtered.map((c) => {
                 const active = c.id === selectedId;
-                const op = operationalConfig[c.operationalStatus];
                 const hasUnread = c.unreadCount > 0;
                 const unreadLabel = c.unreadCount > 99 ? "99+" : String(c.unreadCount);
                 const isPending = c.request === "pending";
-                const showAttentionBar = isPending || c.operationalStatus === "requires_attention";
+                const isHumanHandled =
+                  c.controlMode === "human" && c.operationalStatus !== "closed";
+                // El humano ya la está atendiendo → no la marcamos como "atención" en rojo.
+                const showAttentionBar =
+                  isPending ||
+                  (c.operationalStatus === "requires_attention" && !isHumanHandled);
+                const statusVariant: StatusVariant = isPending
+                  ? "pending"
+                  : c.operationalStatus === "closed"
+                    ? "done"
+                    : isHumanHandled
+                      ? "human"
+                      : c.operationalStatus === "requires_attention"
+                        ? "attention"
+                        : "ia";
                 const propertyLabel = c.guest.property.split("—")[0]?.trim();
                 const showProperty =
                   propertyLabel &&
@@ -2466,22 +2482,7 @@ export default function InboxApp() {
                         {stripWhatsappMarkup(c.lastMessagePreview)}
                       </p>
                       <div className="flex items-center gap-2">
-                        <StatusToken kind={op.kind} pending={isPending} />
-                        {c.operationalStatus !== "ai_active" && !isPending && (
-                          <span
-                            className="grotesk shrink-0"
-                            style={{
-                              fontSize: 10.5,
-                              fontWeight: 600,
-                              padding: "2px 7px",
-                              borderRadius: 6,
-                              background: "var(--panel-2)",
-                              color: "var(--ink-2)",
-                            }}
-                          >
-                            {c.controlMode === "ai" ? "Modo IA" : "Humano"}
-                          </span>
-                        )}
+                        <StatusToken variant={statusVariant} />
                         {showProperty && (
                           <span className="truncate" style={{ fontSize: 11, color: "var(--ink-3)" }} title={propertyLabel}>
                             {propertyLabel}
