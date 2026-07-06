@@ -27,6 +27,14 @@ const spaceMono = Space_Mono({
 export const metadata: Metadata = {
   title: "FerrarIA Inbox",
   description: "Bandeja de conversaciones para recepción hotelera.",
+  appleWebApp: {
+    capable: true,
+    title: "FerrarIA",
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 /** Sin tocar maximumScale: el zoom al enfocar se evita con input ≥16px en móvil. */
@@ -34,6 +42,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f4ee" },
+    { media: "(prefers-color-scheme: dark)", color: "#17130f" },
+  ],
 };
 
 export default function RootLayout({
