@@ -1250,6 +1250,14 @@ export default function InboxApp() {
     if (conversationId) setRequestedConversationId(conversationId);
   }, []);
 
+  // Registra el service worker para push notifications (Batch 4).
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker
+      .register("/sw.js", { updateViaCache: "none" })
+      .catch((err) => console.error("[sw] registro fallido:", err));
+  }, []);
+
   // Sincroniza el hotel activo en memoria con el que resuelve el server, pero SOLO
   // cuando la selección en memoria no es válida: arranque (activeHotelId === null) o
   // un hotelId stale que el usuario actual ya no tiene permitido (auto-recuperación
