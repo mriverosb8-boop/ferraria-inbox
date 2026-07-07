@@ -3044,6 +3044,9 @@ export default function InboxApp() {
                     enterKeyHint="send"
                     inputMode="text"
                     autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onPaste={handleComposerPaste}
