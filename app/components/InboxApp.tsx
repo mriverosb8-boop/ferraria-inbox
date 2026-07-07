@@ -2218,11 +2218,12 @@ export default function InboxApp() {
         </div>
       )}
       <header
-        className={`flex h-[56px] shrink-0 items-center gap-3 px-4 sm:gap-5 lg:h-[62px] lg:px-[22px] ${mobileTab === "chat" ? "max-lg:hidden" : ""}`}
+        className={`flex min-h-[56px] shrink-0 items-center gap-3 px-4 sm:gap-5 lg:min-h-[62px] lg:px-[22px] ${mobileTab === "chat" ? "max-lg:hidden" : ""}`}
         style={{
           background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
           borderBottom: "1px solid var(--red-deep)",
           boxShadow: "0 1px 8px rgba(196,43,32,.25)",
+          paddingTop: "env(safe-area-inset-top, 0px)",
         }}
       >
         <div className="flex min-w-0 items-center gap-2.5">

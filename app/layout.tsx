@@ -37,10 +37,12 @@ export const metadata: Metadata = {
   },
 };
 
-/** Sin tocar maximumScale: el zoom al enfocar se evita con input ≥16px en móvil. */
+/** Bloquea pinch-zoom para sensación nativa (PWA). El zoom al enfocar ya se evita con input ≥16px en móvil. */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#f7f4ee" },
