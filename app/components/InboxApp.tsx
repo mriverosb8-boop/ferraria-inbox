@@ -9,7 +9,9 @@ import {
   getConversationDisplayActivityMs,
   messageNeedsHumanAlert,
   normalizePhoneDigits,
+  resolveMediaKind,
 } from "@/lib/chat-utils";
+import type { MediaKind } from "@/lib/chat-utils";
 import { appendConversationMessages } from "@/lib/message-limits";
 import { upsertConversationMessage } from "@/lib/message-upsert";
 import type { ControlMode, Conversation, Message, OperationalStatus } from "@/lib/inbox-types";
@@ -75,13 +77,6 @@ function formatBlockedAtColombia(iso: string): string {
 
 function isPdfFile(file: File | null): boolean {
   return file?.type === PDF_MIME_TYPE;
-}
-
-function isMessageDocument(message: Message): boolean {
-  return (
-    message.messageType?.trim().toLowerCase() === "document" ||
-    message.mediaMimeType?.trim().toLowerCase() === PDF_MIME_TYPE
-  );
 }
 
 function formatFileSize(bytes: number): string {
@@ -806,6 +801,7 @@ function PrivateWhatsAppImage({
 }) {
   const { signedUrl, phase, requestLoad } = useLazySignedMediaUrl(message);
   const [isOpen, setIsOpen] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -835,6 +831,12 @@ function PrivateWhatsAppImage({
     );
   }
 
+  // Si el archivo no es realmente una imagen decodificable, caemos a tarjeta de archivo
+  // en vez de mostrar el ícono roto.
+  if (imgFailed) {
+    return <PrivateWhatsAppFile message={message} kind="file" showCaption={false} />;
+  }
+
   const alt = message.body || "Imagen enviada por WhatsApp";
 
   return (
@@ -844,6 +846,7 @@ function PrivateWhatsAppImage({
         alt={alt}
         title="Abrir imagen"
         onClick={() => setIsOpen(true)}
+        onError={() => setImgFailed(true)}
         className="max-w-[260px] max-h-80 cursor-pointer rounded-xl border border-black/10 object-cover hover:opacity-90"
       />
       {isOpen && (
@@ -887,34 +890,88 @@ function PrivateWhatsAppImage({
   );
 }
 
-function PrivateWhatsAppDocument({
+/** Badge corto (3–4 letras) desde la extensión del filename o, si no hay, desde el mime. */
+function fileBadgeLabel(mime: string | null | undefined, filename: string | null | undefined): string {
+  const ext = filename?.trim().split(".").pop()?.toUpperCase();
+  if (ext && ext !== filename?.trim().toUpperCase() && ext.length <= 4) return ext;
+  const m = mime?.trim().toLowerCase() ?? "";
+  if (m === "application/pdf") return "PDF";
+  if (m.includes("wordprocessingml")) return "DOCX";
+  if (m.includes("msword")) return "DOC";
+  if (m.includes("spreadsheetml")) return "XLSX";
+  if (m.includes("ms-excel")) return "XLS";
+  if (m.includes("presentationml")) return "PPTX";
+  if (m.includes("ms-powerpoint")) return "PPT";
+  if (m.includes("csv")) return "CSV";
+  if (m.startsWith("text/")) return "TXT";
+  return "FILE";
+}
+
+/** Nombre legible del tipo, usado como título cuando NO hay filename real (media_filename es null en DB). */
+function fileFriendlyName(mime: string | null | undefined, kind: MediaKind): string {
+  const m = mime?.trim().toLowerCase() ?? "";
+  if (kind === "pdf") return "Documento PDF";
+  if (m.includes("word") || m.includes("msword")) return "Documento Word";
+  if (m.includes("sheet") || m.includes("excel")) return "Hoja de cálculo";
+  if (m.includes("presentation") || m.includes("powerpoint")) return "Presentación";
+  if (m.startsWith("text/")) return "Documento de texto";
+  if (kind === "document") return "Documento";
+  return "Archivo adjunto";
+}
+
+const FILE_TONES: Record<"pdf" | "document" | "file", { badge: string; text: string; border: string }> = {
+  pdf: { badge: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
+  document: { badge: "bg-sky-50", text: "text-sky-700", border: "border-sky-200" },
+  file: { badge: "bg-stone-100", text: "text-stone-600", border: "border-stone-300" },
+};
+
+/**
+ * Tarjeta descargable para cualquier archivo no reproducible (pdf, doc/docx, xls/xlsx,
+ * ppt/pptx, txt/csv o desconocido). El signed URL abre en pestaña nueva; el navegador
+ * decide inline vs descarga según el mime. `media_filename` hoy es null en DB, así que
+ * el título cae a un nombre genérico por tipo y NO se muestra "null" ni queda vacío.
+ */
+function PrivateWhatsAppFile({
   message,
+  kind,
+  showCaption = true,
 }: {
   message: Message;
+  kind: MediaKind;
+  showCaption?: boolean;
 }) {
   const { signedUrl, phase, requestLoad } = useLazySignedMediaUrl(message);
 
-  const filename = message.mediaFilename || "Documento.pdf";
+  const rawFilename = message.mediaFilename?.trim() || "";
+  const friendly = fileFriendlyName(message.mediaMimeType, kind);
+  const title = rawFilename || friendly;
+  const badge = fileBadgeLabel(message.mediaMimeType, message.mediaFilename);
+  const tone = FILE_TONES[kind === "pdf" ? "pdf" : kind === "document" ? "document" : "file"];
+  const openLabel = kind === "pdf" ? "Abrir PDF" : "Abrir";
   const caption = message.body || message.mediaCaption || "";
 
   return (
     <div className="flex max-w-full flex-col gap-2">
       <div className="flex max-w-full items-center gap-3 rounded-xl border border-[#e7dfd4] bg-white/70 p-2.5 shadow-sm ring-1 ring-black/[0.03]">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-[10px] font-bold text-rose-700">
-          PDF
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border text-[10px] font-bold ${tone.badge} ${tone.text} ${tone.border}`}
+        >
+          {badge}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-[#1f1f1c]">{filename}</p>
-          <p className="mt-0.5 text-[11px] text-[#6b665e]">Documento PDF</p>
+          <p className="truncate text-[13px] font-semibold text-[#1f1f1c]">{title}</p>
+          {rawFilename ? (
+            <p className="mt-0.5 text-[11px] text-[#6b665e]">{friendly}</p>
+          ) : null}
         </div>
         {phase === "loaded" && signedUrl ? (
           <a
             href={signedUrl}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="shrink-0 rounded-lg border border-[#c5d4e0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#1f1f1c] shadow-sm transition hover:bg-[#f1ece4]"
           >
-            Abrir PDF
+            {openLabel}
           </a>
         ) : phase === "deferred" ? (
           <button
@@ -922,7 +979,7 @@ function PrivateWhatsAppDocument({
             onClick={() => void requestLoad()}
             className="shrink-0 rounded-lg border border-[#c5d4e0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#1f1f1c] shadow-sm transition hover:bg-[#f1ece4]"
           >
-            Cargar documento
+            Cargar archivo
           </button>
         ) : phase === "loading" ? (
           <span className="shrink-0 text-[11px] text-[#6b665e]">Cargando...</span>
@@ -936,9 +993,47 @@ function PrivateWhatsAppDocument({
           </button>
         )}
       </div>
-      {caption ? <p className="whitespace-pre-wrap break-words">{caption}</p> : null}
+      {showCaption && caption ? <p className="whitespace-pre-wrap break-words">{caption}</p> : null}
     </div>
   );
+}
+
+function PrivateWhatsAppVideo({ message }: { message: Message }) {
+  const { signedUrl, phase, requestLoad } = useLazySignedMediaUrl(message);
+
+  if (phase === "deferred") {
+    return <LazyImagePlaceholder label="Cargar video" onLoad={() => void requestLoad()} />;
+  }
+  if (phase === "loading") {
+    return <LazyMediaLoadingState label="Cargando video..." />;
+  }
+  if (phase === "error" || !signedUrl) {
+    return <LazyMediaErrorState label="No se pudo cargar el video" onRetry={() => void requestLoad()} />;
+  }
+
+  return (
+    <video
+      src={signedUrl}
+      controls
+      className="max-h-80 max-w-[300px] rounded-xl border border-black/10"
+    />
+  );
+}
+
+function PrivateWhatsAppAudio({ message }: { message: Message }) {
+  const { signedUrl, phase, requestLoad } = useLazySignedMediaUrl(message);
+
+  if (phase === "deferred") {
+    return <LazyImagePlaceholder label="Cargar audio" onLoad={() => void requestLoad()} />;
+  }
+  if (phase === "loading") {
+    return <LazyMediaLoadingState label="Cargando audio..." />;
+  }
+  if (phase === "error" || !signedUrl) {
+    return <LazyMediaErrorState label="No se pudo cargar el audio" onRetry={() => void requestLoad()} />;
+  }
+
+  return <audio src={signedUrl} controls className="w-[260px] max-w-full" />;
 }
 
 function MessageBubble({
@@ -958,8 +1053,8 @@ function MessageBubble({
 
   const isTranscribedVoice =
     isUser && typeof m.format === "string" && m.format.trim().toLowerCase() === "audio";
-  const hasImageSource = Boolean(m.mediaUrl || m.mediaStoragePath);
-  const isDocument = isMessageDocument(m);
+  const hasMediaSource = Boolean(m.mediaUrl || m.mediaStoragePath);
+  const mediaKind = resolveMediaKind(m.mediaMimeType);
   const timeLabel = formatMessageDisplayTime(m as unknown as Record<string, unknown>) || m.sentAt;
   const isOutboundHotel = !isUser;
   const deliveryStatus = m.status ?? "confirmed";
@@ -1064,17 +1159,37 @@ function MessageBubble({
               </span>
             </p>
           )}
-          {isDocument ? (
-            <PrivateWhatsAppDocument key={m.id} message={m} />
-          ) : m.messageType === "image" && hasImageSource ? (
-            <div className="flex max-w-full flex-col gap-2">
-              <PrivateWhatsAppImage key={m.id} message={m} />
-              {m.body ? (
-                <p className="mt-2 whitespace-pre-wrap break-words">
-                  <WhatsappText text={m.body} />
-                </p>
-              ) : null}
-            </div>
+          {hasMediaSource ? (
+            mediaKind === "image" ? (
+              <div className="flex max-w-full flex-col gap-2">
+                <PrivateWhatsAppImage key={m.id} message={m} />
+                {m.body ? (
+                  <p className="mt-2 whitespace-pre-wrap break-words">
+                    <WhatsappText text={m.body} />
+                  </p>
+                ) : null}
+              </div>
+            ) : mediaKind === "video" ? (
+              <div className="flex max-w-full flex-col gap-2">
+                <PrivateWhatsAppVideo key={m.id} message={m} />
+                {m.body ? (
+                  <p className="mt-2 whitespace-pre-wrap break-words">
+                    <WhatsappText text={m.body} />
+                  </p>
+                ) : null}
+              </div>
+            ) : mediaKind === "audio" ? (
+              <div className="flex max-w-full flex-col gap-2">
+                <PrivateWhatsAppAudio key={m.id} message={m} />
+                {m.body ? (
+                  <p className="mt-2 whitespace-pre-wrap break-words">
+                    <WhatsappText text={m.body} />
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <PrivateWhatsAppFile key={m.id} message={m} kind={mediaKind} />
+            )
           ) : (
             <p className="whitespace-pre-wrap break-words">
               <WhatsappText text={m.body} />

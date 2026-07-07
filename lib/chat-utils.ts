@@ -235,6 +235,28 @@ function mediaUrlLooksLikeImage(url: string): boolean {
   return /\.(avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)$/.test(withoutQuery);
 }
 
+export type MediaKind = "image" | "video" | "audio" | "pdf" | "document" | "file";
+
+/** Pistas de mime para documentos office/texto que NO son pdf. */
+const DOCUMENT_MIME_HINTS = [
+  "msword", "wordprocessingml",           // .doc .docx
+  "ms-excel", "spreadsheetml",            // .xls .xlsx
+  "ms-powerpoint", "presentationml",      // .ppt .pptx
+  "opendocument", "rtf",                  // .odt/.ods, .rtf
+  "text/plain", "text/csv",               // .txt .csv
+];
+
+/** Categoría de render a partir del mime (fuente de verdad; `format` upstream no es fiable). */
+export function resolveMediaKind(mime: string | null | undefined): MediaKind {
+  const m = mime?.trim().toLowerCase() ?? "";
+  if (m.startsWith("image/")) return "image";
+  if (m.startsWith("video/")) return "video";
+  if (m.startsWith("audio/")) return "audio";
+  if (m === "application/pdf") return "pdf";
+  if (DOCUMENT_MIME_HINTS.some((h) => m.includes(h))) return "document";
+  return "file";
+}
+
 function readMessageMedia(row: WubbyWhatsappRow): {
   messageType: string;
   mediaUrl: string | null;
@@ -255,19 +277,20 @@ function readMessageMedia(row: WubbyWhatsappRow): {
   const mediaBucket = readMediaBucket(row) ?? null;
   const metaMediaId = readMetaMediaId(row) ?? null;
   const normalizedType = declaredType?.trim().toLowerCase();
-  const normalizedMime = mediaMimeType?.trim().toLowerCase();
-  const isImageByMime = normalizedMime?.startsWith("image/") ?? false;
   const isImageByType = normalizedType === "image";
-  const isDocumentByMime = normalizedMime === "application/pdf";
   const isDocumentByType = normalizedType === "document" || normalizedType === "file";
   const isImageByUrl = mediaUrl ? mediaUrlLooksLikeImage(mediaUrl) : false;
 
-  const messageType =
-    isDocumentByType || isDocumentByMime
-      ? "document"
-      : isImageByType || isImageByMime || Boolean(mediaStoragePath) || isImageByUrl
-      ? "image"
-      : declaredType ?? "text";
+  // El mime manda. El upstream (n8n) escribe `format="image"` para casi todo,
+  // así que solo confiamos en `format`/type cuando no hay mime.
+  const kind: MediaKind | null = mediaMimeType
+    ? resolveMediaKind(mediaMimeType)
+    : isDocumentByType
+    ? "document"
+    : isImageByType || Boolean(mediaStoragePath) || isImageByUrl
+    ? "image"
+    : null;
+  const messageType = kind === "pdf" ? "document" : kind ?? declaredType ?? "text";
 
   return { messageType, mediaUrl, mediaStoragePath, mediaMimeType, mediaCaption, mediaFilename, mediaBucket, metaMediaId };
 }
@@ -737,9 +760,22 @@ export function buildMessageFromWubbyRow(
   const { messageType, mediaUrl, mediaStoragePath, mediaMimeType, mediaCaption, mediaFilename, mediaBucket, metaMediaId } =
     readMessageMedia(row);
   const isImage = messageType.trim().toLowerCase() === "image";
-  const isDocument = messageType.trim().toLowerCase() === "document";
-  const body = messageRaw || mediaCaption || (isImage || isDocument ? "" : "(vacío)");
-  const previewRaw = body || (isDocument ? `📄 ${mediaFilename ?? "Documento"}` : isImage ? "📷 Imagen" : "—");
+  const hasMedia = Boolean(mediaStoragePath || mediaUrl);
+  const body = messageRaw || mediaCaption || (hasMedia ? "" : "(vacío)");
+  const kind = resolveMediaKind(mediaMimeType);
+  const previewRaw =
+    body ||
+    (kind === "pdf" || kind === "document"
+      ? `📎 ${mediaFilename ?? "Documento"}`
+      : kind === "video"
+      ? "🎥 Video"
+      : kind === "audio"
+      ? "🎙️ Audio"
+      : isImage
+      ? "📷 Imagen"
+      : mediaStoragePath
+      ? "📎 Archivo"
+      : "—");
   const causeReqHandoff = readCauseRequest(row);
   const causeOfReq = readCauseOfRequestColumn(row);
   const clientTempIdRaw = readStringField(row, "client_temp_id", "clientTempId");
