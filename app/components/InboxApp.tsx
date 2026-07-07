@@ -2801,7 +2801,7 @@ export default function InboxApp() {
                       </div>
                     ) : (
                       <>
-                        <h2 className="grotesk truncate" style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--ink)" }}>
+                        <h2 className="grotesk min-w-0 flex-1 truncate" style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--ink)" }}>
                           {selected.guest.name}
                         </h2>
                         <button
