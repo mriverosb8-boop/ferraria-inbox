@@ -183,7 +183,7 @@ export default function ReservasPage() {
       )}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden lg:p-5">
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--panel-2)] shadow-sm ring-1 ring-black/[0.03]">
+        <section className="flex min-h-0 flex-col rounded-2xl border border-[var(--line)] bg-[var(--panel-2)] shadow-sm ring-1 ring-black/[0.03] lg:overflow-hidden">
           {availableHotels.length >= 2 && (
             <div className="shrink-0 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
               <label
@@ -237,7 +237,7 @@ export default function ReservasPage() {
             />
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-app">
+          <div className="p-4 scrollbar-app lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {loading ? (
               <p className="py-12 text-center text-sm text-[var(--ink-2)]">Cargando reservas...</p>
             ) : filteredReservas.length === 0 ? (
