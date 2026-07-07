@@ -25,6 +25,7 @@ import { InboxHeaderTabs } from "./InboxHeaderTabs";
 import { LogoutButton } from "./LogoutButton";
 import { Spinner } from "./Spinner";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { StartConversationModal } from "./StartConversationModal";
 import { FeedbackModal } from "./FeedbackModal";
 import { ChangelogButton } from "./ChangelogModal";
@@ -1122,6 +1123,7 @@ export default function InboxApp() {
   const { followups: followupTimers, removeFollowup } = useFollowupTimers();
 
   const conversationHotelId = activeHotelId ?? resolvedActiveHotelId;
+  const push = usePushNotifications(conversationHotelId);
 
   const cancelFollowup = useCallback(
     async (conversationId: string, quoteRequestId: string, stage: string) => {
@@ -2259,6 +2261,39 @@ export default function InboxApp() {
                     style={{ borderRadius: 12, border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
                     role="menu"
                   >
+                    <button
+                      type="button"
+                      title={push.error ?? undefined}
+                      disabled={
+                        push.status === "subscribing" ||
+                        push.status === "denied" ||
+                        push.status === "unsupported" ||
+                        push.status === "ios-needs-install"
+                      }
+                      onClick={() => {
+                        if (push.status === "subscribed") {
+                          void push.disable();
+                        } else {
+                          void push.enable();
+                          setGlobalActionsOpen(false);
+                        }
+                      }}
+                      className="d-soft grotesk flex w-full items-center px-3.5 py-2.5 text-left disabled:opacity-60"
+                      style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}
+                      role="menuitem"
+                    >
+                      {push.status === "subscribed"
+                        ? "Desactivar notificaciones"
+                        : push.status === "subscribing"
+                          ? "Activando…"
+                          : push.status === "denied"
+                            ? "Notificaciones bloqueadas"
+                            : push.status === "ios-needs-install"
+                              ? "Instalá la app para notificaciones"
+                              : push.status === "unsupported"
+                                ? "Notificaciones no disponibles"
+                                : "Activar notificaciones"}
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
