@@ -1284,7 +1284,13 @@ export default function InboxApp() {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await refetch({ silent: true });
+      // `refetch` siempre hace fetch real a /api/inbox (cache: "no-store"); resuelve
+      // rápido y el spinner parpadearía imperceptible. Garantizamos ~700ms de estado
+      // visible para que el usuario tenga certeza de que la cola se recargó.
+      await Promise.all([
+        refetch({ silent: true }),
+        new Promise((resolve) => setTimeout(resolve, 700)),
+      ]);
     } finally {
       setRefreshing(false);
     }
@@ -2377,8 +2383,19 @@ export default function InboxApp() {
               >
                 Cola operativa
               </h2>
-              <span className="ibx-mono ml-auto" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)" }}>
-                {filtered.length}/{conversations.length}
+              <span
+                className="ibx-mono ml-auto inline-flex items-center gap-1.5"
+                style={{ fontSize: 11.5, fontWeight: 700, color: refreshing ? "var(--red)" : "var(--ink-3)" }}
+                aria-live="polite"
+              >
+                {refreshing ? (
+                  <>
+                    <Spinner className="h-3 w-3 animate-spin" />
+                    Actualizando…
+                  </>
+                ) : (
+                  `${filtered.length}/${conversations.length}`
+                )}
               </span>
               <button
                 type="button"
@@ -2588,8 +2605,9 @@ export default function InboxApp() {
           </div>
 
           <div
-            className="ibx-scroll min-h-0 flex-1 overflow-y-auto"
+            className={`ibx-scroll min-h-0 flex-1 overflow-y-auto transition-opacity duration-200 ${refreshing ? "pointer-events-none opacity-50" : "opacity-100"}`}
             style={{ borderTop: "1px solid var(--line)" }}
+            aria-busy={refreshing}
           >
             {loading ? (
               <InboxListSkeleton />
