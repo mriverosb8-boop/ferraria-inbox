@@ -349,6 +349,14 @@ function IconCalendar(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+function IconRefresh(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.99v4.99" />
+    </svg>
+  );
+}
+
 function IconNote(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
@@ -1260,6 +1268,7 @@ export default function InboxApp() {
     },
     [conversationHotelId, removeFollowup]
   );
+
   useInboxConversationMessages(
     selectedId,
     conversationHotelId,
@@ -1270,6 +1279,16 @@ export default function InboxApp() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [draft, setDraft] = useState("");
   const [mobileTab, setMobileTab] = useState<"list" | "chat">("list");
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await refetch({ silent: true });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, refreshing]);
   const [guestOpen, setGuestOpen] = useState(false);
   const [sendWarning, setSendWarning] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -2359,6 +2378,21 @@ export default function InboxApp() {
               <span className="ibx-mono ml-auto" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)" }}>
                 {filtered.length}/{conversations.length}
               </span>
+              <button
+                type="button"
+                onClick={() => void handleRefresh()}
+                disabled={refreshing}
+                className="d-act flex h-8 w-8 items-center justify-center disabled:opacity-50"
+                style={{ borderRadius: 9, border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }}
+                aria-label="Refrescar conversaciones"
+                title="Refrescar"
+              >
+                {refreshing ? (
+                  <Spinner className="h-4 w-4 animate-spin" />
+                ) : (
+                  <IconRefresh className="h-4 w-4" aria-hidden />
+                )}
+              </button>
               <div ref={globalActionsRef} className="relative">
                 <button
                   type="button"
