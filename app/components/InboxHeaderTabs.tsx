@@ -80,6 +80,7 @@ export function InboxHeaderTabs({ hotelId, onRed = false }: InboxHeaderTabsProps
       {isReservas ? (
         <Link href="/" className={mobilePill} aria-label="Ver conversaciones" title="Conversaciones">
           <IconChatBubble className="h-[18px] w-[18px]" />
+          Chats
         </Link>
       ) : (
         <Link href="/reservas" className={mobilePill} aria-label="Ver reservas" title="Reservas">

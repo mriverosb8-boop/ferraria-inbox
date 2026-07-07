@@ -166,7 +166,7 @@ export default function ReservasPage() {
             <h1 className="grotesk truncate text-[16px] font-bold tracking-tight text-white">
               Ferrar<span style={{ color: "rgba(255,255,255,.82)" }}>IA</span>
             </h1>
-            <p className="truncate text-[11px] leading-tight text-white/80">Recepción · IA + agente humano</p>
+            <p className="hidden truncate text-[11px] leading-tight text-white/80 sm:block">Recepción · IA + agente humano</p>
           </div>
           <InboxHeaderTabs hotelId={scopedHotelId} onRed />
         </div>

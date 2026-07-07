@@ -2278,11 +2278,13 @@ export default function InboxApp() {
                     : "#ffe08a"
               }
             />
-            {realtimeUiStatus === "connected"
-              ? "Conectado"
-              : realtimeUiStatus === "error"
-                ? "Error"
-                : "Esperando"}
+            <span className="hidden sm:inline">
+              {realtimeUiStatus === "connected"
+                ? "Conectado"
+                : realtimeUiStatus === "error"
+                  ? "Error"
+                  : "Esperando"}
+            </span>
           </span>
           <button
             type="button"
