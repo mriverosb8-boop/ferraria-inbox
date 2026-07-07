@@ -32,6 +32,7 @@ import { StartConversationModal } from "./StartConversationModal";
 import { FeedbackModal } from "./FeedbackModal";
 import { ChangelogButton } from "./ChangelogModal";
 import { ThemeToggle } from "./ThemeToggle";
+import { HeaderMobileMenu, HEADER_MENU_ROW_CLASS } from "./HeaderMobileMenu";
 import { WhatsappText, stripWhatsappMarkup } from "./WhatsappText";
 import { HelpModal } from "./HelpModal";
 
@@ -2292,43 +2293,67 @@ export default function InboxApp() {
                   : "Esperando"}
             </span>
           </span>
-          <button
-            type="button"
-            onClick={() => setStartConversationOpen(true)}
-            className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
-            style={{
-              padding: "7px 12px",
-              borderRadius: 8,
-              border: "none",
-              background: "transparent",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            <IconCompose className="h-4 w-4" />
-            <span className="hidden sm:inline">Comenzar conversación</span>
-          </button>
           <ChangelogButton onRed />
-          <ThemeToggle />
-          <button
-            type="button"
-            onClick={() => setHelpOpen(true)}
-            className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
-            style={{
-              padding: "7px 12px",
-              borderRadius: 8,
-              border: "none",
-              background: "transparent",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            <IconHelp className="h-4 w-4" />
-            <span className="hidden sm:inline">Ayuda</span>
-          </button>
-          <LogoutButton onRed />
+          <div className="hidden items-center gap-2 sm:flex">
+            <button
+              type="button"
+              onClick={() => setStartConversationOpen(true)}
+              className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
+              style={{
+                padding: "7px 12px",
+                borderRadius: 8,
+                border: "none",
+                background: "transparent",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <IconCompose className="h-4 w-4" />
+              <span className="hidden sm:inline">Comenzar conversación</span>
+            </button>
+            <ThemeToggle />
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
+              style={{
+                padding: "7px 12px",
+                borderRadius: 8,
+                border: "none",
+                background: "transparent",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <IconHelp className="h-4 w-4" />
+              <span className="hidden sm:inline">Ayuda</span>
+            </button>
+            <LogoutButton onRed />
+          </div>
+          <HeaderMobileMenu onRed>
+            <button
+              type="button"
+              onClick={() => setStartConversationOpen(true)}
+              className={HEADER_MENU_ROW_CLASS}
+              role="menuitem"
+            >
+              <IconCompose className="h-4 w-4 shrink-0" />
+              Comenzar conversación
+            </button>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className={HEADER_MENU_ROW_CLASS}
+              role="menuitem"
+            >
+              <IconHelp className="h-4 w-4 shrink-0" />
+              Ayuda
+            </button>
+            <ThemeToggle variant="menu" />
+            <LogoutButton onRed variant="menu" />
+          </HeaderMobileMenu>
         </div>
       </header>
 

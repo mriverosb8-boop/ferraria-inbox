@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { THEME_CHANGE_EVENT, setTheme, type Theme } from "@/lib/theme";
+import { HEADER_MENU_ROW_CLASS } from "./HeaderMobileMenu";
 
 function subscribeTheme(callback: () => void) {
   window.addEventListener(THEME_CHANGE_EVENT, callback);
@@ -38,13 +39,28 @@ function IconMoon(props: React.SVGProps<SVGSVGElement>) {
 }
 
 /** Botón de tema para las barras rojas (blanco translúcido, como "Ayuda"). */
-export function ThemeToggle({ className = "" }: { className?: string }) {
+export function ThemeToggle({
+  className = "",
+  variant = "bar",
+}: {
+  className?: string;
+  variant?: "bar" | "menu";
+}) {
   const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getThemeServerSnapshot);
 
   const toggle = () => setTheme(theme === "dark" ? "light" : "dark");
 
   const isDark = theme === "dark";
   const label = isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
+
+  if (variant === "menu") {
+    return (
+      <button type="button" onClick={toggle} className={HEADER_MENU_ROW_CLASS} role="menuitem" aria-label={label}>
+        {isDark ? <IconSun className="h-4 w-4 shrink-0" /> : <IconMoon className="h-4 w-4 shrink-0" />}
+        {isDark ? "Modo claro" : "Modo oscuro"}
+      </button>
+    );
+  }
 
   return (
     <button

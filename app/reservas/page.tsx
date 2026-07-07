@@ -7,6 +7,7 @@ import { normalizePhoneDigits } from "@/lib/chat-utils";
 import { InboxHeaderTabs } from "@/app/components/InboxHeaderTabs";
 import { LogoutButton } from "@/app/components/LogoutButton";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
+import { HeaderMobileMenu } from "@/app/components/HeaderMobileMenu";
 import { ChatPanel } from "./components/ChatPanel";
 import { RejectModal } from "./components/RejectModal";
 import { ReservaCard } from "./components/ReservaCard";
@@ -171,8 +172,14 @@ export default function ReservasPage() {
           <InboxHeaderTabs hotelId={scopedHotelId} onRed />
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <ThemeToggle />
-          <LogoutButton onRed />
+          <div className="hidden items-center gap-1 sm:flex">
+            <ThemeToggle />
+            <LogoutButton onRed />
+          </div>
+          <HeaderMobileMenu onRed>
+            <ThemeToggle variant="menu" />
+            <LogoutButton onRed variant="menu" />
+          </HeaderMobileMenu>
         </div>
       </header>
 

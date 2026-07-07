@@ -4,8 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
+import { HEADER_MENU_ROW_CLASS } from "./HeaderMobileMenu";
 
-export function LogoutButton({ onRed = false }: { onRed?: boolean }) {
+export function LogoutButton({
+  onRed = false,
+  variant = "bar",
+}: {
+  onRed?: boolean;
+  variant?: "bar" | "menu";
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -19,6 +26,22 @@ export function LogoutButton({ onRed = false }: { onRed?: boolean }) {
     router.push("/login");
     router.refresh();
     setLoading(false);
+  }
+
+  if (variant === "menu") {
+    return (
+      <button
+        type="button"
+        onClick={() => void handleSignOut()}
+        disabled={loading}
+        className={`${HEADER_MENU_ROW_CLASS} text-[var(--red)]`}
+        role="menuitem"
+        aria-label="Cerrar sesión"
+      >
+        <IconLogout className="h-4 w-4 shrink-0" aria-hidden />
+        {loading ? "Cerrando…" : "Cerrar sesión"}
+      </button>
+    );
   }
 
   const className = onRed
