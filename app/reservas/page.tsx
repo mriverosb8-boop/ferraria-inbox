@@ -277,7 +277,13 @@ export default function ReservasPage() {
           </div>
         </section>
 
-        <div className="min-h-[420px] lg:min-h-0">
+        <div
+          className={`${
+            selectedReserva
+              ? "fixed inset-0 z-[100] bg-[var(--bg)] p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+              : "hidden"
+          } lg:static lg:z-auto lg:block lg:min-h-0 lg:bg-transparent lg:p-0`}
+        >
           <ChatPanel reserva={selectedReserva} onClose={() => setSelectedReserva(null)} />
         </div>
       </main>
