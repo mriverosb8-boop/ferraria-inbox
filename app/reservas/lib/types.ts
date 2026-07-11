@@ -1,5 +1,3 @@
-export const IBIS_BARRANQUILLA_HOTEL_ID = "df95ac5a-a2dd-41d4-8e66-e38fedf12ce5";
-
 export type ReservaStatus = "pendiente" | "completada" | "rechazada";
 export type ReservasTab = "pendientes" | "procesadas";
 

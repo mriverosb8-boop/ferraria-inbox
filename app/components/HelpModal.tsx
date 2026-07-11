@@ -177,7 +177,7 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
             </p>
             <p className="mt-3">
               A veces la cotización falla y se escala a un humano para cotizar manualmente. Esto pasa cuando
-              faltan tarifas cargadas en Ópera para esas fechas — no es un error de la IA, simplemente no
+              faltan tarifas cargadas en el PMS del hotel para esas fechas — no es un error de la IA, simplemente no
               están todas las tarifas subidas, y por eso es imposible cotizar automáticamente. En esos casos
               (que son minoría), cotiza manualmente.
             </p>
@@ -192,13 +192,13 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
             </p>
             <p className="mt-3">Para procesarla:</p>
             <ol className="mt-2 list-decimal space-y-1.5 pl-5">
-              <li>Ve a la pestaña Reservas («Reservas por subir a Ópera»).</li>
+              <li>Ve a la pestaña Reservas («Reservas por subir al PMS»).</li>
               <li>En Pendientes verás la reserva con todos los datos ya completos: datos del titular (nombre, documento, correo, notas) y la cotización completa (fechas, habitación, huéspedes, total con IVA).</li>
-              <li>Revisa la reserva y súbela a Ópera.</li>
+              <li>Revisa la reserva y súbela al PMS del hotel.</li>
               <li>
                 Pulsa Completar si la reserva procede, o Rechazar si ya no aplica.
                 <ul className="mt-1.5 space-y-1.5 pl-5">
-                  <li><strong>Copiar datos</strong> te copia la información (útil para subirla a Ópera).</li>
+                  <li><strong>Copiar datos</strong> te copia la información (útil para subirla al PMS).</li>
                   <li><strong>Ver chat</strong> abre la conversación de esa reserva.</li>
                 </ul>
               </li>

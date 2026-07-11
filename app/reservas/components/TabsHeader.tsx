@@ -6,10 +6,11 @@ type Props = {
   activeTab: ReservasTab;
   pendingCount: number;
   processedCount: number;
+  hotelName: string | null;
   onChange: (tab: ReservasTab) => void;
 };
 
-export function TabsHeader({ activeTab, pendingCount, processedCount, onChange }: Props) {
+export function TabsHeader({ activeTab, pendingCount, processedCount, hotelName, onChange }: Props) {
   const tabs: { id: ReservasTab; label: string; count: number }[] = [
     { id: "pendientes", label: "Pendientes", count: pendingCount },
     { id: "procesadas", label: "Procesadas", count: processedCount },
@@ -19,9 +20,11 @@ export function TabsHeader({ activeTab, pendingCount, processedCount, onChange }
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
       <div>
         <h2 className="text-[13px] font-semibold uppercase tracking-wider text-[var(--ink-2)]">
-          Reservas por subir a Opera
+          Reservas por subir al PMS
         </h2>
-        <p className="mt-0.5 text-[12px] text-[var(--ink-3)]">Ibis Barranquilla · WhatsApp Flows</p>
+        <p className="mt-0.5 text-[12px] text-[var(--ink-3)]">
+          {hotelName ? `${hotelName} · WhatsApp Flows` : "WhatsApp Flows"}
+        </p>
       </div>
       <div className="flex gap-1.5 rounded-xl border border-[var(--line)] bg-[var(--panel-2)] p-1">
         {tabs.map((tab) => {

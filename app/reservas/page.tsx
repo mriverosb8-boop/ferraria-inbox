@@ -56,6 +56,8 @@ export default function ReservasPage() {
   });
 
   const scopedHotelId = activeHotelId ?? resolvedActiveHotelId;
+  const activeHotelName =
+    availableHotels.find((hotel) => hotel.id === scopedHotelId)?.name ?? null;
 
   useEffect(() => {
     if (resolvedActiveHotelId && activeHotelId === null) {
@@ -229,6 +231,7 @@ export default function ReservasPage() {
             activeTab={activeTab}
             pendingCount={pendingCount}
             processedCount={procesadas.length}
+            hotelName={activeHotelName}
             onChange={setActiveTab}
           />
 
