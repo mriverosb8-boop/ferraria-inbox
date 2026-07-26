@@ -1811,14 +1811,14 @@ export default function InboxApp() {
       if (!res.ok) {
         if (j.skipped) {
           setSendWarning(
-            "N8N_SEND_MESSAGE_WEBHOOK_URL no está definida: el mensaje solo se muestra en la UI hasta que configures el webhook."
+            "ENGINE_HUMAN_REPLY_URL / INBOX_SHARED_SECRET no están definidas: el mensaje solo se muestra en la UI hasta que configures el engine."
           );
         } else {
-          setSendWarning(j.error ?? "No se pudo notificar a n8n");
+          setSendWarning(j.error ?? "No se pudo notificar al engine");
         }
       }
     } catch {
-      setSendWarning("Error de red al enviar a n8n");
+      setSendWarning("Error de red al enviar al engine");
     } finally {
       void refetch({ silent: true });
     }
@@ -3286,10 +3286,10 @@ export default function InboxApp() {
         onSuccess={() =>
           setTemplateToast({ type: "success", message: "Plantilla enviada correctamente" })
         }
-        onError={() =>
+        onError={(message) =>
           setTemplateToast({
             type: "error",
-            message: "No se pudo enviar la plantilla. Intenta nuevamente.",
+            message: message ?? "No se pudo enviar la plantilla. Intenta nuevamente.",
           })
         }
       />
@@ -3457,6 +3457,8 @@ function GuestPanelContent({
     setSummaryText(null);
     setSummaryDbEmpty(false);
     try {
+      let engineSummary: string | null = null;
+
       try {
         const res = await fetch("/api/create-conversation-summary", {
           method: "POST",
@@ -3472,21 +3474,35 @@ function GuestPanelContent({
           }
           return;
         }
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          summary?: string | null;
+        };
         if (res.status === 400) {
-          const data = (await res.json()) as { error?: string };
           if (gen === summaryPanelGenRef.current) {
             setSummaryError(data.error ?? "Solicitud no válida.");
           }
           return;
         }
+        if (typeof data.summary === "string" && data.summary.trim()) {
+          engineSummary = data.summary.trim();
+        }
       } catch {
-        // El webhook vía API puede fallar; seguimos y leemos Supabase
+        // El engine vía API puede fallar; seguimos y leemos Supabase
       }
 
       if (gen !== summaryPanelGenRef.current) {
         return;
       }
 
+      // El engine devuelve el resumen en el body: sin espera ni segundo GET.
+      if (engineSummary) {
+        applySummaryResult({ kind: "ok", text: engineSummary });
+        return;
+      }
+
+      // Sin resumen síncrono (rollback a n8n): esperamos a que el worker
+      // escriba la fila y la leemos desde Supabase.
       await new Promise<void>((resolve) => {
         setTimeout(resolve, 2000);
       });

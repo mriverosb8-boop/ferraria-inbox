@@ -37,8 +37,8 @@ async function readHotelWhatsappConfig(hotelId: string | null | undefined): Prom
 }
 
 /**
- * Envía el mensaje humano a n8n (no Twilio desde el frontend).
- * Configura `N8N_SEND_MESSAGE_WEBHOOK_URL` con la URL del webhook de n8n.
+ * Envía el mensaje humano a ferraria-engine (no Twilio desde el frontend).
+ * Configura `ENGINE_HUMAN_REPLY_URL` e `INBOX_SHARED_SECRET`.
  */
 export async function POST(request: Request) {
   try {
@@ -59,14 +59,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "guestPhone y message son obligatorios" }, { status: 400 });
     }
 
-    const webhook = process.env.N8N_SEND_MESSAGE_WEBHOOK_URL;
-    if (!webhook) {
+    const engineUrl = process.env.ENGINE_HUMAN_REPLY_URL;
+    const sharedSecret = process.env.INBOX_SHARED_SECRET;
+    if (!engineUrl || !sharedSecret) {
       return NextResponse.json(
         {
           ok: false,
           skipped: true,
           error:
-            "N8N_SEND_MESSAGE_WEBHOOK_URL no está definida. Añádela en .env.local para enviar a n8n.",
+            "Faltan ENGINE_HUMAN_REPLY_URL o INBOX_SHARED_SECRET. Añádelas en .env.local para enviar al engine.",
         },
         { status: 503 }
       );
@@ -74,8 +75,9 @@ export async function POST(request: Request) {
 
     const clientTempId = body.clientTempId?.trim() || null;
 
-    // GATE de tenancy completo, ANTES del fetch a n8n (este endpoint no escribe
-    // en DB; n8n hace la inserción, por eso no hay candado de update aquí).
+    // GATE de tenancy completo, ANTES del fetch al engine (este endpoint no
+    // escribe en DB; el engine hace la inserción, por eso no hay candado de
+    // update aquí).
     // 1) el hotelId del cliente debe pertenecer al usuario;
     const tenant = await requireActiveHotel(request, auth.user, {
       requestedHotelId: body.hotelId ?? undefined,
@@ -116,9 +118,12 @@ export async function POST(request: Request) {
       clientTempId,
     };
 
-    const res = await fetch(webhook, {
+    const res = await fetch(engineUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-inbox-secret": sharedSecret,
+      },
       body: JSON.stringify(payload),
     });
 
@@ -126,7 +131,7 @@ export async function POST(request: Request) {
       const text = await res.text().catch(() => "");
       console.error("[send-human-message]", res.status, text);
       return NextResponse.json(
-        { error: `Webhook respondió ${res.status}`, detail: text.slice(0, 500) },
+        { error: `El engine respondió ${res.status}`, detail: text.slice(0, 500) },
         { status: 502 }
       );
     }

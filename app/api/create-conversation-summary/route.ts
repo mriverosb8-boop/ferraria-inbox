@@ -6,9 +6,24 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
-const WEBHOOK_URL =
-  process.env.CREATE_CONVERSATION_SUMMARY_WEBHOOK_URL ??
-  "https://asistentehotelero.com/webhook/create-conversation-summary";
+/**
+ * Resumen devuelto por el engine de forma síncrona. Si el cuerpo no trae
+ * `summary` (p. ej. rollback a un worker asíncrono), devolvemos `null` y el
+ * cliente cae a leer `conversation_summaries`.
+ */
+function readEngineSummary(raw: string): string | null {
+  if (!raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object") {
+      const value = (parsed as Record<string, unknown>).summary;
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+  } catch {
+    // Cuerpo no-JSON: sin resumen síncrono.
+  }
+  return null;
+}
 
 export async function POST(request: Request) {
   try {
@@ -21,25 +36,52 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "conversation_id es obligatorio" }, { status: 400 });
     }
 
-    // Ownership antes de disparar el webhook de IA (evita generar resúmenes de
-    // conversaciones de otros hoteles / abuso de recurso).
+    // Ownership antes de disparar la generación de IA (evita generar resúmenes
+    // de conversaciones de otros hoteles / abuso de recurso).
     const supabase = getSupabaseServerClient();
     const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
     const ownership = await assertConversationInHotel(supabase, conversation_id, allowedHotelIds);
     if (ownership.response) return ownership.response;
 
-    const res = await fetch(WEBHOOK_URL, {
+    // Sin URL o sin secreto NO hay generación: fallar explícito, nunca caer a
+    // un destino por defecto.
+    const engineUrl = process.env.ENGINE_SUMMARY_URL;
+    const sharedSecret = process.env.INBOX_SHARED_SECRET;
+    if (!engineUrl || !sharedSecret) {
+      console.error(
+        "[create-conversation-summary] faltan ENGINE_SUMMARY_URL o INBOX_SHARED_SECRET"
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Resumen no configurado: faltan ENGINE_SUMMARY_URL o INBOX_SHARED_SECRET",
+        },
+        { status: 500 }
+      );
+    }
+
+    const res = await fetch(engineUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-inbox-secret": sharedSecret,
+      },
       body: JSON.stringify({ conversation_id }),
     });
 
     const text = await res.text();
     if (!res.ok) {
-      console.error("[create-conversation-summary] webhook", res.status, text);
+      console.error("[create-conversation-summary] engine", res.status, text);
     }
 
-    return NextResponse.json({ ok: true, webhookOk: res.ok, webhookStatus: res.status });
+    // El engine devuelve el resumen en el body; si no viene, el cliente cae a
+    // leer `conversation_summaries` (compatibilidad con rollback a n8n).
+    return NextResponse.json({
+      ok: true,
+      engineOk: res.ok,
+      engineStatus: res.status,
+      summary: res.ok ? readEngineSummary(text) : null,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido";
     return NextResponse.json({ error: msg }, { status: 500 });

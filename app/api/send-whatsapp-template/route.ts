@@ -11,8 +11,31 @@ import { normalizeColombianWhatsappNumber } from "@/lib/whatsapp-templates";
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_TEMPLATE_WEBHOOK_URL =
-  "https://asistentehotelero.com/webhook/enviar-plantilla-whatsapp";
+const GENERIC_TEMPLATE_ERROR = "No se pudo enviar la plantilla";
+
+/**
+ * Mensaje de error del engine para mostrar al usuario. Prioriza
+ * `error`/`message`/`detail` del JSON (incluido el anidado de Meta
+ * `{ error: { message } }`), que viene curado.
+ *
+ * Si el cuerpo no es JSON o no trae ninguna de esas claves, devuelve un
+ * genérico: el crudo puede ser un stack del engine y NO debe llegar al cliente
+ * (queda en el `console.error` del servidor).
+ */
+function readEngineError(parsed: unknown): string {
+  if (parsed && typeof parsed === "object") {
+    const record = parsed as Record<string, unknown>;
+    for (const key of ["error", "message", "detail"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+      if (value && typeof value === "object") {
+        const nested = (value as Record<string, unknown>).message;
+        if (typeof nested === "string" && nested.trim()) return nested.trim();
+      }
+    }
+  }
+  return GENERIC_TEMPLATE_ERROR;
+}
 
 export async function POST(request: Request) {
   try {
@@ -80,25 +103,48 @@ export async function POST(request: Request) {
       ...(template.variables.length > 0 ? { variables } : {}),
     };
 
-    const webhook =
-      process.env.N8N_WHATSAPP_TEMPLATE_WEBHOOK_URL ?? DEFAULT_TEMPLATE_WEBHOOK_URL;
-
-    const res = await fetch(webhook, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("[send-whatsapp-template]", res.status, text);
+    // Sin URL o sin secreto NO hay envío: fallar explícito, nunca caer a un
+    // destino por defecto.
+    const engineUrl = process.env.ENGINE_SEND_TEMPLATE_URL;
+    const sharedSecret = process.env.INBOX_SHARED_SECRET;
+    if (!engineUrl || !sharedSecret) {
+      console.error(
+        "[send-whatsapp-template] faltan ENGINE_SEND_TEMPLATE_URL o INBOX_SHARED_SECRET"
+      );
       return NextResponse.json(
-        { error: `Webhook respondió ${res.status}`, detail: text.slice(0, 500) },
-        { status: 502 }
+        {
+          error:
+            "Envío no configurado: faltan ENGINE_SEND_TEMPLATE_URL o INBOX_SHARED_SECRET",
+        },
+        { status: 500 }
       );
     }
 
-    return NextResponse.json({ ok: true });
+    const res = await fetch(engineUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-inbox-secret": sharedSecret,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    // El engine devuelve el resultado real de Meta (n8n devolvía "[object
+    // Object]"): lo parseamos para propagar el motivo real del fallo.
+    const raw = await res.text().catch(() => "");
+    let parsed: unknown = null;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = null;
+    }
+
+    if (!res.ok) {
+      console.error("[send-whatsapp-template]", res.status, raw);
+      return NextResponse.json({ error: readEngineError(parsed) }, { status: 502 });
+    }
+
+    return NextResponse.json({ ok: true, result: parsed });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido";
     return NextResponse.json({ error: msg }, { status: 500 });

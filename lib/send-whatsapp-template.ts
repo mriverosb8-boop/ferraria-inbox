@@ -12,6 +12,8 @@ export async function sendWhatsappTemplate(payload: {
   });
 
   if (!res.ok) {
-    throw new Error("No se pudo enviar la plantilla");
+    // El engine propaga el motivo real de Meta; si no viene, mensaje genérico.
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error?.trim() || "No se pudo enviar la plantilla");
   }
 }

@@ -10,7 +10,8 @@ type StartConversationModalProps = {
   activeHotelId: string | null;
   onClose: () => void;
   onSuccess: () => void;
-  onError: () => void;
+  /** `message` trae el motivo real de Meta cuando el engine lo propaga. */
+  onError: (message?: string) => void;
 };
 
 export function StartConversationModal({
@@ -135,8 +136,8 @@ export function StartConversationModal({
       setTemplateVariables({});
       onSuccess();
       onClose();
-    } catch {
-      onError();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : undefined);
     } finally {
       setSubmitting(false);
     }
