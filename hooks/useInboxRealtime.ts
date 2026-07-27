@@ -234,6 +234,7 @@ export function useInboxRealtime({
 
     let supabase: ReturnType<typeof createClient> | null = null;
     let channel: RealtimeChannel | null = null;
+    let cancelled = false;
     const activeDesktopNotifications = activeDesktopNotificationsRef.current;
 
     try {
@@ -565,34 +566,72 @@ export function useInboxRealtime({
 
     onConnRef.current?.("waiting");
 
-    channel = supabase
-      .channel("inbox-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: CONVERSATIONS_TABLE },
-        handleConversationEvent as (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: WUBBY_TABLE },
-        handleWubbyPostgresChange as (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void
-      )
-      .subscribe((status, err) => {
-        if (status === "SUBSCRIBED") {
-          onConnRef.current?.("connected");
-        } else if (
-          status === "CHANNEL_ERROR" ||
-          status === "TIMED_OUT" ||
-          status === "CLOSED"
-        ) {
-          onConnRef.current?.("error", err?.message ?? String(status));
-          if (err) {
-            console.warn("[inbox realtime] error de suscripción", status, err);
-          }
+    // El join adjunta el access_token solo si `realtime.setAuth()` ya corrió, y
+    // `createBrowserClient` resuelve la sesión de forma asíncrona: suscribir de
+    // inmediato puede unir el canal con claims de `anon`. Hoy es invisible
+    // (policy RLS abierta); con RLS cerrada ese canal no recibiría nada.
+    const client = supabase;
+    void (async () => {
+      let accessToken: string | undefined;
+      try {
+        const {
+          data: { session },
+        } = await client.auth.getSession();
+        accessToken = session?.access_token;
+        if (accessToken) {
+          await client.realtime.setAuth(accessToken);
         }
-      });
+      } catch (e) {
+        console.warn("[inbox realtime] no se pudo resolver la sesión", e);
+        if (!cancelled) {
+          onConnRef.current?.(
+            "error",
+            e instanceof Error ? e.message : "sesión no disponible"
+          );
+        }
+        return;
+      }
+
+      // Sin `await` entre esta guarda y la asignación de `channel`: el cleanup
+      // no puede colarse en el medio y dejar un canal huérfano.
+      if (cancelled) return;
+
+      if (!accessToken) {
+        onConnRef.current?.("error", "sesión no disponible");
+        return;
+      }
+
+      channel = client
+        .channel("inbox-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: CONVERSATIONS_TABLE },
+          handleConversationEvent as (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void
+        )
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: WUBBY_TABLE },
+          handleWubbyPostgresChange as (payload: RealtimePostgresChangesPayload<Record<string, unknown>>) => void
+        )
+        .subscribe((status, err) => {
+          if (status === "SUBSCRIBED") {
+            onConnRef.current?.("connected");
+          } else if (
+            status === "CHANNEL_ERROR" ||
+            status === "TIMED_OUT" ||
+            status === "CLOSED"
+          ) {
+            onConnRef.current?.("error", err?.message ?? String(status));
+            if (err) {
+              console.warn("[inbox realtime] error de suscripción", status, err);
+            }
+          }
+        });
+    })();
 
     return () => {
+      cancelled = true;
+
       for (const n of activeDesktopNotifications.values()) {
         try {
           n.close();
