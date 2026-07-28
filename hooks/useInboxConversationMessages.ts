@@ -8,12 +8,23 @@ type MessagesResponse = {
   error?: string;
 };
 
+/**
+ * Carga el historial autoritativo de la conversación seleccionada desde
+ * `GET /api/inbox/messages` y lo escribe en el estado compartido marcando
+ * `messagesLoaded: true`.
+ *
+ * Devuelve `loadingMessages` (hay un fetch en vuelo) y `messagesError` (el
+ * fetch falló). El consumidor usa el primero para tapar el hilo con un
+ * skeleton y el segundo para degradar a lo que haya en memoria en vez de
+ * quedarse en skeleton permanente.
+ */
 export function useInboxConversationMessages(
   conversationId: string,
   hotelId: string | null,
   setConversations: Dispatch<SetStateAction<Conversation[]>>
 ) {
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
   const fetchKeyRef = useRef("");
 
   useEffect(() => {
@@ -21,6 +32,7 @@ export function useInboxConversationMessages(
     const hid = hotelId?.trim() ?? "";
     if (!convId || !hid) {
       setLoadingMessages(false);
+      setMessagesError(null);
       return;
     }
 
@@ -30,6 +42,7 @@ export function useInboxConversationMessages(
 
     void (async () => {
       setLoadingMessages(true);
+      setMessagesError(null);
       try {
         const params = new URLSearchParams({ conversationId: convId, hotelId: hid });
         const res = await fetch(`/api/inbox/messages?${params}`, { cache: "no-store" });
@@ -41,11 +54,12 @@ export function useInboxConversationMessages(
 
         const messages = json.messages ?? [];
         setConversations((prev) =>
-          prev.map((c) => (c.id === convId ? { ...c, messages } : c))
+          prev.map((c) => (c.id === convId ? { ...c, messages, messagesLoaded: true } : c))
         );
       } catch (e) {
-        if (!cancelled) {
+        if (!cancelled && fetchKeyRef.current === key) {
           console.warn("[useInboxConversationMessages]", e);
+          setMessagesError(e instanceof Error ? e.message : "No se pudo cargar el historial");
         }
       } finally {
         if (!cancelled && fetchKeyRef.current === key) {
@@ -59,5 +73,5 @@ export function useInboxConversationMessages(
     };
   }, [conversationId, hotelId, setConversations]);
 
-  return { loadingMessages };
+  return { loadingMessages, messagesError };
 }

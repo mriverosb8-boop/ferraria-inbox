@@ -87,7 +87,20 @@ export interface Conversation {
   operationalStatus: OperationalStatus;
   controlMode: ControlMode;
   channelLabel: string;
+  /**
+   * Hilo de la conversación. Ojo: cuando llega desde `GET /api/inbox` es un
+   * array PROVISIONAL (el recorte a `MESSAGES_LIMIT` de los mensajes que el
+   * servidor pudo atribuir a este teléfono), no el historial del huésped. Solo
+   * es autoritativo cuando `messagesLoaded === true`.
+   */
   messages: Message[];
+  /**
+   * `true` únicamente cuando el hilo se cargó desde `GET /api/inbox/messages`,
+   * que sí devuelve el historial completo del huésped. Es un flag de cliente:
+   * el servidor lo emite siempre en `false`. Consúltalo antes de tratar la
+   * ausencia de un mensaje en `messages` como información real.
+   */
+  messagesLoaded: boolean;
   /** Teléfono huésped normalizado (+E.164) para envío / matching */
   guestPhone: string;
   /** Copia de `conversations.needs_human` */

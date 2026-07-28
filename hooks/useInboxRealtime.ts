@@ -479,7 +479,17 @@ export function useInboxRealtime({
         let touched = false;
         const next = prev.map((c) => {
           const mi = c.messages.findIndex((m) => m.id === messageId);
-          if (mi === -1) return c;
+          if (mi === -1) {
+            // Ausencia NO concluyente. Con `messagesLoaded === false` el array es
+            // el provisional de /api/inbox (recorte por hotel): el mensaje puede
+            // existir en la conversación y no estar aquí. Por eso este camino
+            // nunca llama a `requestMissing()` — recargar la bandeja completa a
+            // partir de una ausencia no verificable es exactamente lo que satura
+            // memoria. Con `messagesLoaded === true` la ausencia sí es real, pero
+            // entonces el mensaje no pertenece a este hilo y tampoco hay nada que
+            // parchear en pantalla.
+            return c;
+          }
           const built = buildMessageFromWubbyRow(
             newRow,
             c.guestPhone,
@@ -544,6 +554,9 @@ export function useInboxRealtime({
       const setter = setConversationsRef.current;
       setter((prev) =>
         prev.map((c) => {
+          // Mismo criterio que en UPDATE: la ausencia en el array local no
+          // dispara `onMissingContext`. Solo es concluyente si
+          // `c.messagesLoaded === true`, y aun así no justifica recargar.
           if (!c.messages.some((m) => m.id === messageId)) return c;
           return {
             ...c,

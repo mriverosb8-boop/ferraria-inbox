@@ -43,6 +43,37 @@ export function InboxListSkeleton() {
   );
 }
 
+const THREAD_SKELETON_BUBBLES = [
+  { side: "left", width: "w-[58%]", height: "h-14" },
+  { side: "right", width: "w-[42%]", height: "h-10" },
+  { side: "left", width: "w-[70%]", height: "h-16" },
+  { side: "right", width: "w-[50%]", height: "h-12" },
+  { side: "left", width: "w-[38%]", height: "h-10" },
+  { side: "right", width: "w-[62%]", height: "h-14" },
+] as const;
+
+/** Burbujas placeholder del hilo mientras se carga el historial autoritativo
+ * desde `/api/inbox/messages`. Evita pintar el array provisional que viene
+ * embebido en `/api/inbox`. */
+export function InboxThreadSkeleton() {
+  return (
+    <div className="w-full min-w-0 space-y-2.5" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Cargando historial de la conversación…</span>
+      {THREAD_SKELETON_BUBBLES.map((bubble, index) => (
+        <div
+          key={index}
+          className={`flex w-full ${bubble.side === "right" ? "justify-end" : "justify-start"}`}
+        >
+          <div
+            className={`max-w-full animate-pulse rounded-2xl ${bubble.width} ${bubble.height}`}
+            style={{ background: bubble.side === "right" ? "var(--panel-3)" : "var(--line-2)" }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Carga full-screen (montaje inicial): la tarjeta envuelve a InboxListSkeleton
  * con la cabecera de marca FerrarIA (identidad roja del rediseño). */
 export function InboxLoadingSkeleton() {

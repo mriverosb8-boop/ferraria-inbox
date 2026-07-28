@@ -724,6 +724,10 @@ export function mergeConversationsTableWithMessages(
       controlMode,
       channelLabel: "WhatsApp",
       messages,
+      // El servidor nunca marca un hilo como autoritativo: `messages` es el
+      // recorte a `messageLimit`. Solo el cliente lo pone en `true`, tras
+      // resolver GET /api/inbox/messages para esa conversación.
+      messagesLoaded: false,
     });
   }
 

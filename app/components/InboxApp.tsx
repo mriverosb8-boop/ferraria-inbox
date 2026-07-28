@@ -22,7 +22,7 @@ import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessag
 import { WUBBY_TABLE } from "@/lib/wubby-schema";
 import { BrandHeaderMark } from "./BrandHeaderMark";
 import { FollowupTimer } from "./FollowupTimer";
-import { InboxListSkeleton, InboxLoadingSkeleton } from "./InboxLoadingSkeleton";
+import { InboxListSkeleton, InboxLoadingSkeleton, InboxThreadSkeleton } from "./InboxLoadingSkeleton";
 import { InboxHeaderTabs } from "./InboxHeaderTabs";
 import { LogoutButton } from "./LogoutButton";
 import { Spinner } from "./Spinner";
@@ -92,6 +92,24 @@ function sortConversationsByActivity(list: Conversation[]): Conversation[] {
   });
 }
 
+/**
+ * Ventana de 24 h de Meta: solo se puede responder libremente si el último
+ * mensaje del huésped es más reciente que `META_INBOX_REPLY_WINDOW_MS`.
+ *
+ * DEPENDE de que el array recibido contenga los mensajes del huésped de las
+ * últimas 24 h. Hoy lo garantizan las dos únicas fuentes posibles: el recorte
+ * de `GET /api/inbox` (últimos `MESSAGES_LIMIT` mensajes del teléfono) y el
+ * historial completo de `GET /api/inbox/messages`. Si el payload del inbox se
+ * recorta más o deja de traer `messages`, esta función devuelve `true` por
+ * defecto (`fromGuest.length === 0`) y bloquearía el composer de forma
+ * incorrecta; en ese caso hay que sustituirla por un dato servido por el
+ * backend (p. ej. `last_guest_message_at` en la fila de `conversations`).
+ *
+ * Llamadores (únicos, ambos en este archivo): `replyBlockedByMeta`, que habilita
+ * el composer, y `sendMessage`. Los dos leen `messages` de la conversación
+ * seleccionada, que puede ser el array provisional mientras
+ * `messagesLoaded === false`.
+ */
 function isReplyBlockedByMetaPolicy(messages: Message[]): boolean {
   const fromGuest = messages.filter((m) => m.sender === "user");
   if (fromGuest.length === 0) {
@@ -1270,7 +1288,7 @@ export default function InboxApp() {
     [conversationHotelId, removeFollowup]
   );
 
-  useInboxConversationMessages(
+  const { messagesError } = useInboxConversationMessages(
     selectedId,
     conversationHotelId,
     setConversations
@@ -1490,6 +1508,22 @@ export default function InboxApp() {
     () => (selected ? isReplyBlockedByMetaPolicy(selected.messages) : false),
     [selected]
   );
+
+  /**
+   * Gate del hilo: mientras la conversación seleccionada no tenga historial
+   * autoritativo se muestra skeleton en lugar de pintar el array provisional
+   * que vino embebido en `GET /api/inbox`. Al depender solo de un dato de
+   * render (`messagesLoaded`) cubre ya el primer frame tras el clic, sin
+   * esperar al efecto del hook.
+   *
+   * A propósito NO mira `loadingMessages`: al volver a una conversación ya
+   * cargada el hook relanza el fetch, pero el hilo en memoria sigue siendo
+   * autoritativo y taparlo con skeleton escondería datos que ya están.
+   *
+   * Si el fetch falla se degrada a mostrar lo que haya en memoria en vez de
+   * dejar un skeleton permanente.
+   */
+  const threadLoading = !!selected && !messagesError && !selected.messagesLoaded;
 
   const filterCounts = useMemo(() => {
     const all = conversations.length;
@@ -2931,14 +2965,18 @@ export default function InboxApp() {
                   <p className="break-words px-0.5 text-[10px] font-medium uppercase tracking-widest [overflow-wrap:anywhere] lg:text-center" style={{ color: "var(--ink-3)" }}>
                     Historial desde Supabase · IA vs humano es heurístico sin columna dedicada
                   </p>
-                  {selected.messages.map((m) => (
-                    <MessageBubble
-                      key={m.id}
-                      m={m}
-                      guestName={selected.guest.name}
-                      guestSeed={selected.guest.id}
-                    />
-                  ))}
+                  {threadLoading ? (
+                    <InboxThreadSkeleton />
+                  ) : (
+                    selected.messages.map((m) => (
+                      <MessageBubble
+                        key={m.id}
+                        m={m}
+                        guestName={selected.guest.name}
+                        guestSeed={selected.guest.id}
+                      />
+                    ))
+                  )}
                   <div ref={scrollEndRef} className="h-px w-full shrink-0" aria-hidden />
                 </div>
               </div>

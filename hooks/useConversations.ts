@@ -7,7 +7,6 @@ import {
   type HotelWhatsappByIdMap,
 } from "@/lib/hotel-whatsapp-map";
 import { getConversationDisplayActivityMs } from "@/lib/chat-utils";
-import { MESSAGES_LIMIT } from "@/lib/message-limits";
 import { writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { type RealtimeUiStatus, useInboxRealtime } from "@/hooks/useInboxRealtime";
 
@@ -119,10 +118,23 @@ export function useConversations(options?: UseConversationsOptions) {
       setConversations((prev) => {
         if (!activeId) return sorted;
         const prevActive = prev.find((c) => c.id === activeId);
-        if (!prevActive || prevActive.messages.length <= MESSAGES_LIMIT) return sorted;
-        return sorted.map((c) =>
-          c.id === activeId ? { ...c, messages: prevActive.messages } : c
-        );
+        if (!prevActive) return sorted;
+        return sorted.map((c) => {
+          if (c.id !== activeId) return c;
+          // Nunca pisar el hilo abierto "hacia abajo": `/api/inbox` trae un array
+          // provisional recortado. Se conserva lo que hay en memoria cuando ya es
+          // autoritativo (`messagesLoaded`) o cuando tiene al menos tantos
+          // mensajes como los que llegan; así no se pierden ni el historial
+          // completo ni los parches de Realtime / los envíos optimistas.
+          const keepLocal =
+            prevActive.messagesLoaded || prevActive.messages.length >= c.messages.length;
+          if (!keepLocal) return c;
+          return {
+            ...c,
+            messages: prevActive.messages,
+            messagesLoaded: prevActive.messagesLoaded,
+          };
+        });
       });
       setAvailableHotels(json.availableHotels ?? []);
       setResolvedActiveHotelId(json.activeHotelId ?? null);
