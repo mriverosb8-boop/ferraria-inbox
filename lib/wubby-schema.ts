@@ -33,3 +33,38 @@ export type WubbyWhatsappRow = {
 } & Record<string, unknown>;
 
 export const WUBBY_TABLE = "Wubby_Whatsapp";
+
+/**
+ * Columnas de `Wubby_Whatsapp` que consume la bandeja, en vez de `select("*")`.
+ * La tabla tiene 18 columnas reales; aquí van las 16 que alguien lee.
+ *
+ * Quedan FUERA a propósito (sin ningún lector en el repo):
+ * - `cotizacion`: solo se lee de `conversations`, nunca de una fila Wubby.
+ * - `classified`: cero usos en todo el código.
+ *
+ * Incluida por duda: `conversation_id`, que no usa el merge del inbox pero sí
+ * `readUrgentConversationKey` en el camino Realtime; mantenerla evita que la
+ * misma fila tenga forma distinta según de dónde venga.
+ *
+ * OJO: varios lectores de `chat-utils` (media_url, message_type,
+ * cause_of_request, storage_path…) buscan claves que NO existen como columnas
+ * en esta tabla; resuelven a `undefined` igual con `*` que con esta lista.
+ */
+export const WUBBY_SELECT_COLUMNS = [
+  "id",
+  "created_at",
+  "message",
+  "sender",
+  "recipient",
+  "hotel_id",
+  "conversation_id",
+  "format",
+  "origin",
+  "cause_request",
+  "media_storage_path",
+  "media_mime_type",
+  "media_caption",
+  "media_meta_id",
+  "media_bucket",
+  "client_temp_id",
+].join(", ");

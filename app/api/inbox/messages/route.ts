@@ -86,7 +86,14 @@ export async function GET(request: Request) {
       hotelWaRows ? [{ id: activeHotelId, whatsapp_number: hotelWaRows.whatsapp_number }] : []
     );
 
-    const msgRows = await fetchWubbyRowsForGuestAtHotel(supabase, activeHotelId, guestPhoneDigits);
+    const { rows: msgRows, truncated } = await fetchWubbyRowsForGuestAtHotel(
+      supabase,
+      activeHotelId,
+      guestPhoneDigits
+    );
+    if (truncated) {
+      console.warn("[inbox messages GET] historial truncado", { conversationId, activeHotelId });
+    }
 
     const messages: Message[] = msgRows.map((row) => {
       const identities = resolveHotelWaIdentitiesForRow(row, hotelWhatsappById);

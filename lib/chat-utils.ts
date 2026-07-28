@@ -630,21 +630,37 @@ export function mergeConversationsTableWithMessages(
 ): Conversation[] {
   if (convRows.length === 0) return [];
 
-  const sortedMsgs = [...msgRows].sort(
-    (a, b) =>
-      getMessageDisplayMs(a as Record<string, unknown>) -
-      getMessageDisplayMs(b as Record<string, unknown>)
-  );
+  // Decorate-sort-undecorate: `getMessageDisplayMs` construye un `Date` por
+  // llamada y dentro del comparador se ejecutaba ~2·N·log₂(N) veces (≈300k
+  // objetos temporales para 11,5k filas). Precalculado son N.
+  const decorated = msgRows.map((row) => ({
+    row,
+    ms: getMessageDisplayMs(row as Record<string, unknown>),
+  }));
+  decorated.sort((a, b) => a.ms - b.ms);
+  const sortedMsgs = decorated.map((d) => d.row);
 
+  const messageLimit = options.messageLimit ?? MESSAGES_LIMIT;
   const messagesByPhone = new Map<string, WubbyWhatsappRow[]>();
   for (const row of sortedMsgs) {
     const rowHotelIdentities = resolveHotelWaIdentitiesForRow(row, options.hotelWhatsappById);
     const g = inferGuestPhone(row, rowHotelIdentities);
     if (!g || g === "unknown") continue;
-    const list = messagesByPhone.get(g) ?? [];
+    let list = messagesByPhone.get(g);
+    if (!list) {
+      list = [];
+      messagesByPhone.set(g, list);
+    }
     list.push(row);
-    const messageLimit = options.messageLimit ?? MESSAGES_LIMIT;
-    messagesByPhone.set(g, list.slice(-messageLimit));
+  }
+
+  // Un único recorte por teléfono al terminar. Antes se hacía `slice(-limit)`
+  // en CADA fila procesada, creando un array nuevo por mensaje (≈1,2M slots de
+  // array desechados por petición en el hotel más grande).
+  for (const [phone, list] of messagesByPhone) {
+    if (list.length > messageLimit) {
+      messagesByPhone.set(phone, list.slice(-messageLimit));
+    }
   }
 
   const out: Conversation[] = [];

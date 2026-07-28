@@ -15,6 +15,7 @@ import {
 } from "@/lib/inbox-tenant";
 import {
   CONVERSATIONS_TABLE,
+  CONVERSATION_SELECT_COLUMNS,
   GUEST_NAME_MAX_LENGTH,
   type ConversationDbRow,
   type InboxPatchAction,
@@ -22,7 +23,8 @@ import {
 import { requireSessionUser } from "@/lib/auth/require-user";
 import { assertConversationInHotel } from "@/lib/auth/require-hotel";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-import { MESSAGES_LIMIT } from "@/lib/message-limits";
+import { MAX_WUBBY_FETCH_ROWS, MESSAGES_LIMIT } from "@/lib/message-limits";
+import type { WubbyWhatsappRow } from "@/lib/wubby-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +39,7 @@ function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelI
     availableHotels,
     activeHotelId,
     hotelWhatsappById: {},
+    truncated: false,
   });
 }
 
@@ -55,14 +58,17 @@ export async function GET(request: Request) {
       availableHotels
     );
 
-    console.log("[inbox GET] tenant access", {
-      userId: auth.user.id,
-      email: auth.user.email,
-      allowedHotelIds,
-      availableHotels,
-      activeHotelId,
-      requestedHotelId: requestedHotelId || null,
-    });
+    // Sin PII: `userId` / `email` se emitían en CADA GET, incluidos los refetch
+    // silenciosos. Y solo fuera de producción, con conteos en vez de los arrays
+    // completos de hoteles.
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[inbox GET] tenant access", {
+        allowedHotelCount: allowedHotelIds.length,
+        availableHotelCount: availableHotels.length,
+        activeHotelId,
+        requestedHotelId: requestedHotelId || null,
+      });
+    }
 
     if (forbidden) {
       return NextResponse.json({ error: "No autorizado para ver este hotel" }, { status: 403 });
@@ -86,7 +92,7 @@ export async function GET(request: Request) {
 
     const convResult = await supabase
       .from(CONVERSATIONS_TABLE)
-      .select("*")
+      .select(CONVERSATION_SELECT_COLUMNS)
       .eq("hotel_id", activeHotelId)
       .order("updated_at", { ascending: false });
 
@@ -95,16 +101,26 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: convResult.error.message }, { status: 502 });
     }
 
-    let msgRows;
+    let msgRows: WubbyWhatsappRow[];
+    let messagesTruncated = false;
     try {
-      msgRows = await fetchAllWubbyRowsForHotel(supabase, activeHotelId);
+      const fetched = await fetchAllWubbyRowsForHotel(supabase, activeHotelId);
+      msgRows = fetched.rows;
+      messagesTruncated = fetched.truncated;
+      if (messagesTruncated) {
+        console.warn("[inbox GET] messages truncated", {
+          activeHotelId,
+          maxRows: MAX_WUBBY_FETCH_ROWS,
+          fetched: msgRows.length,
+        });
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error al cargar mensajes";
       console.error("[inbox GET] messages", e);
       return NextResponse.json({ error: msg }, { status: 502 });
     }
 
-    const convRows = (convResult.data ?? []) as ConversationDbRow[];
+    const convRows = (convResult.data ?? []) as unknown as ConversationDbRow[];
 
     const conversations = mergeConversationsTableWithMessages(convRows, msgRows, {
       hotelWhatsappById,
@@ -122,6 +138,7 @@ export async function GET(request: Request) {
       availableHotels,
       activeHotelId,
       hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
+      truncated: messagesTruncated,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido";

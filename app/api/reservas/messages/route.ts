@@ -52,11 +52,14 @@ export async function GET(request: Request) {
         });
       }
 
-      const rows = await fetchWubbyRowsForGuestAcrossHotels(
+      const { rows, truncated } = await fetchWubbyRowsForGuestAcrossHotels(
         supabase,
         allowedHotelIds,
         guestPhone
       );
+      if (truncated) {
+        console.warn("[reservas messages GET] historial truncado (modo teléfono)");
+      }
 
       const { data: hotelRows } = await supabase
         .from(HOTELS_TABLE)
@@ -109,7 +112,14 @@ export async function GET(request: Request) {
       .eq("id", activeHotelId);
     const hotelWhatsappById = buildHotelWhatsappByIdMap(hotelRows ?? []);
 
-    const msgRows = await fetchWubbyRowsForGuestAtHotel(supabase, activeHotelId, guestDigits);
+    const { rows: msgRows, truncated } = await fetchWubbyRowsForGuestAtHotel(
+      supabase,
+      activeHotelId,
+      guestDigits
+    );
+    if (truncated) {
+      console.warn("[reservas messages GET] historial truncado", { conversationId, activeHotelId });
+    }
 
     const conversations = mergeConversationsTableWithMessages([cr], msgRows, {
       hotelWhatsappById,

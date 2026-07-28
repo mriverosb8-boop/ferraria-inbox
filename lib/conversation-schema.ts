@@ -1,6 +1,32 @@
 /** Fila de la tabla `conversations` (estado de bandeja). */
 export const CONVERSATIONS_TABLE = "conversations";
 
+/**
+ * Columnas de `conversations` que consume la bandeja, en vez de `select("*")`.
+ *
+ * Queda FUERA `last_read_at`: la escribe el PATCH `mark_read` pero no la lee
+ * nadie en cliente ni en el merge.
+ *
+ * Incluida por duda: `hotel_id`, que el merge no usa pero es el discriminador
+ * de tenant y su ausencia haría mentir al cast `as ConversationDbRow`.
+ */
+export const CONVERSATION_SELECT_COLUMNS = [
+  "id",
+  "hotel_id",
+  "guest_phone",
+  "guest_name",
+  "status",
+  "needs_human",
+  "ai_active",
+  "cotizacion",
+  "blocked",
+  "blocked_at",
+  "request",
+  "unread_count",
+  "created_at",
+  "updated_at",
+].join(", ");
+
 export type ConversationDbRow = {
   id: string;
   hotel_id?: string | null;
