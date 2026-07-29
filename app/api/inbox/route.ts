@@ -1,11 +1,10 @@
 /** Bandeja: GET fusiona `conversations` + mensajes `Wubby_Whatsapp`; PATCH actualiza solo `conversations`. */
 import { NextResponse } from "next/server";
-import { getConversationDisplayActivityMs, mergeConversationsTableWithMessages } from "@/lib/chat-utils";
+import { buildInboxConversations, getConversationDisplayActivityMs } from "@/lib/chat-utils";
 import {
   buildHotelWhatsappByIdMap,
   hotelWhatsappMapToRecord,
 } from "@/lib/hotel-whatsapp-map";
-import { fetchAllWubbyRowsForHotel } from "@/lib/inbox-fetch-messages";
 import { buildReactivateAiFields } from "@/lib/inbox-patch";
 import {
   resolveActiveHotelId,
@@ -23,17 +22,33 @@ import {
 import { requireSessionUser } from "@/lib/auth/require-user";
 import { assertConversationInHotel } from "@/lib/auth/require-hotel";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-import { MAX_WUBBY_FETCH_ROWS, MESSAGES_LIMIT } from "@/lib/message-limits";
-import type { WubbyWhatsappRow } from "@/lib/wubby-schema";
+import { MESSAGES_LIMIT, POSTGREST_PAGE_SIZE } from "@/lib/message-limits";
+import { WUBBY_PREVIEW_COLUMNS, WUBBY_TABLE, type WubbyWhatsappRow } from "@/lib/wubby-schema";
 
 export const dynamic = "force-dynamic";
 
 const HOTELS_TABLE = "hotels";
 
+/**
+ * Embedding PostgREST: cada fila de `conversations` con su ÚLTIMO mensaje.
+ * Junto al `.order(...)` + `.limit(1, { referencedTable })` de abajo equivale a
+ * un `distinct on (conversation_id)`, que el cliente supabase-js no sabe emitir.
+ * Se apoya en el FK `wubby_conversation_id_fkey` y en el índice
+ * `idx_wubby_conv_recent (conversation_id, created_at DESC, id DESC)`.
+ */
+const CONVERSATIONS_WITH_LAST_MESSAGE_SELECT = `${CONVERSATION_SELECT_COLUMNS}, ${WUBBY_TABLE}(${WUBBY_PREVIEW_COLUMNS})`;
+
+/** Fila de `conversations` con el array embebido (0 o 1 elementos). */
+type ConversationRowWithLastMessage = ConversationDbRow & {
+  Wubby_Whatsapp?: WubbyWhatsappRow[] | null;
+};
+
 function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelId: string | null = null) {
   return NextResponse.json({
     conversations: [],
     fetchedConversations: 0,
+    // La bandeja ya no embarca historial: el hilo se pide aparte a
+    // GET /api/inbox/messages. Se mantiene el campo para no romper el contrato.
     fetchedMessages: 0,
     messageLimit: MESSAGES_LIMIT,
     availableHotels,
@@ -92,40 +107,44 @@ export async function GET(request: Request) {
 
     const convResult = await supabase
       .from(CONVERSATIONS_TABLE)
-      .select(CONVERSATION_SELECT_COLUMNS)
+      .select(CONVERSATIONS_WITH_LAST_MESSAGE_SELECT)
       .eq("hotel_id", activeHotelId)
-      .order("updated_at", { ascending: false });
+      .order("updated_at", { ascending: false })
+      .order("created_at", { referencedTable: WUBBY_TABLE, ascending: false })
+      .order("id", { referencedTable: WUBBY_TABLE, ascending: false })
+      .limit(1, { referencedTable: WUBBY_TABLE });
 
     if (convResult.error) {
       console.error("[inbox GET] conversations", convResult.error);
       return NextResponse.json({ error: convResult.error.message }, { status: 502 });
     }
 
-    let msgRows: WubbyWhatsappRow[];
-    let messagesTruncated = false;
-    try {
-      const fetched = await fetchAllWubbyRowsForHotel(supabase, activeHotelId);
-      msgRows = fetched.rows;
-      messagesTruncated = fetched.truncated;
-      if (messagesTruncated) {
-        console.warn("[inbox GET] messages truncated", {
-          activeHotelId,
-          maxRows: MAX_WUBBY_FETCH_ROWS,
-          fetched: msgRows.length,
-        });
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Error al cargar mensajes";
-      console.error("[inbox GET] messages", e);
-      return NextResponse.json({ error: msg }, { status: 502 });
+    const rawRows = (convResult.data ?? []) as unknown as ConversationRowWithLastMessage[];
+
+    // Esta query no pagina: si el hotel supera el tope de página de PostgREST,
+    // la respuesta se recorta EN SILENCIO y faltarían conversaciones en la
+    // bandeja. Barranquilla ya va por 743.
+    if (process.env.NODE_ENV !== "production" && rawRows.length >= POSTGREST_PAGE_SIZE) {
+      console.warn("[inbox GET] conversations en el tope de página de PostgREST", {
+        activeHotelId,
+        fetched: rawRows.length,
+        pageSize: POSTGREST_PAGE_SIZE,
+      });
     }
 
-    const convRows = (convResult.data ?? []) as unknown as ConversationDbRow[];
+    const convRows: ConversationDbRow[] = [];
+    const lastMessageByConversationId = new Map<string, WubbyWhatsappRow>();
 
-    const conversations = mergeConversationsTableWithMessages(convRows, msgRows, {
-      hotelWhatsappById,
-      messageLimit: MESSAGES_LIMIT,
-    });
+    for (const raw of rawRows) {
+      const { Wubby_Whatsapp: embedded, ...conv } = raw;
+      convRows.push(conv as ConversationDbRow);
+      const lastRow = Array.isArray(embedded) ? embedded[0] : null;
+      if (lastRow) {
+        lastMessageByConversationId.set(String(conv.id), lastRow);
+      }
+    }
+
+    const conversations = buildInboxConversations(convRows, lastMessageByConversationId);
     conversations.sort((a, b) => {
       return getConversationDisplayActivityMs(b) - getConversationDisplayActivityMs(a);
     });
@@ -133,12 +152,15 @@ export async function GET(request: Request) {
     return NextResponse.json({
       conversations,
       fetchedConversations: convRows.length,
-      fetchedMessages: msgRows.length,
+      // Cero por diseño: la bandeja ya no embarca historial.
+      fetchedMessages: 0,
       messageLimit: MESSAGES_LIMIT,
       availableHotels,
       activeHotelId,
       hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
-      truncated: messagesTruncated,
+      // Sin barrido paginado no hay nada que truncar; el campo se mantiene
+      // porque ya forma parte del contrato de la respuesta.
+      truncated: false,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido";

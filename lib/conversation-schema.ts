@@ -23,6 +23,7 @@ export const CONVERSATION_SELECT_COLUMNS = [
   "blocked_at",
   "request",
   "unread_count",
+  "last_guest_message_at",
   "created_at",
   "updated_at",
 ].join(", ");
@@ -46,6 +47,11 @@ export type ConversationDbRow = {
   request: string | null;
   unread_count: number | null;
   last_read_at: string | null;
+  /**
+   * Último mensaje ENTRANTE del huésped (timestamptz, trigger AFTER INSERT en
+   * `Wubby_Whatsapp` + backfill). `null` = el huésped nunca escribió.
+   */
+  last_guest_message_at: string | null;
   created_at: string;
   updated_at: string;
 };

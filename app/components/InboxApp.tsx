@@ -94,29 +94,25 @@ function sortConversationsByActivity(list: Conversation[]): Conversation[] {
 
 /**
  * Ventana de 24 h de Meta: solo se puede responder libremente si el último
- * mensaje del huésped es más reciente que `META_INBOX_REPLY_WINDOW_MS`.
+ * mensaje ENTRANTE del huésped es más reciente que `META_INBOX_REPLY_WINDOW_MS`.
  *
- * DEPENDE de que el array recibido contenga los mensajes del huésped de las
- * últimas 24 h. Hoy lo garantizan las dos únicas fuentes posibles: el recorte
- * de `GET /api/inbox` (últimos `MESSAGES_LIMIT` mensajes del teléfono) y el
- * historial completo de `GET /api/inbox/messages`. Si el payload del inbox se
- * recorta más o deja de traer `messages`, esta función devuelve `true` por
- * defecto (`fromGuest.length === 0`) y bloquearía el composer de forma
- * incorrecta; en ese caso hay que sustituirla por un dato servido por el
- * backend (p. ej. `last_guest_message_at` en la fila de `conversations`).
+ * Lee `conversation.lastGuestMessageAt` —copia de
+ * `conversations.last_guest_message_at`, timestamptz mantenida por trigger— en
+ * vez de derivarlo del array `messages`, que la bandeja ya no trae.
+ *
+ * `null` significa que el huésped nunca escribió: bloquea igual que una ventana
+ * vencida y es un valor esperado, no un error. El copy bajo el composer ya
+ * cubre ambos casos ("…o no hay mensajes suyos").
+ *
+ * La columna ya viene con offset (timestamptz), a diferencia de
+ * `Wubby_Whatsapp.created_at` que es naive en hora Bogotá. No se aplica ninguna
+ * conversión extra aquí.
  *
  * Llamadores (únicos, ambos en este archivo): `replyBlockedByMeta`, que habilita
- * el composer, y `sendMessage`. Los dos leen `messages` de la conversación
- * seleccionada, que puede ser el array provisional mientras
- * `messagesLoaded === false`.
+ * el composer, y `sendMessage`.
  */
-function isReplyBlockedByMetaPolicy(messages: Message[]): boolean {
-  const fromGuest = messages.filter((m) => m.sender === "user");
-  if (fromGuest.length === 0) {
-    return true;
-  }
-  const last = fromGuest[fromGuest.length - 1]!;
-  const raw = last.sentAtIso?.trim();
+function isReplyBlockedByMetaPolicy(lastGuestMessageAt: string | null | undefined): boolean {
+  const raw = lastGuestMessageAt?.trim();
   if (!raw) {
     return true;
   }
@@ -1505,7 +1501,7 @@ export default function InboxApp() {
   );
 
   const replyBlockedByMeta = useMemo(
-    () => (selected ? isReplyBlockedByMetaPolicy(selected.messages) : false),
+    () => (selected ? isReplyBlockedByMetaPolicy(selected.lastGuestMessageAt) : false),
     [selected]
   );
 
@@ -1648,7 +1644,7 @@ export default function InboxApp() {
     if ((!text && !selectedFile) || !selectedId || sendingMedia) return;
     const selectedConv = conversations.find((c) => c.id === selectedId);
     if (selectedConv?.operationalStatus === "closed") return;
-    if (isReplyBlockedByMetaPolicy(selectedConv?.messages ?? [])) return;
+    if (isReplyBlockedByMetaPolicy(selectedConv?.lastGuestMessageAt)) return;
 
     if (selectedFile) {
       const selectedFileIsPdf = isPdfFile(selectedFile);

@@ -68,3 +68,26 @@ export const WUBBY_SELECT_COLUMNS = [
   "media_bucket",
   "client_temp_id",
 ].join(", ");
+
+/**
+ * Columnas mínimas para reconstruir el preview de la lista a partir del ÚLTIMO
+ * mensaje de cada conversación. Es el subconjunto exacto que consume la cascada
+ * de `resolveMessageBodyAndPreview`: `message` → `media_caption` → emoji por
+ * `media_mime_type`, más `format` (tipo cuando no hay mime),
+ * `media_storage_path` (distingue "hay media sin caption" de "(vacío)"),
+ * `created_at` (etiqueta de hora y orden de la lista), `id` (desempate) y
+ * `conversation_id` (clave de emparejamiento).
+ *
+ * NO incluye `media_url`, `media_filename` ni `message_type`: no existen como
+ * columnas en la tabla y sus lectores resuelven a `undefined` de todas formas.
+ */
+export const WUBBY_PREVIEW_COLUMNS = [
+  "id",
+  "conversation_id",
+  "created_at",
+  "message",
+  "format",
+  "media_caption",
+  "media_mime_type",
+  "media_storage_path",
+].join(", ");

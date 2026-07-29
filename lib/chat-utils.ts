@@ -295,6 +295,56 @@ function readMessageMedia(row: WubbyWhatsappRow): {
   return { messageType, mediaUrl, mediaStoragePath, mediaMimeType, mediaCaption, mediaFilename, mediaBucket, metaMediaId };
 }
 
+/**
+ * Cuerpo y preview de un mensaje a partir de su fila. Único sitio donde vive la
+ * cascada `message` → `media_caption` → emoji por mime, para que el preview de
+ * la lista y el de la burbuja no puedan divergir.
+ */
+function resolveMessageBodyAndPreview(row: WubbyWhatsappRow): {
+  body: string;
+  previewRaw: string;
+  media: ReturnType<typeof readMessageMedia>;
+} {
+  const media = readMessageMedia(row);
+  const messageRaw = String(row.message ?? "").trim();
+  const isImage = media.messageType.trim().toLowerCase() === "image";
+  const hasMedia = Boolean(media.mediaStoragePath || media.mediaUrl);
+  const body = messageRaw || media.mediaCaption || (hasMedia ? "" : "(vacío)");
+  const kind = resolveMediaKind(media.mediaMimeType);
+  const previewRaw =
+    body ||
+    (kind === "pdf" || kind === "document"
+      ? `📎 ${media.mediaFilename ?? "Documento"}`
+      : kind === "video"
+      ? "🎥 Video"
+      : kind === "audio"
+      ? "🎙️ Audio"
+      : isImage
+      ? "📷 Imagen"
+      : media.mediaStoragePath
+      ? "📎 Archivo"
+      : "—");
+
+  return { body, previewRaw, media };
+}
+
+/**
+ * Preview + etiqueta de hora de la lista, sin construir el `Message` completo.
+ * La bandeja no necesita remitente ni media, así que la fila puede venir con
+ * solo `WUBBY_PREVIEW_COLUMNS`.
+ */
+export function buildConversationPreviewFromRow(row: WubbyWhatsappRow): {
+  previewRaw: string;
+  lastMessageLabel: string;
+  createdAtIso: string;
+} {
+  return {
+    previewRaw: resolveMessageBodyAndPreview(row).previewRaw,
+    lastMessageLabel: formatMessageDisplayListTime(row as Record<string, unknown>),
+    createdAtIso: typeof row.created_at === "string" ? row.created_at : String(row.created_at ?? ""),
+  };
+}
+
 /** Columna `cause_request` (`yes` = disparó handoff a humano). */
 export function readCauseRequest(row: WubbyWhatsappRow): string | undefined {
   const v = getRowField(row, "cause_request", "Cause_Request", "causeRequest");
@@ -668,7 +718,6 @@ export function mergeConversationsTableWithMessages(
   for (const cr of convRows) {
     const guestPhoneDigits = normalizePhoneDigits(cr.guest_phone ?? "");
     const guestPhone = guestPhoneDigits ? `+${guestPhoneDigits}` : "";
-    const phoneDisplay = guestPhone || String(cr.guest_phone ?? "").trim() || "—";
     const msgList = guestPhoneDigits ? messagesByPhone.get(guestPhoneDigits) ?? [] : [];
 
     const lastRow = msgList.length > 0 ? msgList[msgList.length - 1]! : null;
@@ -679,16 +728,6 @@ export function mergeConversationsTableWithMessages(
           resolveHotelWaIdentitiesForRow(lastRow, options.hotelWhatsappById)
         )
       : null;
-    const lastPreview = lastMessage ? lastMessage.previewRaw : "Sin mensajes";
-    const lastAt = lastMessage ? lastMessage.lastMessageLabel : "—";
-
-    const { operationalStatus, controlMode } = mapOperationalFromConversationRow(cr);
-    const needsHuman = readBoolCol(cr.needs_human, false);
-    const aiActive = readBoolCol(cr.ai_active, true);
-
-    const cotizacion = cr.cotizacion != null && String(cr.cotizacion).trim() !== "" ? String(cr.cotizacion) : null;
-
-    const title = displayGuestName(cr.guest_name, phoneDisplay);
 
     const messages: Message[] = msgList.map(
       (msgRow) =>
@@ -699,52 +738,115 @@ export function mergeConversationsTableWithMessages(
         ).message
     );
 
-    const lastActivityIso = lastRow ? lastRow.created_at : cr.created_at || cr.updated_at;
+    out.push(
+      buildConversationFromRow(cr, {
+        lastPreview: lastMessage ? lastMessage.previewRaw : "Sin mensajes",
+        lastMessageAt: lastMessage ? lastMessage.lastMessageLabel : "—",
+        lastActivityIso: lastRow ? lastRow.created_at : cr.created_at || cr.updated_at,
+        messages,
+      })
+    );
+  }
 
-    const guest = {
-      id: cr.id,
-      name: title,
-      phone: phoneDisplay,
-      property: cotizacion ? cotizacion : "Sin propiedad indicada",
-      language: "—",
-      internalNotes: readBoolCol(cr.blocked, false)
-        ? cr.blocked_at
-          ? `Bloqueado · ${cr.blocked_at}`
-          : "Bloqueado"
-        : "Sin notas internas en Supabase.",
-      tags: cotizacion ? [cotizacion.slice(0, 24)] : [],
-      profileCompleteness: cotizacion ? 35 : 15,
-      reservation: emptyReservation(),
-    };
+  return out;
+}
 
-    const requestRaw =
-      typeof cr.request === "string" ? cr.request.trim() : cr.request;
-    const requestValue =
-      typeof requestRaw === "string" && requestRaw.length > 0 ? requestRaw : null;
+/**
+ * Único constructor de `Conversation`. Todo lo que no depende del hilo sale de
+ * la fila de `conversations`; lo que sí depende llega por `parts`. Lo comparten
+ * el merge con historial (reservas) y la bandeja sin historial.
+ */
+function buildConversationFromRow(
+  cr: ConversationDbRow,
+  parts: {
+    lastPreview: string;
+    lastMessageAt: string;
+    lastActivityIso: string;
+    messages: Message[];
+  }
+): Conversation {
+  const guestPhoneDigits = normalizePhoneDigits(cr.guest_phone ?? "");
+  const guestPhone = guestPhoneDigits ? `+${guestPhoneDigits}` : "";
+  const phoneDisplay = guestPhone || String(cr.guest_phone ?? "").trim() || "—";
 
-    out.push({
-      id: cr.id,
-      guest,
-      guestPhone: phoneDisplay,
-      needsHuman,
-      aiActive,
-      dbStatus: cr.status,
-      blocked: readBoolCol(cr.blocked, false),
-      blockedAt: cr.blocked_at,
-      request: requestValue,
-      lastMessagePreview: lastPreview.length > 120 ? `${lastPreview.slice(0, 117)}…` : lastPreview,
-      lastMessageAt: lastAt,
-      lastActivityIso,
-      unreadCount: readUnreadCount(cr.unread_count),
-      operationalStatus,
-      controlMode,
-      channelLabel: "WhatsApp",
-      messages,
-      // El servidor nunca marca un hilo como autoritativo: `messages` es el
-      // recorte a `messageLimit`. Solo el cliente lo pone en `true`, tras
-      // resolver GET /api/inbox/messages para esa conversación.
-      messagesLoaded: false,
-    });
+  const { operationalStatus, controlMode } = mapOperationalFromConversationRow(cr);
+  const cotizacion =
+    cr.cotizacion != null && String(cr.cotizacion).trim() !== "" ? String(cr.cotizacion) : null;
+
+  const guest = {
+    id: cr.id,
+    name: displayGuestName(cr.guest_name, phoneDisplay),
+    phone: phoneDisplay,
+    property: cotizacion ? cotizacion : "Sin propiedad indicada",
+    language: "—",
+    internalNotes: readBoolCol(cr.blocked, false)
+      ? cr.blocked_at
+        ? `Bloqueado · ${cr.blocked_at}`
+        : "Bloqueado"
+      : "Sin notas internas en Supabase.",
+    tags: cotizacion ? [cotizacion.slice(0, 24)] : [],
+    profileCompleteness: cotizacion ? 35 : 15,
+    reservation: emptyReservation(),
+  };
+
+  const requestRaw = typeof cr.request === "string" ? cr.request.trim() : cr.request;
+  const requestValue =
+    typeof requestRaw === "string" && requestRaw.length > 0 ? requestRaw : null;
+
+  return {
+    id: cr.id,
+    guest,
+    guestPhone: phoneDisplay,
+    needsHuman: readBoolCol(cr.needs_human, false),
+    aiActive: readBoolCol(cr.ai_active, true),
+    dbStatus: cr.status,
+    blocked: readBoolCol(cr.blocked, false),
+    blockedAt: cr.blocked_at,
+    request: requestValue,
+    lastMessagePreview:
+      parts.lastPreview.length > 120 ? `${parts.lastPreview.slice(0, 117)}…` : parts.lastPreview,
+    lastMessageAt: parts.lastMessageAt,
+    lastActivityIso: parts.lastActivityIso,
+    unreadCount: readUnreadCount(cr.unread_count),
+    lastGuestMessageAt: cr.last_guest_message_at ?? null,
+    operationalStatus,
+    controlMode,
+    channelLabel: "WhatsApp",
+    messages: parts.messages,
+    // El servidor nunca marca un hilo como autoritativo. En la bandeja
+    // `messages` va directamente vacío; el hilo lo carga
+    // GET /api/inbox/messages y es el cliente quien pone `true`.
+    messagesLoaded: false,
+  };
+}
+
+/**
+ * Bandeja: una `Conversation` por fila de `conversations`, con `messages: []`.
+ *
+ * El preview sale del último mensaje que la propia query ya resolvió (embedding
+ * PostgREST con `limit 1` por conversación), no de barrer el histórico.
+ * `lastActivityIso` se alimenta del `created_at` de ese mensaje para que el
+ * orden de la lista sea idéntico al que producía el merge con historial; solo
+ * cae a la fila de `conversations` cuando no hay ningún mensaje.
+ */
+export function buildInboxConversations(
+  convRows: ConversationDbRow[],
+  lastMessageByConversationId: Map<string, WubbyWhatsappRow>
+): Conversation[] {
+  const out: Conversation[] = [];
+
+  for (const cr of convRows) {
+    const lastRow = lastMessageByConversationId.get(String(cr.id));
+    const preview = lastRow ? buildConversationPreviewFromRow(lastRow) : null;
+
+    out.push(
+      buildConversationFromRow(cr, {
+        lastPreview: preview ? preview.previewRaw : "Sin mensajes",
+        lastMessageAt: preview ? preview.lastMessageLabel : "—",
+        lastActivityIso: preview ? preview.createdAtIso : cr.created_at || cr.updated_at,
+        messages: [],
+      })
+    );
   }
 
   return out;
@@ -775,27 +877,18 @@ export function buildMessageFromWubbyRow(
   const guestNorm = normalizeWaIdentity(guestPhone);
   const sender = classifyMessageSender(row, guestNorm, hotelIdentities);
 
-  const messageRaw = String(row.message ?? "").trim();
   const fmt = readMessageFormat(row);
-  const { messageType, mediaUrl, mediaStoragePath, mediaMimeType, mediaCaption, mediaFilename, mediaBucket, metaMediaId } =
-    readMessageMedia(row);
-  const isImage = messageType.trim().toLowerCase() === "image";
-  const hasMedia = Boolean(mediaStoragePath || mediaUrl);
-  const body = messageRaw || mediaCaption || (hasMedia ? "" : "(vacío)");
-  const kind = resolveMediaKind(mediaMimeType);
-  const previewRaw =
-    body ||
-    (kind === "pdf" || kind === "document"
-      ? `📎 ${mediaFilename ?? "Documento"}`
-      : kind === "video"
-      ? "🎥 Video"
-      : kind === "audio"
-      ? "🎙️ Audio"
-      : isImage
-      ? "📷 Imagen"
-      : mediaStoragePath
-      ? "📎 Archivo"
-      : "—");
+  const { body, previewRaw, media } = resolveMessageBodyAndPreview(row);
+  const {
+    messageType,
+    mediaUrl,
+    mediaStoragePath,
+    mediaMimeType,
+    mediaCaption,
+    mediaFilename,
+    mediaBucket,
+    metaMediaId,
+  } = media;
   const causeReqHandoff = readCauseRequest(row);
   const causeOfReq = readCauseOfRequestColumn(row);
   const clientTempIdRaw = readStringField(row, "client_temp_id", "clientTempId");
@@ -882,6 +975,11 @@ export function applyConversationRowPatch(
     dbStatus: row.status,
     blocked: row.blocked ?? false,
     blockedAt: row.blocked_at,
+    // El trigger que mantiene `last_guest_message_at` dispara un UPDATE en
+    // `conversations`, así que este es el camino por el que el composer se
+    // desbloquea en vivo cuando el huésped escribe. Sin propagarlo, con la
+    // bandeja ya sin `messages`, se quedaría bloqueado hasta el próximo refetch.
+    lastGuestMessageAt: row.last_guest_message_at ?? null,
     request: requestValue,
     unreadCount: readUnreadCount(row.unread_count),
     operationalStatus,

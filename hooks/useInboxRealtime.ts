@@ -472,29 +472,32 @@ export function useInboxRealtime({
       const handoffSlot: { current: HandoffQueue } = { current: null };
 
       setter((prev) => {
-        if (!rowMatchesInboxHotel(newRow, activeHotelIdRef.current)) {
-          return prev;
+        // Empareja por teléfono, igual que el camino INSERT, en vez de buscar el
+        // mensaje dentro de `c.messages`: la bandeja ya no trae historial, así
+        // que ese array está vacío y el UPDATE dejaría de aplicar el parche
+        // visual de urgencia (fila roja) en toda conversación sin hilo abierto.
+        const target = findConversationForRealtimeRow(prev, newRow, activeHotelIdRef.current);
+        if (!target) return prev;
+
+        const built = buildMessageFromWubbyRow(
+          newRow,
+          target.guestPhone,
+          resolveHotelWaIdentitiesForRow(newRow, hotelWhatsappByIdRef.current)
+        );
+
+        if (isUrgent) {
+          const name = (target.guest.name ?? "").trim();
+          const phone = (target.guestPhone ?? target.guest.phone ?? "").trim();
+          handoffSlot.current = {
+            row: newRow,
+            displayNameOrPhone: name || phone,
+            preview: built.previewRaw,
+          };
         }
 
-        let touched = false;
-        const next = prev.map((c) => {
-          const mi = c.messages.findIndex((m) => m.id === messageId);
-          if (mi === -1) {
-            // Ausencia NO concluyente. Con `messagesLoaded === false` el array es
-            // el provisional de /api/inbox (recorte por hotel): el mensaje puede
-            // existir en la conversación y no estar aquí. Por eso este camino
-            // nunca llama a `requestMissing()` — recargar la bandeja completa a
-            // partir de una ausencia no verificable es exactamente lo que satura
-            // memoria. Con `messagesLoaded === true` la ausencia sí es real, pero
-            // entonces el mensaje no pertenece a este hilo y tampoco hay nada que
-            // parchear en pantalla.
-            return c;
-          }
-          const built = buildMessageFromWubbyRow(
-            newRow,
-            c.guestPhone,
-            resolveHotelWaIdentitiesForRow(newRow, hotelWhatsappByIdRef.current)
-          );
+        return prev.map((c) => {
+          if (c.id !== target.id) return c;
+
           const urgentVisualPatch =
             isUrgent && c.operationalStatus !== "closed"
               ? ({
@@ -505,31 +508,35 @@ export function useInboxRealtime({
                   controlMode: "human" as const,
                 } satisfies Partial<Conversation>)
               : {};
-          const newMsgs = [...c.messages];
-          newMsgs[mi] = built.message;
-          touched = true;
-          const isLast = mi === c.messages.length - 1;
-          if (isUrgent) {
-            const name = (c.guest.name ?? "").trim();
-            const phone = (c.guestPhone ?? c.guest.phone ?? "").trim();
-            handoffSlot.current = {
-              row: newRow,
-              displayNameOrPhone: name || phone,
-              preview: built.previewRaw,
-            };
+
+          // El hilo local solo se parchea si el mensaje está cargado. Si no está
+          // (bandeja sin historial, o mensaje fuera del tramo abierto) se deja
+          // intacto: no hay nada que actualizar en pantalla.
+          const mi = c.messages.findIndex((m) => m.id === messageId);
+          let messages = c.messages;
+          if (mi !== -1) {
+            messages = [...c.messages];
+            messages[mi] = built.message;
           }
+
+          // Antes el bump se decidía con `mi === c.messages.length - 1`, que sin
+          // array es indecidible. Se compara el timestamp del mensaje contra la
+          // actividad ya mostrada, el mismo criterio que usa handleWubbyInsert.
+          const shouldBumpPreview =
+            getMessageDisplayMs(built.message as unknown as Record<string, unknown>) >=
+            getConversationDisplayActivityMs(c);
+
           return {
             ...c,
             ...urgentVisualPatch,
-            messages: newMsgs,
-            lastMessagePreview: isLast
+            messages,
+            lastMessagePreview: shouldBumpPreview
               ? truncatePreview(built.previewRaw)
               : c.lastMessagePreview,
-            lastMessageAt: isLast ? built.lastMessageLabel : c.lastMessageAt,
-            lastActivityIso: isLast ? built.createdAtIso : c.lastActivityIso,
+            lastMessageAt: shouldBumpPreview ? built.lastMessageLabel : c.lastMessageAt,
+            lastActivityIso: shouldBumpPreview ? built.createdAtIso : c.lastActivityIso,
           };
         });
-        return touched ? next : prev;
       });
 
       const hp = handoffSlot.current;
@@ -542,7 +549,7 @@ export function useInboxRealtime({
         handleUrgentHandoffRealtimeRow(hp.row, "UPDATE", hp.displayNameOrPhone, hp.preview);
       } else if (isUrgent && !hp) {
         console.log(
-          "[Urgent Alert] UPDATE: needsHuman true but message not found in local conversations (refetch pending)"
+          "[Urgent Alert] UPDATE: needsHuman true but no conversation matched the row phone (other hotel or not loaded)"
         );
       }
     };
