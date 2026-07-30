@@ -1135,6 +1135,27 @@ function PrivateWhatsAppAudio({ message }: { message: Message }) {
   return <audio src={signedUrl} controls className="w-[260px] max-w-full" />;
 }
 
+/**
+ * Sticker entrante de WhatsApp: mime `image/webp` y `message` exactamente
+ * `'[sticker]'`, la firma que escribe el engine al subirlos a Storage.
+ *
+ * Existe solo para tapar un dato mentiroso: el engine escribía
+ * `cause_request='yes'` en las filas de sticker pese a que un sticker NO escala
+ * a humano — `conversations.needs_human` se queda en `false`—, así que la
+ * burbuja anunciaba "Solicitó agente humano" por un emoji. Desde el 30 jul 2026
+ * los stickers ya no escalan, pero las filas históricas conservan el `yes`, y
+ * esta supresión es lo que las cubre. El arreglo de raíz va en el engine, fuera
+ * de este repo.
+ *
+ * Se filtra AQUÍ y no en `messageNeedsHumanAlert` a propósito: esa regla la
+ * comparten el banner, la notificación de escritorio y las demás burbujas.
+ */
+function isWhatsappSticker(m: Message): boolean {
+  return (
+    m.mediaMimeType?.trim().toLowerCase() === "image/webp" && m.body.trim() === "[sticker]"
+  );
+}
+
 function MessageBubble({
   m,
   guestName,
@@ -1148,7 +1169,10 @@ function MessageBubble({
   const isAi = m.sender === "ai";
   const isAgent = m.sender === "agent";
 
-  const isHandoffCause = messageNeedsHumanAlert(m as unknown as Record<string, unknown>);
+  // Ver `isWhatsappSticker`: `cause_request` miente en las filas de sticker, así
+  // que ni la etiqueta ni el borde rojo salen de ellas.
+  const isHandoffCause =
+    messageNeedsHumanAlert(m as unknown as Record<string, unknown>) && !isWhatsappSticker(m);
 
   const isTranscribedVoice =
     isUser && typeof m.format === "string" && m.format.trim().toLowerCase() === "audio";
