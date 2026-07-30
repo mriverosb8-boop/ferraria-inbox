@@ -77,10 +77,6 @@ export interface Message {
    * Columna `cause_request`: `yes` = disparó escalación (badge en burbuja).
    */
   causeRequest?: string;
-  /**
-   * Columna `cause_of_request`: `yes` = requiere atención humana (alertas Realtime).
-   */
-  causeOfRequest?: string;
   aiMeta?: AiMessageMeta;
   /** UUID generado en cliente; persiste en `Wubby_Whatsapp.client_temp_id`. */
   clientTempId?: string;

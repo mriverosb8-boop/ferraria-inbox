@@ -14,8 +14,6 @@ export const MAX_WUBBY_FETCH_ROWS = 15000;
  * devolviera páginas cortas sin agotar el conjunto.
  */
 export const MAX_WUBBY_FETCH_PAGES = 20;
-/** @deprecated Usar fetchAllWubbyRowsForHotel con paginación .range(). */
-export const MESSAGE_FETCH_LIMIT = 8000;
 
 /** Tras cargar historial completo (>325), no recortar al añadir mensajes. */
 export function appendConversationMessages<T>(current: T[], added: T): T[] {

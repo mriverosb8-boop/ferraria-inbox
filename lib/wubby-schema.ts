@@ -26,8 +26,6 @@ export type WubbyWhatsappRow = {
   file_url?: string | null;
   /** `yes` si el mensaje provocó handoff a humano */
   cause_request?: string | null;
-  /** `yes` si el caso requiere atención humana (alertas Realtime) */
-  cause_of_request?: string | null;
   /** UUID del cliente para reconciliar optimista con realtime */
   client_temp_id?: string | null;
   /**
@@ -64,7 +62,7 @@ export const WUBBY_TABLE = "Wubby_Whatsapp";
  * campos distintos según llegara por fetch o por el canal en vivo.
  *
  * OJO: varios lectores de `chat-utils` (media_url, message_type,
- * cause_of_request, storage_path…) buscan claves que NO existen como columnas
+ * storage_path…) buscan claves que NO existen como columnas
  * en esta tabla; resuelven a `undefined` igual con `*` que con esta lista.
  */
 export const WUBBY_SELECT_COLUMNS = [

@@ -396,9 +396,6 @@ export function readCauseRequest(row: WubbyWhatsappRow): string | undefined {
  */
 export function messageNeedsHumanAlert(messageOrRow: Record<string, unknown>): boolean {
   const raw =
-    messageOrRow["cause_of_request"] ??
-    messageOrRow["Cause_Of_Request"] ??
-    messageOrRow["causeOfRequest"] ??
     messageOrRow["cause_request"] ??
     messageOrRow["Cause_Request"] ??
     messageOrRow["causeRequest"] ??
@@ -428,17 +425,6 @@ export function toBool(v: unknown, defaultVal = false): boolean {
     return ["true", "1", "yes", "si", "sí", "t"].includes(t);
   }
   return defaultVal;
-}
-
-/** Lectura flexible de flag “IA activa” si existe columna en BD. */
-export function readAiActive(row: WubbyWhatsappRow, fallback = true): boolean {
-  const raw = getRowField(row, "ai_active", "AI Active", "ai_enabled", "AI_Enabled", "ia_activa");
-  if (raw === undefined || raw === null) return fallback;
-  return toBool(raw, fallback);
-}
-
-export function readNeedsHuman(row: WubbyWhatsappRow): boolean {
-  return toBool(getRowField(row, "Needs Human", "needs_human", "needsHuman"), false);
 }
 
 /**
@@ -911,7 +897,6 @@ export function buildMessageFromWubbyRow(
     metaMediaId,
   } = media;
   const causeReqHandoff = readCauseRequest(row);
-  const causeOfReq = readCauseOfRequestColumn(row);
   const clientTempIdRaw = readStringField(row, "client_temp_id", "clientTempId");
   const clientTempId = clientTempIdRaw?.trim() || undefined;
 
@@ -935,7 +920,6 @@ export function buildMessageFromWubbyRow(
       wamid: readWamid(row) ?? null,
       reactionToWamid: readReactionToWamid(row) ?? null,
       ...(causeReqHandoff ? { causeRequest: causeReqHandoff } : {}),
-      ...(causeOfReq ? { causeOfRequest: causeOfReq } : {}),
     },
     previewRaw,
     createdAtIso: row.created_at,

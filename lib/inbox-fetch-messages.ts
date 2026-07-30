@@ -95,61 +95,6 @@ async function fetchWubbyPagesAscending(
   return { rows: all, truncated };
 }
 
-async function fetchWubbyPagesDescending(
-  supabase: SupabaseClient,
-  hotelId: string
-): Promise<WubbyFetchResult> {
-  const all: WubbyWhatsappRow[] = [];
-  let from = 0;
-  let truncated = false;
-  let done = false;
-
-  for (let page = 0; page < MAX_WUBBY_FETCH_PAGES && !done; page += 1) {
-    const to = from + POSTGREST_PAGE_SIZE - 1;
-    const { data, error } = await supabase
-      .from(WUBBY_TABLE)
-      .select(WUBBY_SELECT_COLUMNS)
-      .eq("hotel_id", hotelId)
-      // Desempate por `id`: ver nota en fetchWubbyPagesAscending.
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .range(from, to);
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const batch = (data ?? []) as unknown as WubbyWhatsappRow[];
-    all.push(...batch);
-
-    if (all.length >= MAX_WUBBY_FETCH_ROWS) {
-      // Orden descendente: el corte descarta los mensajes más ANTIGUOS, que es
-      // el extremo correcto para una bandeja.
-      all.length = MAX_WUBBY_FETCH_ROWS;
-      truncated = true;
-      done = true;
-    } else if (batch.length < POSTGREST_PAGE_SIZE) {
-      done = true;
-    } else {
-      from += POSTGREST_PAGE_SIZE;
-    }
-  }
-
-  if (!done) truncated = true;
-
-  return { rows: all, truncated };
-}
-
-/** Filas del hotel (paginado .range, con tope duro); orden ascendente para merge. */
-export async function fetchAllWubbyRowsForHotel(
-  supabase: SupabaseClient,
-  hotelId: string
-): Promise<WubbyFetchResult> {
-  const { rows, truncated } = await fetchWubbyPagesDescending(supabase, hotelId);
-  rows.reverse();
-  return { rows, truncated };
-}
-
 /** Historial de un huésped en un hotel; match + y sin + en sender/recipient. */
 export async function fetchWubbyRowsForGuestAtHotel(
   supabase: SupabaseClient,
