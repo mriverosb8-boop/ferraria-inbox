@@ -1135,6 +1135,88 @@ function PrivateWhatsAppAudio({ message }: { message: Message }) {
   return <audio src={signedUrl} controls className="w-[260px] max-w-full" />;
 }
 
+/** Texto que escribe el engine cuando el huésped RETIRA una reacción ya enviada. */
+const REACTION_REMOVED_BODY = "[reacción eliminada]";
+
+/**
+ * Fila de reacción: `format='reaction'` y `reaction_to_wamid` apuntando al
+ * mensaje reaccionado. Las dos condiciones, no una: las ~100 filas de reacción
+ * anteriores a la columna traen `format='reaction'` con `reaction_to_wamid`
+ * null, y sin target no hay burbuja sobre la que pintar el badge.
+ */
+function isReactionRow(m: Message): boolean {
+  return m.format?.trim().toLowerCase() === "reaction" && Boolean(m.reactionToWamid?.trim());
+}
+
+/**
+ * `true` si `candidate` es posterior a `current`. Los `id` de `Wubby_Whatsapp`
+ * son bigint crecientes, así que el mayor es la última reacción que escribió el
+ * huésped — más fiable que `created_at`, que tiene colisiones reales.
+ */
+function isNewerReaction(candidate: Message, current: Message): boolean {
+  const a = Number(candidate.id);
+  const b = Number(current.id);
+  // Ids no numéricos (optimistas locales) no ordenan: gana el que ya estaba.
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+  return a > b;
+}
+
+type ThreadView = {
+  /** Mensajes que SÍ son burbuja, en el orden recibido. */
+  bubbles: Message[];
+  /** id del mensaje objetivo → emoji de la reacción vigente. */
+  reactionByMessageId: Map<string, string>;
+};
+
+/**
+ * Saca las filas de reacción del flujo de burbujas y las resuelve contra el
+ * mensaje cuyo `wamid` coinciden, al estilo WhatsApp.
+ *
+ * Dos pasadas y un Map por `wamid`, NO un `find()` por burbuja: el hilo llega
+ * hasta `MESSAGES_LIMIT` mensajes y la resolución sería cuadrática.
+ *
+ * Reglas:
+ * - Varias reacciones al mismo mensaje son filas distintas; gana la de id mayor.
+ * - Si la vigente es `'[reacción eliminada]'`, el huésped la retiró: no hay badge.
+ * - Una reacción que NO resuelve target (mensaje histórico sin `wamid`) se queda
+ *   como burbuja de texto normal. Ocultarla perdería información real.
+ */
+function buildThreadView(messages: Message[]): ThreadView {
+  const messageIdByWamid = new Map<string, string>();
+  for (const m of messages) {
+    const wamid = m.wamid?.trim();
+    if (wamid) messageIdByWamid.set(wamid, m.id);
+  }
+
+  const bubbles: Message[] = [];
+  const winnerByTargetId = new Map<string, Message>();
+
+  for (const m of messages) {
+    const targetId = isReactionRow(m)
+      ? messageIdByWamid.get(m.reactionToWamid!.trim())
+      : undefined;
+
+    if (!targetId) {
+      bubbles.push(m);
+      continue;
+    }
+
+    const current = winnerByTargetId.get(targetId);
+    if (!current || isNewerReaction(m, current)) {
+      winnerByTargetId.set(targetId, m);
+    }
+  }
+
+  const reactionByMessageId = new Map<string, string>();
+  for (const [targetId, reaction] of winnerByTargetId) {
+    const emoji = reaction.body.trim();
+    if (!emoji || emoji === REACTION_REMOVED_BODY) continue;
+    reactionByMessageId.set(targetId, emoji);
+  }
+
+  return { bubbles, reactionByMessageId };
+}
+
 /**
  * Sticker entrante de WhatsApp: mime `image/webp` y `message` exactamente
  * `'[sticker]'`, la firma que escribe el engine al subirlos a Storage.
@@ -1160,10 +1242,13 @@ function MessageBubble({
   m,
   guestName,
   guestSeed,
+  reaction,
 }: {
   m: Message;
   guestName: string;
   guestSeed: string;
+  /** Emoji de la reacción vigente sobre ESTA burbuja; ver `buildThreadView`. */
+  reaction?: string;
 }) {
   const isUser = m.sender === "user";
   const isAi = m.sender === "ai";
@@ -1213,7 +1298,12 @@ function MessageBubble({
   return (
     <div
       className="flex w-full min-w-0 items-end gap-2"
-      style={{ flexDirection: isUser ? "row" : "row-reverse" }}
+      style={{
+        flexDirection: isUser ? "row" : "row-reverse",
+        // El badge cuelga por debajo del borde: sin este hueco se solaparía con
+        // la burbuja siguiente (el contenedor del hilo solo separa 10px).
+        ...(reaction ? { marginBottom: 10 } : null),
+      }}
     >
       <div className="shrink-0 self-end">
         {isUser ? (
@@ -1255,9 +1345,24 @@ function MessageBubble({
           </span>
         )}
         <div
-          className="flex w-fit min-w-0 max-w-full flex-col gap-0.5 break-words px-3.5 py-2 text-[15.5px] [overflow-wrap:anywhere]"
+          className="relative flex w-fit min-w-0 max-w-full flex-col gap-0.5 break-words px-3.5 py-2 text-[15.5px] [overflow-wrap:anywhere]"
           style={{ lineHeight: 1.45, ...bubbleStyle }}
         >
+          {reaction ? (
+            <span
+              // Lado interior de la burbuja en ambos casos: esquiva la muesca de
+              // 5px, que en las salientes está justo abajo a la derecha.
+              className="absolute -bottom-3 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[13px] leading-none shadow-sm"
+              style={{
+                ...(isUser ? { right: 10 } : { left: 10 }),
+                background: "var(--panel)",
+                border: "1px solid var(--line)",
+              }}
+              title="Reacción"
+            >
+              {reaction}
+            </span>
+          ) : null}
           {isHandoffCause && (
             <p
               className="mb-0.5 flex max-w-full items-center gap-1 self-stretch text-[10px] font-semibold leading-tight"
@@ -1645,6 +1750,17 @@ export default function InboxApp() {
   const replyBlockedByMeta = useMemo(
     () => (selected ? isReplyBlockedByMetaPolicy(selected.lastGuestMessageAt) : false),
     [selected]
+  );
+
+  /**
+   * Reacciones resueltas a badge. Se deriva del array de mensajes ya en estado,
+   * que es también donde Realtime deja los que llegan en vivo (`handleWubbyInsert`
+   * → `upsertConversationMessage`): una reacción recibida por el canal se aplica
+   * sola, sin tocar los handlers.
+   */
+  const { bubbles: threadBubbles, reactionByMessageId } = useMemo(
+    () => buildThreadView(selected?.messages ?? []),
+    [selected?.messages]
   );
 
   /**
@@ -3154,12 +3270,13 @@ export default function InboxApp() {
                   {threadLoading ? (
                     <InboxThreadSkeleton />
                   ) : (
-                    selected.messages.map((m) => (
+                    threadBubbles.map((m) => (
                       <MessageBubble
                         key={m.id}
                         m={m}
                         guestName={selected.guest.name}
                         guestSeed={selected.guest.id}
+                        reaction={reactionByMessageId.get(m.id)}
                       />
                     ))
                   )}
