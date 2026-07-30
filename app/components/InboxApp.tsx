@@ -4,6 +4,7 @@ import type { ClipboardEvent, SVGProps } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { avatarFlatColors, initials, splitLeadingEmoji } from "@/lib/avatar";
 import {
+  applyConversationRowPatch,
   formatMessageDetailTime,
   formatMessageDisplayTime,
   getConversationDisplayActivityMs,
@@ -15,7 +16,11 @@ import type { MediaKind } from "@/lib/chat-utils";
 import { appendConversationMessages } from "@/lib/message-limits";
 import { upsertConversationMessage } from "@/lib/message-upsert";
 import type { ControlMode, Conversation, Message, OperationalStatus } from "@/lib/inbox-types";
-import { CONVERSATIONS_TABLE, GUEST_NAME_MAX_LENGTH } from "@/lib/conversation-schema";
+import {
+  CONVERSATIONS_TABLE,
+  GUEST_NAME_MAX_LENGTH,
+  type ConversationDbRow,
+} from "@/lib/conversation-schema";
 import { useConversations } from "@/hooks/useConversations";
 import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
@@ -37,6 +42,18 @@ import { WhatsappText, stripWhatsappMarkup } from "./WhatsappText";
 import { HelpModal } from "./HelpModal";
 
 type StatusFilter = "all" | "unread" | "ai_active" | "requires_attention" | "closed";
+
+/**
+ * Respuesta de `PATCH /api/inbox`. `conversation` es la fila POST-update de
+ * `conversations`: es la que sustituye al refetch de bandeja completa que antes
+ * seguía a cada acción. Opcional a propósito, para tolerar un servidor anterior
+ * a este cambio (o desplegado a mitad): sin fila, el estado local optimista
+ * queda como está y Realtime reconcilia.
+ */
+type InboxPatchResponse = {
+  error?: string;
+  conversation?: ConversationDbRow | null;
+};
 
 /** Ventana de conversación (WhatsApp / Meta) desde el último mensaje con `sender: "user"`. */
 const META_INBOX_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -1284,6 +1301,33 @@ export default function InboxApp() {
     [conversationHotelId, removeFollowup]
   );
 
+  /**
+   * Aplica la fila que devolvió el servidor con el MISMO handler que usa
+   * Realtime (`applyConversationRowPatch`), en vez de recargar `/api/inbox`.
+   *
+   * El handler hace `...existing`, así que preserva `messages` y
+   * `messagesLoaded`: es seguro aplicarlo sobre la conversación con el hilo
+   * abierto, que es justo lo que el refetch no garantizaba (de ahí la lógica de
+   * `keepLocal` en `useConversations`).
+   *
+   * Réplica exacta de `handleConversationEvent` en `useInboxRealtime`: si la
+   * conversación no está en memoria no hace nada — no es un caso a reconciliar,
+   * acabamos de actuar sobre ella.
+   */
+  const applyServerConversationRow = useCallback(
+    (row: ConversationDbRow | null | undefined) => {
+      if (!row?.id) return;
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === row.id);
+        if (idx === -1) return prev;
+        const next = [...prev];
+        next[idx] = applyConversationRowPatch(next[idx]!, row);
+        return next;
+      });
+    },
+    [setConversations]
+  );
+
   const { messagesError } = useInboxConversationMessages(
     selectedId,
     conversationHotelId,
@@ -1728,6 +1772,8 @@ export default function InboxApp() {
             meta_media_id?: string | null;
             message_type?: string | null;
           };
+          /** Fila de `conversations`, distinta de `message` (fila de Wubby). */
+          conversation?: ConversationDbRow | null;
           mediaStoragePath?: string;
           mediaBucket?: string;
           mediaFilename?: string;
@@ -1781,7 +1827,27 @@ export default function InboxApp() {
 
         setDraft("");
         clearSelectedFile();
-        void refetch({ silent: true });
+        if (j.conversation) {
+          // Camino feliz: la route devuelve la fila que dejó su propio UPDATE
+          // (needs_human / ai_active / status / unread_count). Cero GET.
+          applyServerConversationRow(j.conversation);
+        } else {
+          // Red de seguridad, sin equivalente en el camino del PATCH.
+          //
+          // Esta route responde `ok` con `conversation: null` cuando su UPDATE a
+          // `conversations` falla, y hace bien: el archivo ya salió por Meta, así
+          // que abortar con 502 haría que el cliente borre la burbuja de un
+          // mensaje que el huésped SÍ recibió. Pero entonces `needs_human`,
+          // `ai_active: false` y `status: "human_control"` nunca se escribieron —
+          // y al no haber UPDATE tampoco llega evento de Realtime, así que la
+          // divergencia no se cierra sola: el asesor creería que tomó el control
+          // mientras la IA le sigue contestando al huésped. Acá sí hace falta ir
+          // a buscar el estado real.
+          //
+          // `PATCH /api/inbox` no necesita esto: devuelve la fila o 404, nunca un
+          // `null` silencioso.
+          void refetch({ silent: true });
+        }
       } catch {
         setConversations((prev) =>
           prev.map((c) =>
@@ -1858,9 +1924,14 @@ export default function InboxApp() {
       }
     } catch {
       setSendWarning("Error de red al enviar al engine");
-    } finally {
-      void refetch({ silent: true });
     }
+    // Sin refetch. Este endpoint NO escribe en la base: reenvía a
+    // ferraria-engine, que es quien inserta el mensaje y mueve `conversations`,
+    // así que no puede devolver la fila y el sitio se queda con optimista local
+    // + Realtime. El refetch además estaba en un `finally`, o sea que recargaba
+    // la bandeja entera incluso cuando el POST había fallado — y desde que
+    // `/api/inbox` dejó de traer historial tampoco podía confirmar la burbuja:
+    // `useConversations` conserva los mensajes locales frente a un array vacío.
   };
 
   const takeHumanControl = async () => {
@@ -1876,7 +1947,7 @@ export default function InboxApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: conv.id, action: "human_control" }),
       });
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      const j = (await res.json().catch(() => ({}))) as InboxPatchResponse;
       if (!res.ok) {
         setActionError(j.error ?? "No se pudo actualizar la conversación");
         return;
@@ -1895,7 +1966,7 @@ export default function InboxApp() {
             : c
         )
       );
-      await refetch({ silent: true });
+      applyServerConversationRow(j.conversation);
     } catch {
       setActionError("Error de red al actualizar la conversación");
     } finally {
@@ -1916,7 +1987,7 @@ export default function InboxApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: conv.id, action: "reactivate_ai" }),
       });
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      const j = (await res.json().catch(() => ({}))) as InboxPatchResponse;
       if (!res.ok) {
         setActionError(j.error ?? "No se pudo reactivar la IA");
         return;
@@ -1930,12 +2001,16 @@ export default function InboxApp() {
                 needsHuman: false,
                 aiActive: true,
                 dbStatus: "open",
+                // El servidor también pone `unread_count: 0` en esta acción
+                // (`buildReactivateAiFields`); sin esto el contador parpadeaba
+                // hasta que llegaba la fila.
+                unreadCount: 0,
                 operationalStatus: "ai_active",
               }
             : c
         )
       );
-      await refetch({ silent: true });
+      applyServerConversationRow(j.conversation);
     } catch {
       setActionError("Error de red al reactivar la IA");
     } finally {
@@ -1951,9 +2026,21 @@ export default function InboxApp() {
     setActionError(null);
     setPendingAction("reopen");
 
+    // Réplica del orden de precedencia de `mapOperationalFromConversationRow`
+    // para el row que va a escribir el servidor (`status: "open"`): `blocked`
+    // gana sobre `needs_human` / `ai_active`, y con la IA activa el control
+    // sigue siendo suyo aunque la conversación esté bloqueada. Sin la rama
+    // `blocked` el optimista mostraba `ai_active` y la fila del servidor lo
+    // corregía a `requires_attention` un tick después.
     const nextOperational: OperationalStatus =
-      conv.needsHuman || !conv.aiActive ? "requires_attention" : "ai_active";
-    const nextControl: ControlMode = nextOperational === "ai_active" ? "ai" : "human";
+      conv.blocked || conv.needsHuman || !conv.aiActive ? "requires_attention" : "ai_active";
+    const nextControl: ControlMode = conv.blocked
+      ? conv.aiActive
+        ? "ai"
+        : "human"
+      : nextOperational === "ai_active"
+        ? "ai"
+        : "human";
 
     setConversations((prev) =>
       prev.map((c) =>
@@ -1974,7 +2061,7 @@ export default function InboxApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: conv.id, action: "reopen" }),
       });
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      const j = (await res.json().catch(() => ({}))) as InboxPatchResponse;
       if (!res.ok) {
         setConversations((prev) =>
           prev.map((c) =>
@@ -1991,7 +2078,7 @@ export default function InboxApp() {
         setActionError(j.error ?? "No se pudo reactivar la conversación");
         return;
       }
-      await refetch({ silent: true });
+      applyServerConversationRow(j.conversation);
     } catch {
       setConversations((prev) =>
         prev.map((c) =>
@@ -2024,7 +2111,7 @@ export default function InboxApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: conv.id, action: "completed" }),
       });
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      const j = (await res.json().catch(() => ({}))) as InboxPatchResponse;
       if (!res.ok) {
         setActionError(j.error ?? "No se pudo marcar como completada");
         return;
@@ -2039,13 +2126,16 @@ export default function InboxApp() {
                 dbStatus: "completed",
                 needsHuman: false,
                 aiActive: true,
-                controlMode: "ai",
+                // `mapOperationalFromConversationRow` devuelve SIEMPRE "human"
+                // para `status: "completed"`, sin mirar `ai_active`. El "ai"
+                // que había acá discrepaba de la fila que devuelve el servidor.
+                controlMode: "human",
                 request: null,
               }
             : c
         )
       );
-      await refetch({ silent: true });
+      applyServerConversationRow(j.conversation);
     } catch {
       setActionError("Error de red al completar la conversación");
     } finally {
@@ -2101,7 +2191,7 @@ export default function InboxApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: conv.id, action: "rename", guestName: nextName }),
       });
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      const j = (await res.json().catch(() => ({}))) as InboxPatchResponse;
       if (!res.ok) {
         setConversations((prev) =>
           prev.map((c) =>
@@ -2112,7 +2202,9 @@ export default function InboxApp() {
         return;
       }
       setEditingName(false);
-      await refetch({ silent: true });
+      // La fila trae el nombre ya normalizado por `displayGuestName` dentro de
+      // `applyConversationRowPatch` (fallback al teléfono si quedó vacío).
+      applyServerConversationRow(j.conversation);
     } catch {
       setConversations((prev) =>
         prev.map((c) =>
@@ -2205,7 +2297,7 @@ export default function InboxApp() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: conv.id, action: "resolve_request" }),
       });
-      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      const j = (await res.json().catch(() => ({}))) as InboxPatchResponse;
       if (!res.ok) {
         setConversations((prev) =>
           prev.map((c) => (c.id === selectedId ? { ...c, request: "pending" } : c))
@@ -2213,7 +2305,7 @@ export default function InboxApp() {
         setActionError(j.error ?? "No se pudo marcar el asunto como resuelto");
         return;
       }
-      await refetch({ silent: true });
+      applyServerConversationRow(j.conversation);
     } catch {
       setConversations((prev) =>
         prev.map((c) => (c.id === selectedId ? { ...c, request: "pending" } : c))
