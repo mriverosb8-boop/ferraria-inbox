@@ -3861,13 +3861,7 @@ function GuestPanelContent({
         return;
       }
 
-      console.log(
-        "[conversation summary] conversation_id (UUID activo, antes del fetch):",
-        conversation.id
-      );
-
       const result = await fetchConversationSummaryFromApi(conversation.id);
-      console.log("[conversation summary] resultado tras generar:", result);
       if (gen !== summaryPanelGenRef.current) {
         return;
       }
