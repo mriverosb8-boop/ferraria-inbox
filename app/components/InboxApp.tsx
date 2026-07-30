@@ -1484,7 +1484,16 @@ export default function InboxApp() {
     };
   }, [filePreviewUrl]);
 
+  // Autoselección, pero NUNCA mientras la lista en memoria y el hotel activo son
+  // de tenants distintos. Al elegir otro hotel, el picker hace `setSelectedId("")`
+  // y `conversations` sigue siendo la del hotel anterior durante un tick: sin esta
+  // guarda el efecto deshacía el reset y reelegía una conversación ajena, de donde
+  // salía el `GET /api/inbox/messages?conversationId=<hotel A>&hotelId=<hotel B>`
+  // → 404 (la route solo devuelve 404 cuando el par id/hotel no empareja).
+  // `resolvedActiveHotelId` converge a `activeHotelId` por el efecto de sincronía
+  // de más arriba, así que la guarda como mucho retrasa la selección un render.
   useEffect(() => {
+    if (activeHotelId !== resolvedActiveHotelId) return;
     if (conversations.length === 0) return;
     setSelectedId((id) => {
       if (requestedConversationId && conversations.some((c) => c.id === requestedConversationId)) {
@@ -1493,7 +1502,7 @@ export default function InboxApp() {
       if (id && conversations.some((c) => c.id === id)) return id;
       return conversations[0]!.id;
     });
-  }, [conversations, requestedConversationId]);
+  }, [conversations, requestedConversationId, activeHotelId, resolvedActiveHotelId]);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId) ?? null,

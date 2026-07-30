@@ -38,38 +38,49 @@ export function useInboxConversationMessages(
 
     const key = `${hid}:${convId}`;
     fetchKeyRef.current = key;
-    let cancelled = false;
+    // Antes esto era un flag `cancelled` que solo evitaba escribir estado: la
+    // petición seguía viva y el servidor paginaba igual el historial completo del
+    // huésped. Cambiar de conversación N veces dejaba N barridos concurrentes de
+    // `Wubby_Whatsapp`. Con el signal, el descartado se corta en el servidor.
+    const controller = new AbortController();
 
     void (async () => {
       setLoadingMessages(true);
       setMessagesError(null);
       try {
         const params = new URLSearchParams({ conversationId: convId, hotelId: hid });
-        const res = await fetch(`/api/inbox/messages?${params}`, { cache: "no-store" });
+        const res = await fetch(`/api/inbox/messages?${params}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         const json = (await res.json()) as MessagesResponse;
         if (!res.ok) {
           throw new Error(json.error ?? "No se pudo cargar el historial");
         }
-        if (cancelled || fetchKeyRef.current !== key) return;
+        if (controller.signal.aborted || fetchKeyRef.current !== key) return;
 
         const messages = json.messages ?? [];
         setConversations((prev) =>
           prev.map((c) => (c.id === convId ? { ...c, messages, messagesLoaded: true } : c))
         );
       } catch (e) {
-        if (!cancelled && fetchKeyRef.current === key) {
+        // Abortado (cambió la conversación, el hotel, o desmontó): la petición
+        // quedó obsoleta, no falló. No es un error que deba ver el usuario ni
+        // debe apagar el skeleton de un fetch posterior ya en vuelo.
+        if (e instanceof DOMException && e.name === "AbortError") return;
+        if (!controller.signal.aborted && fetchKeyRef.current === key) {
           console.warn("[useInboxConversationMessages]", e);
           setMessagesError(e instanceof Error ? e.message : "No se pudo cargar el historial");
         }
       } finally {
-        if (!cancelled && fetchKeyRef.current === key) {
+        if (!controller.signal.aborted && fetchKeyRef.current === key) {
           setLoadingMessages(false);
         }
       }
     })();
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [conversationId, hotelId, setConversations]);
 
