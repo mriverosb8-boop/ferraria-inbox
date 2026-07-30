@@ -61,6 +61,19 @@ export interface Message {
   mediaBucket?: string | null;
   metaMediaId?: string | null;
   /**
+   * Columna `wamid`: id de Meta del mensaje, clave contra la que resuelven las
+   * reacciones. `null` en mensajes anteriores al 30 jul 2026 y en los
+   * optimistas creados en cliente (aún sin fila en DB).
+   */
+  wamid?: string | null;
+  /**
+   * Columna `reaction_to_wamid`: no-null SOLO en filas de reacción, apuntando al
+   * `wamid` del mensaje reaccionado. Estas filas no son burbujas: se pintan como
+   * badge sobre su objetivo. Si el target no se encuentra, caen a burbuja de
+   * texto normal.
+   */
+  reactionToWamid?: string | null;
+  /**
    * Columna `cause_request`: `yes` = disparó escalación (badge en burbuja).
    */
   causeRequest?: string;

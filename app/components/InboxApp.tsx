@@ -968,8 +968,12 @@ const FILE_TONES: Record<"pdf" | "document" | "file", { badge: string; text: str
 /**
  * Tarjeta descargable para cualquier archivo no reproducible (pdf, doc/docx, xls/xlsx,
  * ppt/pptx, txt/csv o desconocido). El signed URL abre en pestaña nueva; el navegador
- * decide inline vs descarga según el mime. `media_filename` hoy es null en DB, así que
- * el título cae a un nombre genérico por tipo y NO se muestra "null" ni queda vacío.
+ * decide inline vs descarga según el mime.
+ *
+ * `media_filename` trae el nombre original crudo (espacios y tildes intactos) y solo
+ * lo pueblan los documentos: las imágenes, videos y stickers entrantes van null, igual
+ * que TODAS las filas anteriores al 30 jul 2026. Con null el título cae a un nombre
+ * genérico por tipo, nunca a "null" ni a vacío.
  */
 function PrivateWhatsAppFile({
   message,

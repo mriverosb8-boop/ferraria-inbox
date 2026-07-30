@@ -222,6 +222,16 @@ function readMediaBucket(row: WubbyWhatsappRow): string | undefined {
   return readStringField(row, "media_bucket", "mediaBucket", "bucket");
 }
 
+/** Columna `wamid`: id de Meta del mensaje. `undefined` en filas históricas. */
+function readWamid(row: WubbyWhatsappRow): string | undefined {
+  return readStringField(row, "wamid", "waMid", "meta_wamid");
+}
+
+/** Columna `reaction_to_wamid`: solo filas de reacción; wamid del mensaje reaccionado. */
+function readReactionToWamid(row: WubbyWhatsappRow): string | undefined {
+  return readStringField(row, "reaction_to_wamid", "reactionToWamid");
+}
+
 function readMetaMediaId(row: WubbyWhatsappRow): string | undefined {
   return readStringField(row, "media_meta_id", "mediaMetaId", "meta_media_id", "metaMediaId", "media_id", "Media_Id");
 }
@@ -911,6 +921,8 @@ export function buildMessageFromWubbyRow(
       mediaFilename,
       mediaBucket,
       metaMediaId,
+      wamid: readWamid(row) ?? null,
+      reactionToWamid: readReactionToWamid(row) ?? null,
       ...(causeReqHandoff ? { causeRequest: causeReqHandoff } : {}),
       ...(causeOfReq ? { causeOfRequest: causeOfReq } : {}),
     },
