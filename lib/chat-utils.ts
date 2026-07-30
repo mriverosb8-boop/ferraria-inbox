@@ -306,6 +306,27 @@ function readMessageMedia(row: WubbyWhatsappRow): {
 }
 
 /**
+ * `true` cuando el mensaje DICE ser media (hay mime o filename) pero no existe
+ * archivo del que tirar: `media_storage_path` y `media_url` vienen ambos vacíos.
+ *
+ * Es un estado esperado, no un error de datos: el engine escribe la fila del
+ * mensaje aunque la subida a Storage no ocurra (el adjunto superó el tope de
+ * 20 MB, o el upload falló). El mensaje existe, el archivo no, así que no hay
+ * nada que firmar ni que abrir.
+ *
+ * Sin las DOS señales (mime y filename) es texto puro y devuelve `false`.
+ */
+export function isMediaWithoutFile(m: {
+  mediaStoragePath?: string | null;
+  mediaUrl?: string | null;
+  mediaMimeType?: string | null;
+  mediaFilename?: string | null;
+}): boolean {
+  if (m.mediaStoragePath || m.mediaUrl) return false;
+  return Boolean(m.mediaMimeType || m.mediaFilename);
+}
+
+/**
  * Cuerpo y preview de un mensaje a partir de su fila. Único sitio donde vive la
  * cascada `message` → `media_caption` → emoji por mime, para que el preview de
  * la lista y el de la burbuja no puedan divergir.
@@ -319,11 +340,16 @@ function resolveMessageBodyAndPreview(row: WubbyWhatsappRow): {
   const messageRaw = String(row.message ?? "").trim();
   const isImage = media.messageType.trim().toLowerCase() === "image";
   const hasMedia = Boolean(media.mediaStoragePath || media.mediaUrl);
-  const body = messageRaw || media.mediaCaption || (hasMedia ? "" : "(vacío)");
+  // El archivo que no se pudo procesar tampoco es un mensaje "(vacío)": la
+  // burbuja pinta su propia tarjeta y el preview lo dice con todas las letras.
+  const missingFile = isMediaWithoutFile(media);
+  const body = messageRaw || media.mediaCaption || (hasMedia || missingFile ? "" : "(vacío)");
   const kind = resolveMediaKind(media.mediaMimeType);
   const previewRaw =
     body ||
-    (kind === "pdf" || kind === "document"
+    (missingFile
+      ? "📎 Archivo no disponible"
+      : kind === "pdf" || kind === "document"
       ? `📎 ${media.mediaFilename ?? "Documento"}`
       : kind === "video"
       ? "🎥 Video"
@@ -364,16 +390,6 @@ export function readCauseRequest(row: WubbyWhatsappRow): string | undefined {
   return t.length > 0 ? t : undefined;
 }
 
-/** Columna `cause_of_request` (alerta Realtime: requiere humano). */
-export function readCauseOfRequestColumn(row: WubbyWhatsappRow): string | undefined {
-  const v = getRowField(row, "cause_of_request", "Cause_Of_Request", "causeOfRequest");
-  if (v == null) return undefined;
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (typeof v !== "string") return undefined;
-  const t = v.trim();
-  return t.length > 0 ? t : undefined;
-}
-
 /**
  * Misma regla para badge “Solicitó agente humano”, banner y notificación de escritorio.
  * Acepta fila Supabase o `Message` (campos en camelCase).
@@ -402,11 +418,6 @@ export function messageNeedsHumanAlert(messageOrRow: Record<string, unknown>): b
     normalized === "si" ||
     normalized === "sí"
   );
-}
-
-/** @deprecated Preferir messageNeedsHumanAlert */
-export function messageRowRequiresHumanUrgent(row: WubbyWhatsappRow): boolean {
-  return messageNeedsHumanAlert(row as Record<string, unknown>);
 }
 
 export function toBool(v: unknown, defaultVal = false): boolean {

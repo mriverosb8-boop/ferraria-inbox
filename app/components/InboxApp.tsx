@@ -8,6 +8,7 @@ import {
   formatMessageDetailTime,
   formatMessageDisplayTime,
   getConversationDisplayActivityMs,
+  isMediaWithoutFile,
   messageNeedsHumanAlert,
   normalizePhoneDigits,
   resolveMediaKind,
@@ -336,6 +337,18 @@ function IconImage(props: SVGProps<SVGSVGElement>) {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+      />
+    </svg>
+  );
+}
+
+function IconPaperclip(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13"
       />
     </svg>
   );
@@ -1042,6 +1055,48 @@ function PrivateWhatsAppFile({
   );
 }
 
+/**
+ * Media sin archivo: la fila trae mime o filename pero ni `media_storage_path`
+ * ni `media_url`. El adjunto superó el tope de 20 MB o el upload a Storage
+ * falló, así que NO hay nada que firmar — de ahí que no se monte
+ * `useLazySignedMediaUrl` ni se ofrezca abrir o reintentar: no es un fallo de
+ * carga transitorio, el archivo no existe.
+ *
+ * Aplica a los tres tipos por igual (imagen, video, documento): sin archivo, el
+ * mime solo serviría para prometer algo que no se puede entregar.
+ */
+function UnavailableMediaCard({ message }: { message: Message }) {
+  const filename = message.mediaFilename?.trim() || "";
+  const caption = message.body || message.mediaCaption || "";
+
+  return (
+    <div className="flex max-w-full flex-col gap-2">
+      <div
+        className="flex max-w-full items-center gap-3 rounded-xl p-2.5"
+        style={{ border: "1px dashed var(--line)", background: "var(--panel-2)" }}
+      >
+        <div
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
+          style={{ background: "var(--panel-3)", color: "var(--ink-3)" }}
+        >
+          <IconPaperclip className="h-5 w-5" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold" style={{ color: "var(--ink-2)" }}>
+            Archivo no disponible (no se pudo procesar)
+          </p>
+          {filename ? (
+            <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--ink-3)" }}>
+              {filename}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      {caption ? <p className="whitespace-pre-wrap break-words">{caption}</p> : null}
+    </div>
+  );
+}
+
 function PrivateWhatsAppVideo({ message }: { message: Message }) {
   const { signedUrl, phase, requestLoad } = useLazySignedMediaUrl(message);
 
@@ -1102,6 +1157,10 @@ function MessageBubble({
   const timeLabel = formatMessageDisplayTime(m as unknown as Record<string, unknown>) || m.sentAt;
   const isOutboundHotel = !isUser;
   const deliveryStatus = m.status ?? "confirmed";
+  // El optimista de un PDF recién adjuntado tiene filename y mime pero todavía
+  // no path (lo devuelve la route al confirmar): quedaría marcado como "no
+  // disponible" durante el envío. Solo se juzga lo ya confirmado en DB.
+  const missingFile = deliveryStatus !== "pending" && isMediaWithoutFile(m);
 
   // Estética Dirección D: agente = rojo sólido; IA = rojo suave con borde + destello; huésped = panel.
   const bubbleStyle: React.CSSProperties = isUser
@@ -1203,7 +1262,9 @@ function MessageBubble({
               </span>
             </p>
           )}
-          {hasMediaSource ? (
+          {missingFile ? (
+            <UnavailableMediaCard message={m} />
+          ) : hasMediaSource ? (
             mediaKind === "image" ? (
               <div className="flex max-w-full flex-col gap-2">
                 <PrivateWhatsAppImage key={m.id} message={m} />
