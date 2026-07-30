@@ -960,7 +960,16 @@ function fileBadgeLabel(mime: string | null | undefined, filename: string | null
   return "FILE";
 }
 
-/** Nombre legible del tipo, usado como título cuando NO hay filename real (media_filename es null en DB). */
+/**
+ * Nombre legible del tipo, título de la tarjeta cuando `media_filename` es null
+ * (todo lo anterior al 30 jul 2026, y las imágenes/stickers, que nunca lo traen).
+ *
+ * NO caer aquí al basename de `media_storage_path`: el engine nombra el objeto
+ * con el id de Meta, así que el basename de un documento entrante es
+ * `wamid.HBgMNTczMTcyNzEyNDE2FQIAEhgW…_.pdf` — ~70 caracteres opacos que se
+ * truncan en la tarjeta y no dicen nada. Los salientes antiguos son
+ * `<epoch>-<uuid>.pdf`, igual de inútiles. "Documento PDF" informa más.
+ */
 function fileFriendlyName(mime: string | null | undefined, kind: MediaKind): string {
   const m = mime?.trim().toLowerCase() ?? "";
   if (kind === "pdf") return "Documento PDF";
