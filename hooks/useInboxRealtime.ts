@@ -252,36 +252,22 @@ export function useInboxRealtime({
 
     function handleUrgentHandoffRealtimeRow(
       row: WubbyWhatsappRow,
-      eventType: "INSERT" | "UPDATE",
       displayNameOrPhone: string,
       preview: string
     ): void {
-      console.log("[Urgent Alert] handler reached");
-      console.log("[Urgent Alert] eventType:", eventType);
-      console.log("[Urgent Alert] row:", row);
-
       const rowRec = row as Record<string, unknown>;
       const needs = messageNeedsHumanAlert(rowRec);
-      console.log("[Urgent Alert] needsHuman:", needs);
 
       if (!needs) {
-        console.log("[Urgent Alert] skip: needsHuman is false");
         return;
       }
 
       const urgentKey = readUrgentConversationKey(row);
-      console.log("[Urgent Alert] urgentKey:", urgentKey);
 
       const now = Date.now();
       const last = urgentNotifiedAtRef.current.get(urgentKey) ?? 0;
-      console.log("[Urgent Alert] last notification at:", last);
-      console.log(
-        "[Urgent Alert] cooldown remaining ms:",
-        Math.max(0, URGENT_ALERT_COOLDOWN_MS - (now - last))
-      );
 
       if (now - last < URGENT_ALERT_COOLDOWN_MS) {
-        console.log("[Urgent Alert] skip: cooldown active for key:", urgentKey);
         return;
       }
       urgentNotifiedAtRef.current.set(urgentKey, now);
@@ -290,25 +276,15 @@ export function useInboxRealtime({
         onUrgentBannerRef.current?.();
         playUrgentHandoffBeep();
         const body = buildUrgentHandoffBody(displayNameOrPhone, preview);
-        if (typeof Notification === "undefined") {
-          console.log("[Urgent Alert] skip: Notification API unavailable in-window");
-        } else if (Notification.permission !== "granted") {
-          console.log(
-            "[Urgent Alert] skip: desktop notification not shown (permission:",
-            Notification.permission,
-            ")"
-          );
-        } else {
+        // Sin API o sin permiso no es un fallo que reportar: el banner in-app y
+        // el beep de arriba ya avisaron, y el permiso es elección del usuario.
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
           try {
             const previousNotification = activeDesktopNotificationsRef.current.get(urgentKey);
             if (previousNotification) {
               previousNotification.close();
               activeDesktopNotificationsRef.current.delete(urgentKey);
             }
-
-            console.log("[Urgent Alert] document has focus:", document.hasFocus());
-            console.log("[Urgent Alert] visibility:", document.visibilityState);
-            console.log("[Urgent Alert] Notification.permission:", Notification.permission);
 
             const notification = new Notification(URGENT_NOTIFICATION_TITLE, {
               body,
@@ -326,8 +302,6 @@ export function useInboxRealtime({
             notification.onclose = () => {
               activeDesktopNotificationsRef.current.delete(urgentKey);
             };
-
-            console.log("[Urgent Alert] notification sent");
           } catch (e) {
             console.warn("[Urgent Alert] notification failed (exception)", e);
           }
@@ -450,7 +424,7 @@ export function useInboxRealtime({
       const hp = handoffSlot.current;
       if (messageNeedsHumanAlert(row as Record<string, unknown>)) {
         if (hp) {
-          handleUrgentHandoffRealtimeRow(hp.row, "INSERT", hp.displayNameOrPhone, hp.preview);
+          handleUrgentHandoffRealtimeRow(hp.row, hp.displayNameOrPhone, hp.preview);
         } else {
           console.log(
             "[Urgent Alert] INSERT: needsHuman true but no handoff context (conversation not in memory / duplicate id); silent refetch may be needed"
@@ -546,7 +520,7 @@ export function useInboxRealtime({
             "[Urgent Alert] UPDATE debug: calling handler while wasUrgent is true (cooldown dedupes)"
           );
         }
-        handleUrgentHandoffRealtimeRow(hp.row, "UPDATE", hp.displayNameOrPhone, hp.preview);
+        handleUrgentHandoffRealtimeRow(hp.row, hp.displayNameOrPhone, hp.preview);
       } else if (isUrgent && !hp) {
         console.log(
           "[Urgent Alert] UPDATE: needsHuman true but no conversation matched the row phone (other hotel or not loaded)"
