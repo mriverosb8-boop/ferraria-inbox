@@ -284,12 +284,18 @@ export async function PATCH(request: Request) {
     const ownership = await assertConversationInHotel(supabase, conversationId, allowedHotelIds);
     if (ownership.response) return ownership.response;
 
+    // `returning=representation` con las columnas de bandeja: la fila resultante
+    // es POST-update, así que trae también los campos derivados que el `patch` no
+    // toca pero que el cliente necesita para recalcular el estado visible (p. ej.
+    // `blocked`, que ninguna acción escribe y sin embargo tiene precedencia en
+    // `mapOperationalFromConversationRow`). Sigue funcionando como candado de
+    // existencia: sin fila, 404.
     const { data: updatedRow, error } = await supabase
       .from(CONVERSATIONS_TABLE)
       .update(patch)
       .eq("id", conversationId)
       .eq("hotel_id", ownership.hotelId)
-      .select("id")
+      .select(CONVERSATION_SELECT_COLUMNS)
       .maybeSingle();
 
     if (error) {
@@ -303,7 +309,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Conversación no encontrada" }, { status: 404 });
     }
 
-    return NextResponse.json({ ok: true, conversationId, action });
+    // `conversation` permite al cliente aplicar `applyConversationRowPatch` —el
+    // mismo handler que consume Realtime— en vez de recargar la bandeja entera.
+    return NextResponse.json({
+      ok: true,
+      conversationId,
+      action,
+      conversation: updatedRow,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -3,7 +3,7 @@ import { requireSessionUser } from "@/lib/auth/require-user";
 import { assertConversationInHotel, requireActiveHotel } from "@/lib/auth/require-hotel";
 import { nowInColombiaNaive } from "@/lib/colombia-time";
 import { normalizePhoneDigits, normalizeWaIdentity } from "@/lib/chat-utils";
-import { CONVERSATIONS_TABLE } from "@/lib/conversation-schema";
+import { CONVERSATIONS_TABLE, CONVERSATION_SELECT_COLUMNS } from "@/lib/conversation-schema";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { WUBBY_TABLE } from "@/lib/wubby-schema";
 
@@ -332,7 +332,16 @@ export async function POST(request: Request) {
       );
     }
 
-    await supabase
+    // Antes este UPDATE no tenía `.select()` ni comprobación: si fallaba, la
+    // conversación quedaba en el estado anterior y nadie se enteraba.
+    //
+    // NO aborta la petición si falla. Llegados acá el archivo ya salió por la
+    // API de Meta y la fila de `Wubby_Whatsapp` ya está insertada: responder 502
+    // haría que el cliente borre la burbuja optimista (ver el manejo de `!res.ok`
+    // en InboxApp) de un mensaje que el huésped SÍ recibió. Se registra el fallo
+    // y se devuelve `conversation: null`; el cliente conserva su estado local y
+    // Realtime reconcilia.
+    const { data: conversationRow, error: conversationError } = await supabase
       .from(CONVERSATIONS_TABLE)
       .update({
         updated_at: now,
@@ -343,11 +352,29 @@ export async function POST(request: Request) {
         status: "human_control",
       })
       .eq("id", conversationId)
-      .eq("hotel_id", hotelId);
+      .eq("hotel_id", hotelId)
+      .select(CONVERSATION_SELECT_COLUMNS)
+      .maybeSingle();
+
+    if (conversationError) {
+      console.error("[send-whatsapp-media] update conversación", {
+        conversationId,
+        hotelId,
+        error: conversationError.message,
+      });
+    } else if (!conversationRow) {
+      console.error("[send-whatsapp-media] update conversación sin filas", {
+        conversationId,
+        hotelId,
+      });
+    }
 
     return NextResponse.json({
       ok: true,
       message: insertResult.data,
+      // Fila de `conversations` (distinta de `message`, que es la de
+      // `Wubby_Whatsapp`): alimenta `applyConversationRowPatch` en el cliente.
+      conversation: conversationRow ?? null,
       mediaId: mediaPayload.id,
       whatsappMessageId: metaMessageId,
       mediaStoragePath: storagePath,

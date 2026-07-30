@@ -46,7 +46,15 @@ export type ConversationDbRow = {
    */
   request: string | null;
   unread_count: number | null;
-  last_read_at: string | null;
+  /**
+   * OPCIONAL a propósito: queda fuera de `CONVERSATION_SELECT_COLUMNS` (ver
+   * nota arriba), así que las filas que devuelven el GET de bandeja y el PATCH
+   * no la traen. Solo se escribe (`mark_read`, `buildReactivateAiFields`);
+   * ningún lector la consume. Declararla requerida obligaba a mentir con un
+   * cast en cada punto donde se construye un `ConversationDbRow` desde el
+   * select acotado.
+   */
+  last_read_at?: string | null;
   /**
    * Último mensaje ENTRANTE del huésped (timestamptz, trigger AFTER INSERT en
    * `Wubby_Whatsapp` + backfill). `null` = el huésped nunca escribió.
