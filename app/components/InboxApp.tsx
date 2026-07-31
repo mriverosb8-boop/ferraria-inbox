@@ -1477,6 +1477,7 @@ export default function InboxApp() {
   const {
     conversations,
     setConversations,
+    total: totalConversations,
     loading,
     error,
     refetch,
@@ -1822,6 +1823,19 @@ export default function InboxApp() {
    * dejar un skeleton permanente.
    */
   const threadLoading = !!selected && !messagesError && !selected.messagesLoaded;
+
+  /**
+   * Denominador de "COLA OPERATIVA". Es el total del hotel, no el largo del
+   * array: `GET /api/inbox` trae las 300 más recientes por actividad más el set
+   * protegido, así que `conversations.length` diría 301/301 —"ves todo"— con
+   * 495 conversaciones sin cargar.
+   *
+   * Fallback a `conversations.length` mientras el total no llegó: es el
+   * comportamiento anterior, el único número que sí tenemos, y nunca queda por
+   * debajo del numerador. Un 0 se leería como hotel vacío y `undefined` pintaría
+   * "301/undefined".
+   */
+  const queueTotal = totalConversations ?? conversations.length;
 
   const filterCounts = useMemo(() => {
     const all = conversations.length;
@@ -2802,7 +2816,7 @@ export default function InboxApp() {
                     Actualizando…
                   </>
                 ) : (
-                  `${filtered.length}/${conversations.length}`
+                  `${filtered.length}/${queueTotal}`
                 )}
               </span>
               <button

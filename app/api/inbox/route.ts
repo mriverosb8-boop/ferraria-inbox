@@ -43,6 +43,54 @@ type ConversationRowWithLastMessage = ConversationDbRow & {
   Wubby_Whatsapp?: WubbyWhatsappRow[] | null;
 };
 
+/**
+ * Tope de conversaciones traídas por actividad. Con ~800 en el hotel más grande
+ * y ~26 nuevas por día, la consulta sin acotar cruzaba el tope de página de
+ * PostgREST (1000) en unos días y se recortaba EN SILENCIO: 200 OK con la lista
+ * incompleta. Este límite es explícito y sabemos exactamente qué deja afuera.
+ *
+ * No es una página: no hay cursor ni "cargar más". Lo que cae fuera del tope y
+ * fuera del set protegido de abajo NO es alcanzable desde la bandeja, porque la
+ * búsqueda del cliente filtra el array ya cargado.
+ */
+const CONVERSATIONS_PAGE_SIZE = 300;
+
+/**
+ * Set protegido: conversaciones que no pueden faltar aunque queden fuera del
+ * tope por actividad. A propósito MÁS AMPLIO que el chip "Atención" — acá no se
+ * clasifica, se garantiza un superconjunto. Traer de más es barato (~37 filas en
+ * el hotel más grande, 97 en el de más carga operativa); perder una no.
+ *
+ * `request` —no `status`— es la columna donde vive `pending`: el dominio de
+ * `status` es open / completed / human_control. `human_control` va aparte porque
+ * `mapOperationalFromConversationRow` lo clasifica como `requires_attention`.
+ */
+const PROTECTED_CONVERSATIONS_FILTER = [
+  "request.eq.pending",
+  "status.eq.human_control",
+  "blocked.eq.true",
+  "needs_human.eq.true",
+  "unread_count.gt.0",
+].join(",");
+
+/**
+ * Consulta base de bandeja para un hotel: columnas de `conversations` + embed
+ * del último mensaje. La comparten la consulta por actividad y la del set
+ * protegido, así que el embed y su `limit(1)` no pueden divergir entre las dos.
+ */
+function buildInboxConversationsQuery(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  hotelId: string
+) {
+  return supabase
+    .from(CONVERSATIONS_TABLE)
+    .select(CONVERSATIONS_WITH_LAST_MESSAGE_SELECT)
+    .eq("hotel_id", hotelId)
+    .order("created_at", { referencedTable: WUBBY_TABLE, ascending: false })
+    .order("id", { referencedTable: WUBBY_TABLE, ascending: false })
+    .limit(1, { referencedTable: WUBBY_TABLE });
+}
+
 function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelId: string | null = null) {
   return NextResponse.json({
     conversations: [],
@@ -54,7 +102,8 @@ function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelI
     availableHotels,
     activeHotelId,
     hotelWhatsappById: {},
-    truncated: false,
+    total: 0,
+    conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
   });
 }
 
@@ -105,40 +154,75 @@ export async function GET(request: Request) {
 
     const hotelWhatsappById = buildHotelWhatsappByIdMap(hotelWaRows ?? []);
 
-    const convResult = await supabase
-      .from(CONVERSATIONS_TABLE)
-      .select(CONVERSATIONS_WITH_LAST_MESSAGE_SELECT)
-      .eq("hotel_id", activeHotelId)
-      .order("updated_at", { ascending: false })
-      .order("created_at", { referencedTable: WUBBY_TABLE, ascending: false })
-      .order("id", { referencedTable: WUBBY_TABLE, ascending: false })
-      .limit(1, { referencedTable: WUBBY_TABLE });
+    // Independientes entre sí: ninguna necesita el resultado de otra, así que
+    // van en paralelo y el GET cuesta un round trip, no tres.
+    const [recentResult, protectedResult, totalResult] = await Promise.all([
+      // A) Las más recientes por actividad. `sort_activity_at` es la columna
+      // generada `coalesce(last_guest_message_at, created_at)`; el orden por
+      // `id` desempata para que el corte sea determinista. Ambos los cubre
+      // `idx_conversations_hotel_activity`.
+      buildInboxConversationsQuery(supabase, activeHotelId)
+        .order("sort_activity_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(CONVERSATIONS_PAGE_SIZE),
+      // B) El set protegido, sin límite: son decenas de filas y perder una es
+      // justamente lo que este tope no puede permitirse.
+      buildInboxConversationsQuery(supabase, activeHotelId).or(PROTECTED_CONVERSATIONS_FILTER),
+      // Total real del hotel. `head: true` no trae filas, solo el conteo.
+      supabase
+        .from(CONVERSATIONS_TABLE)
+        .select("id", { count: "exact", head: true })
+        .eq("hotel_id", activeHotelId),
+    ]);
 
-    if (convResult.error) {
-      console.error("[inbox GET] conversations", convResult.error);
-      return NextResponse.json({ error: convResult.error.message }, { status: 502 });
+    if (recentResult.error) {
+      console.error("[inbox GET] conversations", recentResult.error);
+      return NextResponse.json({ error: recentResult.error.message }, { status: 502 });
     }
 
-    const rawRows = (convResult.data ?? []) as unknown as ConversationRowWithLastMessage[];
+    if (protectedResult.error) {
+      console.error("[inbox GET] conversations protegidas", protectedResult.error);
+      return NextResponse.json({ error: protectedResult.error.message }, { status: 502 });
+    }
 
-    // Esta query no pagina: si el hotel supera el tope de página de PostgREST,
-    // la respuesta se recorta EN SILENCIO y faltarían conversaciones en la
-    // bandeja.
+    if (totalResult.error) {
+      console.error("[inbox GET] total de conversaciones", totalResult.error);
+      return NextResponse.json({ error: totalResult.error.message }, { status: 502 });
+    }
+
+    const recentRows = (recentResult.data ?? []) as unknown as ConversationRowWithLastMessage[];
+    const protectedRows = (protectedResult.data ??
+      []) as unknown as ConversationRowWithLastMessage[];
+
+    // Unión por id. El set protegido se solapa casi por completo con las más
+    // recientes (hoy aporta 1 fila nueva en el hotel más grande), así que la
+    // dedup no es una optimización: sin ella la misma conversación entraría dos
+    // veces y `buildInboxConversations` la duplicaría en la bandeja.
+    const rowById = new Map<string, ConversationRowWithLastMessage>();
+    for (const row of recentRows) rowById.set(String(row.id), row);
+    for (const row of protectedRows) {
+      const id = String(row.id);
+      if (!rowById.has(id)) rowById.set(id, row);
+    }
+    const rawRows = [...rowById.values()];
+
+    // El warn ya no vigila la consulta principal: con `CONVERSATIONS_PAGE_SIZE`
+    // el recorte es explícito y conocido, y el cliente lo ve comparando
+    // `fetchedConversations` contra `total`. Ahora vigila la ÚNICA consulta que
+    // sigue sin límite propio, la del set protegido.
     //
     // SIN gate de NODE_ENV a propósito. El cap no produce error: PostgREST
     // corta el resultado y responde 200 OK, así que las conversaciones que
     // faltan no dejan rastro en ningún lado. Este warn es la ÚNICA señal, y el
-    // único entorno donde el hotel llega al tope es producción — gatearlo fuera
-    // de ella lo apagaba justo donde hace falta.
+    // único entorno donde un hotel podría llegar al tope es producción —
+    // gatearlo fuera de ella lo apagaba justo donde hace falta.
     //
     // Va a los logs del servidor (Vercel), no a la consola del navegador, y
     // emite solo `hotel_id` y conteos: sin nombres de hotel ni datos de huésped.
-    const truncated = rawRows.length >= POSTGREST_PAGE_SIZE;
-
-    if (truncated) {
-      console.warn("[inbox GET] conversations en el tope de página de PostgREST", {
+    if (protectedRows.length >= POSTGREST_PAGE_SIZE) {
+      console.warn("[inbox GET] conversaciones protegidas en el tope de página de PostgREST", {
         hotelId: activeHotelId,
-        fetched: rawRows.length,
+        fetchedProtected: protectedRows.length,
         pageSize: POSTGREST_PAGE_SIZE,
       });
     }
@@ -169,12 +253,12 @@ export async function GET(request: Request) {
       availableHotels,
       activeHotelId,
       hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
-      // Misma condición que el warn de arriba. Estaba fijo en `false`, o sea
-      // que el único campo del contrato que existe para avisar del recorte
-      // afirmaba lo contrario justo cuando el recorte ocurría. Hoy no lo lee
-      // ningún consumidor —`InboxResponse` en `useConversations` ni siquiera lo
-      // declara—, pero ahora al menos dice la verdad.
-      truncated,
+      // Reemplaza a `truncated`, que con el tope sería `true` de forma
+      // permanente y por lo tanto no informaría nada. `total` es el count real
+      // del hotel: con él, `fetchedConversations < total` dice que hay recorte y
+      // además CUÁNTO falta, que es lo que un booleano nunca pudo decir.
+      total: totalResult.count ?? convRows.length,
+      conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido";

@@ -18,6 +18,12 @@ type AvailableHotel = {
 type InboxResponse = {
   conversations: Conversation[];
   fetchedRows?: number;
+  /**
+   * `count(*)` del hotel, no el largo de `conversations`: desde que
+   * `GET /api/inbox` acota a las más recientes por actividad, el array recibido
+   * es un subconjunto. Es el denominador honesto de "COLA OPERATIVA".
+   */
+  total?: number;
   availableHotels?: AvailableHotel[];
   activeHotelId?: string | null;
   hotelWhatsappById?: Record<string, string>;
@@ -62,6 +68,12 @@ export type { AvailableHotel };
 export function useConversations(options?: UseConversationsOptions) {
   const activeHotelId = options?.activeHotelId ?? null;
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  /**
+   * Total de conversaciones del hotel según el servidor. `null` = todavía no
+   * llegó ninguna respuesta con el dato; el consumidor decide el fallback en vez
+   * de comerse un 0 que se leería como "el hotel no tiene ninguna".
+   */
+  const [total, setTotal] = useState<number | null>(null);
   const [availableHotels, setAvailableHotels] = useState<AvailableHotel[]>([]);
   const [resolvedActiveHotelId, setResolvedActiveHotelId] = useState<string | null>(null);
   const [hotelWhatsappById, setHotelWhatsappById] = useState<HotelWhatsappByIdMap>(() => new Map());
@@ -160,6 +172,9 @@ export function useConversations(options?: UseConversationsOptions) {
           };
         });
       });
+      // Solo si vino un número: ante una respuesta vieja o un campo ausente se
+      // conserva el último total conocido en vez de degradar el denominador.
+      if (typeof json.total === "number") setTotal(json.total);
       setAvailableHotels(json.availableHotels ?? []);
       setResolvedActiveHotelId(json.activeHotelId ?? null);
       setHotelWhatsappById(hotelWhatsappMapFromRecord(json.hotelWhatsappById ?? {}));
@@ -285,6 +300,7 @@ export function useConversations(options?: UseConversationsOptions) {
   return {
     conversations,
     setConversations,
+    total,
     loading,
     error,
     refetch: load,
