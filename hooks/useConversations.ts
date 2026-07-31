@@ -45,6 +45,18 @@ export type UseConversationsOptions = {
 /** Ventana de coalescing para recargas por reconciliación Realtime sin contexto local. */
 const MISSING_CONTEXT_DEBOUNCE_MS = 800;
 
+/**
+ * Antigüedad mínima del último GET para que volver al tab dispare otro.
+ *
+ * Sin esto, cada alt-tab costaba una bandeja entera (~569 kB en el hotel más
+ * grande) y un asesor entra y sale decenas de veces por turno. Lo que justifica
+ * que el refetch exista es el tab dormido LARGO, donde el socket de Realtime
+ * pudo morir sin aviso: el canal se suscribe una sola vez en un efecto con deps
+ * vacías y no hay reconexión propia, así que nada lo restablece. Esas
+ * suspensiones duran minutos, muy por encima de esta ventana.
+ */
+const VISIBILITY_REFETCH_MIN_AGE_MS = 30_000;
+
 export type { AvailableHotel };
 
 export function useConversations(options?: UseConversationsOptions) {
@@ -74,6 +86,18 @@ export function useConversations(options?: UseConversationsOptions) {
   // cada cambio de conversación seleccionada. Se sincroniza en cada render.
   const activeConversationIdRef = useRef(options?.activeConversationId);
   activeConversationIdRef.current = options?.activeConversationId;
+
+  /**
+   * Momento del último GET a `/api/inbox` que terminó bien. Lo escribe `load`,
+   * NO el listener de visibilidad, para que lo alimenten todos los
+   * disparadores: montaje, reconciliación de Realtime, botón manual y la propia
+   * vuelta al tab. Si solo lo tocara `onVisible`, abrir la app y hacer alt-tab
+   * en el acto dispararía un GET redundante a los dos segundos del de montaje.
+   *
+   * Arranca en 0 a propósito: mientras no haya un GET exitoso —incluido el caso
+   * en que el de montaje falló— la vuelta al tab siempre reintenta.
+   */
+  const lastLoadAtRef = useRef(0);
 
   const load = useCallback(async (refetchOptions?: RefetchOptions) => {
     const silent = refetchOptions?.silent === true;
@@ -140,6 +164,9 @@ export function useConversations(options?: UseConversationsOptions) {
       setResolvedActiveHotelId(json.activeHotelId ?? null);
       setHotelWhatsappById(hotelWhatsappMapFromRecord(json.hotelWhatsappById ?? {}));
       setError(null);
+      // Único punto donde se sella: acá el GET ya respondió y se aplicó. Un
+      // fetch abortado o fallido cae al catch y no cuenta como reciente.
+      lastLoadAtRef.current = Date.now();
     } catch (e) {
       // Fetch abortado (p. ej. un cambio de hotel recreó `load` y canceló este):
       // no es un error de UI, simplemente quedó obsoleto.
@@ -217,11 +244,12 @@ export function useConversations(options?: UseConversationsOptions) {
 
   // Reconciliación puntual: refetch silencioso cuando la pestaña vuelve al foco,
   // útil si el socket de Realtime estuvo en background o el tab estuvo dormido.
+  // Con throttle por antigüedad: ver `VISIBILITY_REFETCH_MIN_AGE_MS`.
   useEffect(() => {
     const onVisible = () => {
-      if (typeof document !== "undefined" && !document.hidden) {
-        void loadRef.current({ silent: true });
-      }
+      if (typeof document === "undefined" || document.hidden) return;
+      if (Date.now() - lastLoadAtRef.current < VISIBILITY_REFETCH_MIN_AGE_MS) return;
+      void loadRef.current({ silent: true });
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
