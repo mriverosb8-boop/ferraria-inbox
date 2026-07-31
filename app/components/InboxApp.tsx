@@ -1463,6 +1463,16 @@ function MessageBubble({
 export default function InboxApp() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [requestedConversationId, setRequestedConversationId] = useState<string | null>(null);
+  /**
+   * Llegó un `?conversationId=` que NO está en la lista cargada. Lo emite el
+   * service worker de las push (`public/sw.js`), así que el id puede ser de otro
+   * hotel o —cuando `GET /api/inbox` pase a acotarse con un `.limit()`— de una
+   * conversación fuera de la ventana traída.
+   *
+   * Bloquea la autoselección: mientras esté en `true` el panel queda vacío con
+   * un aviso, en vez de abrir una conversación que no es la que se pidió.
+   */
+  const [deepLinkMissing, setDeepLinkMissing] = useState(false);
   const [activeHotelId, setActiveHotelId] = useState<string | null>(() => readStoredActiveHotelId());
   const {
     conversations,
@@ -1742,14 +1752,39 @@ export default function InboxApp() {
   useEffect(() => {
     if (activeHotelId !== resolvedActiveHotelId) return;
     if (conversations.length === 0) return;
+
+    if (requestedConversationId) {
+      const found = conversations.some((c) => c.id === requestedConversationId);
+      // Se consume una sola vez. Si el id siguiera vigente, cada cambio de
+      // `conversations` —Realtime, refetch— volvería a imponerlo y el asesor no
+      // podría abrir ninguna otra conversación.
+      setRequestedConversationId(null);
+      setDeepLinkMissing(!found);
+      // Pedido explícito y ausente: NO se cae a otra conversación. Antes esto
+      // devolvía `conversations[0]`, así que una push del huésped X abría el
+      // chat del huésped Y sin ningún aviso y el asesor podía responderle a la
+      // persona equivocada. Ahora el panel queda vacío y `deepLinkMissing`
+      // explica por qué.
+      setSelectedId(found ? requestedConversationId : "");
+      return;
+    }
+
+    // Deep link no encontrado: sin autoselección. Abrir la primera es
+    // exactamente el fallback que este arreglo elimina. Se levanta cuando el
+    // asesor elige desde la lista (`openChat`) o cambia de hotel.
+    if (deepLinkMissing) return;
+
     setSelectedId((id) => {
-      if (requestedConversationId && conversations.some((c) => c.id === requestedConversationId)) {
-        return requestedConversationId;
-      }
       if (id && conversations.some((c) => c.id === id)) return id;
       return conversations[0]!.id;
     });
-  }, [conversations, requestedConversationId, activeHotelId, resolvedActiveHotelId]);
+  }, [
+    conversations,
+    requestedConversationId,
+    activeHotelId,
+    resolvedActiveHotelId,
+    deepLinkMissing,
+  ]);
 
   const selected = useMemo(
     () => conversations.find((c) => c.id === selectedId) ?? null,
@@ -2531,6 +2566,9 @@ export default function InboxApp() {
   };
 
   const openChat = (id: string) => {
+    // El asesor eligió a mano: el aviso del deep link ya no aplica y la
+    // autoselección vuelve a estar habilitada.
+    setDeepLinkMissing(false);
     setSelectedId(id);
     setMobileTab("chat");
     void markConversationRead(id);
@@ -2950,6 +2988,9 @@ export default function InboxApp() {
                                 setActiveHotelId(hotel.id);
                                 writeStoredActiveHotelId(hotel.id);
                                 setSelectedId("");
+                                // El aviso hablaba de la lista del hotel
+                                // anterior: en el nuevo vuelve a autoseleccionar.
+                                setDeepLinkMissing(false);
                                 setHotelSelectOpen(false);
                               }}
                               className="d-soft flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left"
@@ -3490,6 +3531,16 @@ export default function InboxApp() {
                 </div>
               </div>
             </>
+          ) : deepLinkMissing ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+              <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>
+                Esa conversación no está en esta vista
+              </p>
+              <p className="max-w-xs text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                Puede ser de otro hotel. No abrimos otra en su lugar para no mostrarte el chat
+                equivocado: selecciona una de la lista o cambia de hotel.
+              </p>
+            </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
               <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>Selecciona una conversación</p>

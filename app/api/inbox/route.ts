@@ -133,7 +133,9 @@ export async function GET(request: Request) {
     //
     // Va a los logs del servidor (Vercel), no a la consola del navegador, y
     // emite solo `hotel_id` y conteos: sin nombres de hotel ni datos de huésped.
-    if (rawRows.length >= POSTGREST_PAGE_SIZE) {
+    const truncated = rawRows.length >= POSTGREST_PAGE_SIZE;
+
+    if (truncated) {
       console.warn("[inbox GET] conversations en el tope de página de PostgREST", {
         hotelId: activeHotelId,
         fetched: rawRows.length,
@@ -167,9 +169,12 @@ export async function GET(request: Request) {
       availableHotels,
       activeHotelId,
       hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
-      // Sin barrido paginado no hay nada que truncar; el campo se mantiene
-      // porque ya forma parte del contrato de la respuesta.
-      truncated: false,
+      // Misma condición que el warn de arriba. Estaba fijo en `false`, o sea
+      // que el único campo del contrato que existe para avisar del recorte
+      // afirmaba lo contrario justo cuando el recorte ocurría. Hoy no lo lee
+      // ningún consumidor —`InboxResponse` en `useConversations` ni siquiera lo
+      // declara—, pero ahora al menos dice la verdad.
+      truncated,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido";
