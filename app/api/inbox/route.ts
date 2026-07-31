@@ -124,9 +124,18 @@ export async function GET(request: Request) {
     // Esta query no pagina: si el hotel supera el tope de página de PostgREST,
     // la respuesta se recorta EN SILENCIO y faltarían conversaciones en la
     // bandeja. Barranquilla ya va por 743.
-    if (process.env.NODE_ENV !== "production" && rawRows.length >= POSTGREST_PAGE_SIZE) {
+    //
+    // SIN gate de NODE_ENV a propósito. El cap no produce error: PostgREST
+    // corta el resultado y responde 200 OK, así que las conversaciones que
+    // faltan no dejan rastro en ningún lado. Este warn es la ÚNICA señal, y el
+    // único entorno donde el hotel llega al tope es producción — gatearlo fuera
+    // de ella lo apagaba justo donde hace falta.
+    //
+    // Va a los logs del servidor (Vercel), no a la consola del navegador, y
+    // emite solo `hotel_id` y conteos: sin nombres de hotel ni datos de huésped.
+    if (rawRows.length >= POSTGREST_PAGE_SIZE) {
       console.warn("[inbox GET] conversations en el tope de página de PostgREST", {
-        activeHotelId,
+        hotelId: activeHotelId,
         fetched: rawRows.length,
         pageSize: POSTGREST_PAGE_SIZE,
       });
