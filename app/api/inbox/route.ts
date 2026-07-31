@@ -123,7 +123,7 @@ export async function GET(request: Request) {
 
     // Esta query no pagina: si el hotel supera el tope de página de PostgREST,
     // la respuesta se recorta EN SILENCIO y faltarían conversaciones en la
-    // bandeja. Barranquilla ya va por 743.
+    // bandeja.
     //
     // SIN gate de NODE_ENV a propósito. El cap no produce error: PostgREST
     // corta el resultado y responde 200 OK, así que las conversaciones que
