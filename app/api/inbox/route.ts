@@ -74,9 +74,33 @@ const PROTECTED_CONVERSATIONS_FILTER = [
 ].join(",");
 
 /**
+ * RPC de búsqueda por nombre y teléfono. `SECURITY INVOKER` y `STABLE`: pliega
+ * acentos, normaliza los dígitos del teléfono, exige 2+ caracteres (3+ dígitos
+ * para el match numérico) y ordena por `sort_activity_at desc, id desc`.
+ *
+ * Devuelve `SETOF conversations`, o sea filas crudas SIN el embed del último
+ * mensaje — de ahí la segunda consulta de abajo.
+ *
+ * Corre con el cliente de service role, que omite RLS: el gate de tenant es
+ * `resolveActiveHotelId`, que ya validó que `activeHotelId` sea del usuario
+ * antes de llegar acá. El RPC nunca recibe un hotel sin autorizar.
+ */
+const SEARCH_CONVERSATIONS_RPC = "search_conversations";
+
+/** Tope de resultados de búsqueda. El RPC además lo capa a 200. */
+const SEARCH_PAGE_SIZE = 50;
+
+/**
+ * Mínimo de caracteres, el mismo que exige el RPC. Se comprueba acá para no
+ * gastar un round trip en un término que la función va a descartar igual.
+ */
+const SEARCH_MIN_LENGTH = 2;
+
+/**
  * Consulta base de bandeja para un hotel: columnas de `conversations` + embed
- * del último mensaje. La comparten la consulta por actividad y la del set
- * protegido, así que el embed y su `limit(1)` no pueden divergir entre las dos.
+ * del último mensaje. La comparten la consulta por actividad, la del set
+ * protegido y la de búsqueda, así que el embed y su `limit(1)` no pueden
+ * divergir entre ellas.
  */
 function buildInboxConversationsQuery(
   supabase: ReturnType<typeof getSupabaseServerClient>,
@@ -89,6 +113,23 @@ function buildInboxConversationsQuery(
     .order("created_at", { referencedTable: WUBBY_TABLE, ascending: false })
     .order("id", { referencedTable: WUBBY_TABLE, ascending: false })
     .limit(1, { referencedTable: WUBBY_TABLE });
+}
+
+/** Separa las filas con embed en `conversations` puras + mapa de último mensaje. */
+function splitEmbeddedRows(rawRows: ConversationRowWithLastMessage[]) {
+  const convRows: ConversationDbRow[] = [];
+  const lastMessageByConversationId = new Map<string, WubbyWhatsappRow>();
+
+  for (const raw of rawRows) {
+    const { Wubby_Whatsapp: embedded, ...conv } = raw;
+    convRows.push(conv as ConversationDbRow);
+    const lastRow = Array.isArray(embedded) ? embedded[0] : null;
+    if (lastRow) {
+      lastMessageByConversationId.set(String(conv.id), lastRow);
+    }
+  }
+
+  return { convRows, lastMessageByConversationId };
 }
 
 function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelId: string | null = null) {
@@ -104,6 +145,7 @@ function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelI
     hotelWhatsappById: {},
     total: 0,
     conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
+    query: null,
   });
 }
 
@@ -114,7 +156,9 @@ export async function GET(request: Request) {
 
     const supabase = getSupabaseServerClient();
     const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
-    const requestedHotelId = new URL(request.url).searchParams.get("hotelId")?.trim() ?? "";
+    const searchParams = new URL(request.url).searchParams;
+    const requestedHotelId = searchParams.get("hotelId")?.trim() ?? "";
+    const searchTerm = searchParams.get("q")?.trim() ?? "";
     const availableHotels = await resolveAvailableHotels(supabase, allowedHotelIds);
     const { activeHotelId, forbidden } = resolveActiveHotelId(
       requestedHotelId,
@@ -153,6 +197,106 @@ export async function GET(request: Request) {
     }
 
     const hotelWhatsappById = buildHotelWhatsappByIdMap(hotelWaRows ?? []);
+
+    // Camino de búsqueda. Aditivo: sin `q` nada de esto corre y el resto del
+    // handler queda exactamente como estaba.
+    //
+    // A propósito NO aplica `CONVERSATIONS_PAGE_SIZE` ni el set protegido: los
+    // dos son heurísticas para decidir QUÉ mostrar cuando no hay criterio, y con
+    // un criterio explícito sabotearían la búsqueda — el match podría estar
+    // fuera de las 300 y fuera del set protegido, que es justo el caso que esto
+    // viene a cerrar.
+    if (searchTerm) {
+      if (searchTerm.length < SEARCH_MIN_LENGTH) {
+        return NextResponse.json({
+          conversations: [],
+          fetchedConversations: 0,
+          fetchedMessages: 0,
+          messageLimit: MESSAGES_LIMIT,
+          availableHotels,
+          activeHotelId,
+          hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
+          total: 0,
+          conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
+          query: searchTerm,
+          searchLimit: SEARCH_PAGE_SIZE,
+        });
+      }
+
+      const [rpcResult, hotelTotalResult] = await Promise.all([
+        supabase.rpc(SEARCH_CONVERSATIONS_RPC, {
+          p_hotel_id: activeHotelId,
+          p_q: searchTerm,
+          p_limit: SEARCH_PAGE_SIZE,
+        }),
+        // El total del hotel se mantiene con búsqueda activa: `total` significa
+        // lo mismo en los dos caminos y el cliente no tiene que reinterpretarlo.
+        supabase
+          .from(CONVERSATIONS_TABLE)
+          .select("id", { count: "exact", head: true })
+          .eq("hotel_id", activeHotelId),
+      ]);
+
+      if (rpcResult.error) {
+        console.error("[inbox GET] search_conversations", rpcResult.error);
+        return NextResponse.json({ error: rpcResult.error.message }, { status: 502 });
+      }
+
+      if (hotelTotalResult.error) {
+        console.error("[inbox GET] total de conversaciones", hotelTotalResult.error);
+        return NextResponse.json({ error: hotelTotalResult.error.message }, { status: 502 });
+      }
+
+      const matchedIds = ((rpcResult.data ?? []) as ConversationDbRow[]).map((row) =>
+        String(row.id)
+      );
+
+      // El RPC devuelve `SETOF conversations`, sin el embed del último mensaje.
+      // Segunda consulta por los ids, reusando la MISMA query base que la
+      // bandeja: así el preview de un resultado se construye por el mismo camino
+      // que el de una fila normal y no pueden divergir.
+      //
+      // La alternativa —devolver los resultados sin preview— dejaba "Sin
+      // mensajes" en cada fila y, peor, mandaba `lastActivityIso` al `created_at`
+      // de la conversación (ver `buildInboxConversations`), cambiando el orden y
+      // la fecha visible respecto de la misma conversación en la bandeja.
+      let searchRows: ConversationRowWithLastMessage[] = [];
+      if (matchedIds.length > 0) {
+        const withPreview = await buildInboxConversationsQuery(supabase, activeHotelId).in(
+          "id",
+          matchedIds
+        );
+
+        if (withPreview.error) {
+          console.error("[inbox GET] preview de resultados", withPreview.error);
+          return NextResponse.json({ error: withPreview.error.message }, { status: 502 });
+        }
+
+        searchRows = (withPreview.data ?? []) as unknown as ConversationRowWithLastMessage[];
+      }
+
+      const { convRows, lastMessageByConversationId } = splitEmbeddedRows(searchRows);
+      const conversations = buildInboxConversations(convRows, lastMessageByConversationId);
+      conversations.sort((a, b) => {
+        return getConversationDisplayActivityMs(b) - getConversationDisplayActivityMs(a);
+      });
+
+      return NextResponse.json({
+        conversations,
+        fetchedConversations: convRows.length,
+        fetchedMessages: 0,
+        messageLimit: MESSAGES_LIMIT,
+        availableHotels,
+        activeHotelId,
+        hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
+        total: hotelTotalResult.count ?? convRows.length,
+        conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
+        // Eco del término aplicado: el cliente descarta con esto las respuestas
+        // que llegan fuera de orden respecto de lo que hay tipeado.
+        query: searchTerm,
+        searchLimit: SEARCH_PAGE_SIZE,
+      });
+    }
 
     // Independientes entre sí: ninguna necesita el resultado de otra, así que
     // van en paralelo y el GET cuesta un round trip, no tres.
@@ -227,17 +371,7 @@ export async function GET(request: Request) {
       });
     }
 
-    const convRows: ConversationDbRow[] = [];
-    const lastMessageByConversationId = new Map<string, WubbyWhatsappRow>();
-
-    for (const raw of rawRows) {
-      const { Wubby_Whatsapp: embedded, ...conv } = raw;
-      convRows.push(conv as ConversationDbRow);
-      const lastRow = Array.isArray(embedded) ? embedded[0] : null;
-      if (lastRow) {
-        lastMessageByConversationId.set(String(conv.id), lastRow);
-      }
-    }
+    const { convRows, lastMessageByConversationId } = splitEmbeddedRows(rawRows);
 
     const conversations = buildInboxConversations(convRows, lastMessageByConversationId);
     conversations.sort((a, b) => {
@@ -259,6 +393,9 @@ export async function GET(request: Request) {
       // además CUÁNTO falta, que es lo que un booleano nunca pudo decir.
       total: totalResult.count ?? convRows.length,
       conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
+      // `null` = esta respuesta NO es de búsqueda. El campo está siempre para
+      // que el cliente pueda leerlo sin ramificar por su ausencia.
+      query: null,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Error desconocido";

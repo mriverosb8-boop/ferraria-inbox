@@ -25,6 +25,7 @@ import {
 import { useConversations } from "@/hooks/useConversations";
 import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
+import { useInboxSearch } from "@/hooks/useInboxSearch";
 import { WUBBY_TABLE } from "@/lib/wubby-schema";
 import { BrandHeaderMark } from "./BrandHeaderMark";
 import { FollowupTimer } from "./FollowupTimer";
@@ -1549,6 +1550,17 @@ export default function InboxApp() {
   );
 
   const [query, setQuery] = useState("");
+  /**
+   * Búsqueda server-side. Alcanza las ~515 conversaciones que quedan fuera del
+   * tope de 300 y que el filtro en memoria no podía ver. Mezcla sus resultados
+   * por id en `conversations` (ver `useInboxSearch`).
+   */
+  const search = useInboxSearch({
+    query,
+    activeHotelId: conversationHotelId,
+    activeConversationId: selectedId,
+    setConversations,
+  });
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [draft, setDraft] = useState("");
   const [mobileTab, setMobileTab] = useState<"list" | "chat">("list");
@@ -1837,17 +1849,40 @@ export default function InboxApp() {
    */
   const queueTotal = totalConversations ?? conversations.length;
 
+  /**
+   * Los chips describen LA BANDEJA, así que excluyen lo que inyectó la
+   * búsqueda. Sin esto, escribir en el buscador movía los conteos: 16
+   * resultados con 2 `closed` subían "Hechas" en 2 sin que nadie cerrara nada,
+   * y al vaciar el input volvían a bajar.
+   *
+   * Siguen siendo cotas inferiores —se cargan 300 de 815—, que es lo que ya
+   * eran. La diferencia es que ahora no se mueven solos. El conteo exacto exige
+   * los totales por filtro desde el servidor, que sigue pendiente.
+   */
   const filterCounts = useMemo(() => {
-    const all = conversations.length;
-    const unread = conversations.filter((c) => c.unreadCount > 0).length;
-    const ai_active = conversations.filter((c) => c.operationalStatus === "ai_active").length;
-    const requires_attention = conversations.filter((c) => c.operationalStatus === "requires_attention").length;
-    const closed = conversations.filter((c) => c.operationalStatus === "closed").length;
+    const base =
+      search.injectedIds.size === 0
+        ? conversations
+        : conversations.filter((c) => !search.injectedIds.has(c.id));
+    const all = base.length;
+    const unread = base.filter((c) => c.unreadCount > 0).length;
+    const ai_active = base.filter((c) => c.operationalStatus === "ai_active").length;
+    const requires_attention = base.filter((c) => c.operationalStatus === "requires_attention").length;
+    const closed = base.filter((c) => c.operationalStatus === "closed").length;
     return { all, unread, ai_active, requires_attention, closed };
-  }, [conversations]);
+  }, [conversations, search.injectedIds]);
 
   const filtered = useMemo(() => {
     let list = conversations;
+
+    // Con búsqueda server-side la lista es exactamente la que resolvió el RPC.
+    // El criterio local (nombre YA resuelto a teléfono cuando falta, preview del
+    // último mensaje, `property`) no coincide con el del servidor (nombre y
+    // teléfono con acentos plegados), así que re-filtrar acá mostraría 3 de los
+    // 20 que vinieron.
+    if (search.active) {
+      list = list.filter((c) => search.resultIds.has(c.id));
+    }
 
     if (statusFilter === "unread") {
       list = list.filter((c) => c.unreadCount > 0);
@@ -1859,19 +1894,23 @@ export default function InboxApp() {
       list = list.filter((c) => c.operationalStatus === "closed");
     }
 
-    const q = query.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (c) =>
-          c.guest.name.toLowerCase().includes(q) ||
-          c.guestPhone.toLowerCase().includes(q) ||
-          c.lastMessagePreview.toLowerCase().includes(q) ||
-          c.guest.property.toLowerCase().includes(q)
-      );
+    // Filtro de texto local SOLO cuando no hay búsqueda server-side, o sea con
+    // términos de 1 carácter, por debajo del mínimo que exige el RPC.
+    if (!search.active) {
+      const q = query.trim().toLowerCase();
+      if (q) {
+        list = list.filter(
+          (c) =>
+            c.guest.name.toLowerCase().includes(q) ||
+            c.guestPhone.toLowerCase().includes(q) ||
+            c.lastMessagePreview.toLowerCase().includes(q) ||
+            c.guest.property.toLowerCase().includes(q)
+        );
+      }
     }
 
     return sortConversationsByActivity(list);
-  }, [conversations, query, statusFilter]);
+  }, [conversations, query, statusFilter, search.active, search.resultIds]);
 
   const scrollToBottom = useCallback(() => {
     scrollEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -3036,15 +3075,72 @@ export default function InboxApp() {
           >
             {loading ? (
               <InboxListSkeleton />
+            ) : search.status === "searching" ? (
+              <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+                <Spinner className="h-5 w-5 animate-spin" style={{ color: "var(--ink-3)" }} />
+                <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>
+                  Buscando «{search.term}»…
+                </p>
+              </div>
+            ) : search.status === "error" ? (
+              /* Separado de "sin resultados" a propósito: un fallo de red pintado
+                 como ausencia le hace concluir al asesor que el huésped no existe. */
+              <div className="flex flex-col items-center justify-center gap-2.5 px-6 py-16 text-center">
+                <p className="text-sm font-medium" style={{ color: "var(--red)" }}>
+                  No se pudo buscar
+                </p>
+                <p className="max-w-[240px] text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                  {search.error ?? "Revisa la conexión e intenta de nuevo."}
+                </p>
+                <button
+                  type="button"
+                  onClick={search.retry}
+                  className="d-act grotesk mt-1 px-3.5 py-2"
+                  style={{
+                    borderRadius: 9,
+                    border: "1px solid var(--line)",
+                    background: "var(--panel-2)",
+                    color: "var(--ink)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  Reintentar
+                </button>
+              </div>
+            ) : search.status === "empty" ? (
+              <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+                <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>
+                  Sin resultados para «{search.term}»
+                </p>
+                <p className="max-w-[240px] text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                  Buscamos por nombre y teléfono en todo el hotel, no solo en lo cargado.
+                </p>
+              </div>
             ) : filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
                 <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>No hay conversaciones</p>
                 <p className="max-w-[240px] text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
-                  Ajusta filtros o búsqueda.
+                  {search.status === "results"
+                    ? "Los resultados no pasan el filtro de estado activo."
+                    : "Ajusta filtros o búsqueda."}
                 </p>
               </div>
             ) : (
-              filtered.map((c) => {
+              <>
+                {search.status === "results" && search.atLimit && (
+                  /* El RPC capa los resultados. Sin este aviso, "50 resultados"
+                     se lee como "solo existen 50", que es la misma clase de
+                     recorte silencioso que este lote vino a cerrar. */
+                  <p
+                    className="px-5 py-2.5 text-[12px] leading-relaxed"
+                    style={{ color: "var(--ink-3)", borderBottom: "1px solid var(--line)" }}
+                  >
+                    Mostrando los resultados más recientes. Si no está el que buscás, afiná el
+                    término.
+                  </p>
+                )}
+                {filtered.map((c) => {
                 const active = c.id === selectedId;
                 const hasUnread = c.unreadCount > 0;
                 const unreadLabel = c.unreadCount > 99 ? "99+" : String(c.unreadCount);
@@ -3150,7 +3246,8 @@ export default function InboxApp() {
                     </div>
                   </button>
                 );
-              })
+                })}
+              </>
             )}
           </div>
         </aside>
