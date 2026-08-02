@@ -1,9 +1,19 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
 import { assertConversationInHotel, requireActiveHotel } from "@/lib/auth/require-hotel";
+import { attachWamidByClientTempId, extractWamid } from "@/lib/outbound-wamid";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
+
+function safeJsonParse(raw: string): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 async function readHotelWhatsappConfig(hotelId: string | null | undefined): Promise<{
   whatsappPhoneNumberId: string | null;
@@ -127,13 +137,27 @@ export async function POST(request: Request) {
       body: JSON.stringify(payload),
     });
 
+    const rawBody = await res.text().catch(() => "");
+
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("[send-human-message]", res.status, text);
+      console.error("[send-human-message]", res.status, rawBody);
       return NextResponse.json(
-        { error: `El engine respondió ${res.status}`, detail: text.slice(0, 500) },
+        { error: `El engine respondió ${res.status}`, detail: rawBody.slice(0, 500) },
         { status: 502 }
       );
+    }
+
+    // El engine inserta la fila en `Wubby_Whatsapp` ANTES de responder y ya
+    // escribe el `wamid`; este update es el backstop para las filas que
+    // quedaran sin él. Se ancla en el `client_temp_id` que viaja en el payload,
+    // que es el mismo que el engine copia a la fila.
+    //
+    // Nunca aborta la respuesta: el mensaje ya salió al huésped y el único
+    // efecto de fallar acá es que ese mensaje no se pueda cruzar después con
+    // `message_statuses`.
+    const wamid = extractWamid(safeJsonParse(rawBody));
+    if (wamid && clientTempId) {
+      await attachWamidByClientTempId({ wamid, clientTempId, hotelId });
     }
 
     return NextResponse.json({ ok: true });

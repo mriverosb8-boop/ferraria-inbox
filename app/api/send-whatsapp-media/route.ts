@@ -29,7 +29,7 @@ const OPTIONAL_WUBBY_COLUMNS = [
   "media_meta_id",
   "meta_media_id",
   "media_bucket",
-  "whatsapp_message_id",
+  "wamid",
   "hotel_id",
 ] as const;
 
@@ -321,7 +321,11 @@ export async function POST(request: Request) {
       media_meta_id: mediaPayload.id,
       meta_media_id: mediaPayload.id,
       media_bucket: storageBucket,
-      whatsapp_message_id: metaMessageId,
+      // Columna real de la tabla (antes se escribía `whatsapp_message_id`, que
+      // NO existe: el fallback de columnas la descartaba en silencio y la fila
+      // quedaba sin id de Meta). Es la clave que cruza con `message_statuses`
+      // para poder marcar el mensaje como no entregado en el inbox.
+      wamid: metaMessageId,
     };
 
     const insertResult = await insertWubbyRowWithFallback(insertPayload);

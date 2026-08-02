@@ -7,6 +7,7 @@ import {
 } from "@/lib/inbox-tenant";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { fetchHotelMessageTemplateByName } from "@/lib/message-templates";
+import { attachWamidToLatestOutbound, extractWamid } from "@/lib/outbound-wamid";
 import { normalizeColombianWhatsappNumber } from "@/lib/whatsapp-templates";
 
 export const dynamic = "force-dynamic";
@@ -142,6 +143,26 @@ export async function POST(request: Request) {
     if (!res.ok) {
       console.error("[send-whatsapp-template]", res.status, raw);
       return NextResponse.json({ error: readEngineError(parsed) }, { status: 502 });
+    }
+
+    // La fila "Human Template" la inserta quien envía (engine o n8n), así que
+    // acá solo queda completarle el `wamid` para poder cruzarla después con
+    // `message_statuses` y marcar la burbuja como no entregada.
+    //
+    // A diferencia del texto humano, este camino NO lleva `clientTempId`: el
+    // ancla es (hotel, sender sintético, destinatario, wamid IS NULL) tomando
+    // la fila más reciente, que es la recién insertada. Fallar acá no deshace
+    // el envío, solo deja ese mensaje sin rastrear.
+    const wamid = extractWamid(parsed);
+    if (wamid) {
+      await attachWamidToLatestOutbound({
+        wamid,
+        hotelId: activeHotelId,
+        sender: "Human Template",
+        // El engine guarda el teléfono en dígitos; n8n copia el `to` del
+        // payload tal cual. Se cubren ambas formas, con y sin `+`.
+        recipientCandidates: [to, `+${to}`],
+      });
     }
 
     return NextResponse.json({ ok: true, result: parsed });
