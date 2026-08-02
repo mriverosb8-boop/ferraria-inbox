@@ -49,6 +49,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { HeaderMobileMenu, HEADER_MENU_ROW_CLASS } from "./HeaderMobileMenu";
 import { WhatsappText, stripWhatsappMarkup } from "./WhatsappText";
 import { HelpModal } from "./HelpModal";
+import { StaffContactsModal } from "./StaffContactsModal";
 
 type StatusFilter = "all" | "unread" | "ai_active" | "requires_attention" | "closed";
 
@@ -264,6 +265,17 @@ function IconCompose(props: SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M19 15v3.75A2.25 2.25 0 0116.75 21H5.25A2.25 2.25 0 013 18.75V7.25A2.25 2.25 0 015.25 5H9" />
+    </svg>
+  );
+}
+
+/** Contactos del personal del hotel (dos siluetas). */
+function IconStaff(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.5v-1a3.5 3.5 0 00-3.5-3.5h-4A3.5 3.5 0 004 18.5v1" />
+      <circle cx="9.5" cy="8" r="3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20 19.5v-1a3.5 3.5 0 00-2.6-3.4M15.5 5.2a3 3 0 010 5.6" />
     </svg>
   );
 }
@@ -1669,6 +1681,7 @@ export default function InboxApp() {
   const [startConversationOpen, setStartConversationOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [staffContactsOpen, setStaffContactsOpen] = useState(false);
   const [moderationDialogAction, setModerationDialogAction] = useState<"block" | "unblock" | null>(
     null
   );
@@ -2862,6 +2875,23 @@ export default function InboxApp() {
               <IconCompose className="h-4 w-4" />
               <span className="hidden sm:inline">Comenzar conversación</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setStaffContactsOpen(true)}
+              className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
+              style={{
+                padding: "7px 12px",
+                borderRadius: 8,
+                border: "none",
+                background: "transparent",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <IconStaff className="h-4 w-4" />
+              <span className="hidden sm:inline">Staff</span>
+            </button>
             <ThemeToggle />
             <button
               type="button"
@@ -2891,6 +2921,15 @@ export default function InboxApp() {
             >
               <IconCompose className="h-4 w-4 shrink-0" />
               Comenzar conversación
+            </button>
+            <button
+              type="button"
+              onClick={() => setStaffContactsOpen(true)}
+              className={HEADER_MENU_ROW_CLASS}
+              role="menuitem"
+            >
+              <IconStaff className="h-4 w-4 shrink-0" />
+              Staff
             </button>
             <button
               type="button"
@@ -3931,6 +3970,11 @@ export default function InboxApp() {
         }
       />
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <StaffContactsModal
+        open={staffContactsOpen}
+        activeHotelId={conversationHotelId}
+        onClose={() => setStaffContactsOpen(false)}
+      />
     </div>
   );
 }
