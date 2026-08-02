@@ -16,7 +16,13 @@ import {
 import type { MediaKind } from "@/lib/chat-utils";
 import { appendConversationMessages } from "@/lib/message-limits";
 import { upsertConversationMessage } from "@/lib/message-upsert";
-import type { ControlMode, Conversation, Message, OperationalStatus } from "@/lib/inbox-types";
+import type {
+  ControlMode,
+  Conversation,
+  Message,
+  MessageDeliveryFailure,
+  OperationalStatus,
+} from "@/lib/inbox-types";
 import {
   CONVERSATIONS_TABLE,
   GUEST_NAME_MAX_LENGTH,
@@ -26,6 +32,7 @@ import { useConversations } from "@/hooks/useConversations";
 import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
 import { useInboxSearch } from "@/hooks/useInboxSearch";
+import { useMessageDeliveryFailures } from "@/hooks/useMessageDeliveryFailures";
 import { WUBBY_TABLE } from "@/lib/wubby-schema";
 import { BrandHeaderMark } from "./BrandHeaderMark";
 import { FollowupTimer } from "./FollowupTimer";
@@ -62,6 +69,13 @@ const META_INBOX_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Imágenes/PDFs más recientes que esto cargan signed-url al abrir; el resto espera clic del usuario. */
 const LAZY_MEDIA_AUTO_LOAD_MS = 24 * 60 * 60 * 1000;
 /** Composer humano: altura mínima (1 línea) y máxima (~6 líneas) antes de scroll interno. */
+/**
+ * Espera antes de repescar los acuses de Meta tras enviar. El webhook de status
+ * llega en segundos, no al instante; 6 s cubre el caso normal sin montar un
+ * polling por algo que casi siempre sale bien.
+ */
+const DELIVERY_STATUS_REFETCH_MS = 6000;
+
 const COMPOSER_MIN_HEIGHT_PX = 38;
 const COMPOSER_MAX_HEIGHT_PX = 140;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -327,6 +341,16 @@ function IconCheckCheck(props: SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 32 24" fill="none" stroke="currentColor" strokeWidth={2} {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 14l5 5 10-11" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 14l5 5 10-11" />
+    </svg>
+  );
+}
+
+/** Cruz en círculo: el mensaje NO llegó al huésped (acuse `failed` de Meta). */
+function IconCircleX(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" d="M15 9l-6 6M9 9l6 6" />
     </svg>
   );
 }
@@ -1248,17 +1272,36 @@ function isWhatsappSticker(m: Message): boolean {
   );
 }
 
+/**
+ * Texto del tooltip del chip "No entregado". Meta no siempre manda
+ * `error_title`, así que se degrada a solo el código, y si tampoco hay, a la
+ * frase seca.
+ */
+function describeDeliveryFailure(failure: MessageDeliveryFailure): string {
+  const title = failure.errorTitle?.trim();
+  if (title) return `No entregado — ${title}`;
+  if (failure.errorCode != null) return `No entregado — error ${failure.errorCode} de WhatsApp`;
+  return "No entregado";
+}
+
 function MessageBubble({
   m,
   guestName,
   guestSeed,
   reaction,
+  deliveryFailure,
 }: {
   m: Message;
   guestName: string;
   guestSeed: string;
   /** Emoji de la reacción vigente sobre ESTA burbuja; ver `buildThreadView`. */
   reaction?: string;
+  /**
+   * Acuse `failed` de Meta para ESTA burbuja, cruzado por `wamid`. Solo puede
+   * existir en salientes con `wamid`: los históricos y los de los hoteles que
+   * envían por n8n nunca lo traen.
+   */
+  deliveryFailure?: MessageDeliveryFailure;
 }) {
   const isUser = m.sender === "user";
   const isAi = m.sender === "ai";
@@ -1444,7 +1487,25 @@ function MessageBubble({
               {timeLabel}
             </time>
             {isOutboundHotel &&
-              (deliveryStatus === "pending" ? (
+              // El acuse `failed` de Meta gana sobre el tick local: el ✓✓ solo
+              // significa "la fila está en la base", no que el huésped lo
+              // recibiera. Si Meta dijo que no llegó, manda Meta.
+              (deliveryFailure ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight"
+                  style={{
+                    // Sobre la burbuja roja del agente el rojo no contrasta:
+                    // ahí el chip va en blanco, igual que el badge de handoff.
+                    background: onRed ? "rgba(255,255,255,.18)" : "var(--red-soft)",
+                    border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--red)",
+                    color: onRed ? "#fff" : "var(--red)",
+                  }}
+                  title={describeDeliveryFailure(deliveryFailure)}
+                >
+                  <IconCircleX className="h-3 w-3 shrink-0" aria-hidden />
+                  <span>No entregado</span>
+                </span>
+              ) : deliveryStatus === "pending" ? (
                 <IconCheck className="h-3.5 w-3.5 shrink-0" style={{ color: metaColor }} aria-label="Enviado" />
               ) : (
                 <IconCheckCheck className="h-3.5 w-[18px] shrink-0" style={{ color: metaColor }} aria-label="Entregado" />
@@ -1548,6 +1609,18 @@ export default function InboxApp() {
     conversationHotelId,
     setConversations
   );
+
+  /**
+   * Acuses `failed` de Meta para el hilo abierto, indexados por `wamid`. Es la
+   * única fuente que sabe que un mensaje NO le llegó al huésped (p. ej. 131026
+   * "Message Undeliverable"); sin esto, recepción ve el ✓✓ y da por hecho que
+   * el mensaje se entregó.
+   */
+  const { deliveryFailures, refetchDeliveryFailures } = useMessageDeliveryFailures(
+    selectedId,
+    conversationHotelId
+  );
+  const deliveryRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [query, setQuery] = useState("");
   /**
@@ -1994,6 +2067,35 @@ export default function InboxApp() {
     handleFileSelection(pastedFile);
   };
 
+  /**
+   * Repesca los acuses de Meta un rato después de enviar. El webhook de status
+   * no es inmediato —un `failed` como 131026 tarda segundos— así que pedirlo al
+   * instante no traería nada; se espera y se pide UNA vez.
+   *
+   * Es best-effort: si el acuse llega más tarde, se verá al reabrir la
+   * conversación. No se monta un polling por algo que en la práctica es raro.
+   */
+  const scheduleDeliveryFailuresRefetch = useCallback(() => {
+    if (deliveryRefetchTimerRef.current) {
+      clearTimeout(deliveryRefetchTimerRef.current);
+    }
+    deliveryRefetchTimerRef.current = setTimeout(() => {
+      deliveryRefetchTimerRef.current = null;
+      refetchDeliveryFailures();
+    }, DELIVERY_STATUS_REFETCH_MS);
+  }, [refetchDeliveryFailures]);
+
+  // Cambiar de conversación (o desmontar) cancela el refetch pendiente: si no,
+  // dispararía contra el hilo que ya no está abierto.
+  useEffect(() => {
+    return () => {
+      if (deliveryRefetchTimerRef.current) {
+        clearTimeout(deliveryRefetchTimerRef.current);
+        deliveryRefetchTimerRef.current = null;
+      }
+    };
+  }, [selectedId]);
+
   const sendMessage = async () => {
     const text = draft.trim();
     if ((!text && !selectedFile) || !selectedId || sendingMedia) return;
@@ -2073,7 +2175,10 @@ export default function InboxApp() {
             media_meta_id?: string | null;
             meta_media_id?: string | null;
             message_type?: string | null;
+            wamid?: string | null;
           };
+          /** Id de Meta del mensaje; la route lo devuelve además suelto. */
+          whatsappMessageId?: string | null;
           /** Fila de `conversations`, distinta de `message` (fila de Wubby). */
           conversation?: ConversationDbRow | null;
           mediaStoragePath?: string;
@@ -2111,6 +2216,9 @@ export default function InboxApp() {
           mediaCaption: j.message?.media_caption ?? (text || null),
           mediaFilename: j.message?.media_filename ?? j.mediaFilename ?? selectedFile.name,
           metaMediaId: j.message?.media_meta_id ?? j.message?.meta_media_id ?? null,
+          // Sin esto la burbuja recién enviada no tendría con qué cruzarse
+          // contra `message_statuses` hasta el siguiente refetch del hilo.
+          wamid: j.message?.wamid ?? j.whatsappMessageId ?? null,
         };
 
         setConversations((prev) =>
@@ -2150,6 +2258,8 @@ export default function InboxApp() {
           // `null` silencioso.
           void refetch({ silent: true });
         }
+
+        scheduleDeliveryFailuresRefetch();
       } catch {
         setConversations((prev) =>
           prev.map((c) =>
@@ -2224,6 +2334,10 @@ export default function InboxApp() {
           setSendWarning(j.error ?? "No se pudo notificar al engine");
         }
       }
+      // Meta puede aceptar el mensaje y rechazarlo después (131026 "Message
+      // Undeliverable"): la burbuja ya está pintada con ✓✓ y solo el acuse
+      // posterior revela que no llegó.
+      scheduleDeliveryFailuresRefetch();
     } catch {
       setSendWarning("Error de red al enviar al engine");
     }
@@ -3438,6 +3552,9 @@ export default function InboxApp() {
                         guestName={selected.guest.name}
                         guestSeed={selected.guest.id}
                         reaction={reactionByMessageId.get(m.id)}
+                        deliveryFailure={
+                          m.wamid ? deliveryFailures.get(m.wamid) : undefined
+                        }
                       />
                     ))
                   )}

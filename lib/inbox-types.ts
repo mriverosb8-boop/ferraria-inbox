@@ -8,6 +8,25 @@ export type MessageSender = "user" | "ai" | "agent";
 /** Entrega del mensaje saliente (optimista → confirmado en DB). */
 export type MessageDeliveryStatus = "pending" | "confirmed";
 
+/**
+ * Acuse de Meta que reporta un mensaje saliente como NO entregado, tal y como
+ * lo sirve `GET /api/conversations/[id]/message-statuses`.
+ *
+ * La fuente es `message_statuses` (service-role only), y se cruza con la
+ * burbuja por `wamid`. Los mensajes sin `wamid` —históricos, y todo lo que
+ * envían los hoteles que aún van por n8n— no aparecen acá y se pintan como
+ * siempre: no hay forma de mapearlos.
+ */
+export interface MessageDeliveryFailure {
+  wamid: string;
+  /** Siempre `"failed"` hoy: el endpoint no devuelve otros estados. */
+  status: string;
+  /** Código de error de Meta, p. ej. 131026 (Message Undeliverable). */
+  errorCode: number | null;
+  /** Título legible del error de Meta; puede venir vacío. */
+  errorTitle: string | null;
+}
+
 export interface AiMessageMeta {
   latencyMs: number;
   tokens: number;
