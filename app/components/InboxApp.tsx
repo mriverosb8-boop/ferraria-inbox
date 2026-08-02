@@ -1,6 +1,6 @@
 "use client";
 
-import type { ClipboardEvent, SVGProps } from "react";
+import type { ClipboardEvent, ReactNode, SVGProps } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { avatarFlatColors, initials, splitLeadingEmoji } from "@/lib/avatar";
 import {
@@ -118,6 +118,31 @@ function StaffBadge({ className = "" }: { className?: string }) {
     >
       Staff
     </span>
+  );
+}
+
+/**
+ * Rótulo de sección de la bandeja ("Huéspedes"). Deliberadamente delgado: la
+ * lista se mira todo el día y cada píxel que gasta el rótulo es una fila menos
+ * en pantalla. Existe para que el encabezado de la sección Staff no quede
+ * huérfano al pie de una lista sin nombre.
+ */
+function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <div
+      className="grotesk px-4 py-1.5"
+      style={{
+        fontSize: 10.5,
+        fontWeight: 700,
+        letterSpacing: "0.11em",
+        textTransform: "uppercase",
+        color: "var(--ink-3)",
+        background: "var(--panel-2)",
+        borderBottom: "1px solid var(--line-2)",
+      }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -1576,7 +1601,7 @@ export default function InboxApp() {
   const [deepLinkMissing, setDeepLinkMissing] = useState(false);
   const [activeHotelId, setActiveHotelId] = useState<string | null>(() => readStoredActiveHotelId());
   const {
-    conversations,
+    conversations: rawConversations,
     setConversations,
     total: totalConversations,
     loading,
@@ -1589,8 +1614,34 @@ export default function InboxApp() {
     realtimeErrorDetail,
     availableHotels,
     activeHotelId: resolvedActiveHotelId,
+    engineEnabled,
   } = useConversations({ activeConversationId: selectedId, activeHotelId });
   const { followups: followupTimers, removeFollowup } = useFollowupTimers();
+
+  /**
+   * ÚNICO punto donde se decide si una conversación cuenta como staff.
+   *
+   * El guard que impide que la IA le conteste al personal vive en el engine, así
+   * que un hotel todavía en n8n (`engine_enabled = false`) no lo tiene: si una
+   * recepcionista de ahí registrara un contacto, la IA le seguiría respondiendo
+   * y la feature parecería rota. Para esos hoteles el staff no existe en la UI.
+   *
+   * Se apaga acá, en la fuente, y NO con un `engineEnabled &&` repartido por
+   * cada condicional de más abajo: así la sección Huéspedes, los chips, la
+   * pastilla del encabezado, el panel de gestión y el botón de fuera de ventana
+   * caen solos al camino de huésped, sin veinte lugares que puedan quedar
+   * desalineados. Lo único que además se esconde a mano es la sección Staff
+   * entera, porque con la lista vacía igual pintaría encabezado y "+ Agregar".
+   *
+   * Con el flag prendido devuelve el MISMO array (misma identidad): cero copias
+   * y cero re-renders extra en el camino normal.
+   *
+   * Es gate de UI, no de seguridad: `/api/staff-contacts/**` sigue igual.
+   */
+  const conversations = useMemo(() => {
+    if (engineEnabled) return rawConversations;
+    return rawConversations.map((c) => (c.isStaff ? { ...c, isStaff: false } : c));
+  }, [rawConversations, engineEnabled]);
 
   const conversationHotelId = activeHotelId ?? resolvedActiveHotelId;
   const push = usePushNotifications(conversationHotelId);
@@ -1716,6 +1767,12 @@ export default function InboxApp() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [staffContactsOpen, setStaffContactsOpen] = useState(false);
+  /**
+   * La sección Staff arranca COLAPSADA: el trabajo del día es responderle a
+   * huéspedes y el personal no puede empujar esa lista hacia abajo. Lo pendiente
+   * no se esconde igual, el encabezado muestra las no leídas aunque esté cerrada.
+   */
+  const [staffSectionOpen, setStaffSectionOpen] = useState(false);
   const [moderationDialogAction, setModerationDialogAction] = useState<"block" | "unblock" | null>(
     null
   );
@@ -2019,20 +2076,21 @@ export default function InboxApp() {
   const queueTotal = totalConversations ?? conversations.length;
 
   /**
-   * Los chips describen LA BANDEJA, así que excluyen lo que inyectó la
-   * búsqueda. Sin esto, escribir en el buscador movía los conteos: 16
-   * resultados con 2 `closed` subían "Hechas" en 2 sin que nadie cerrara nada,
-   * y al vaciar el input volvían a bajar.
+   * Los chips describen LA SECCIÓN DE HUÉSPEDES, así que excluyen dos cosas: lo
+   * que inyectó la búsqueda y las conversaciones de staff.
+   *
+   * Sin lo primero, escribir en el buscador movía los conteos: 16 resultados
+   * con 2 `closed` subían "Hechas" en 2 sin que nadie cerrara nada, y al vaciar
+   * el input volvían a bajar. Sin lo segundo, los chips contarían filas que la
+   * sección Huéspedes ya no pinta —el staff vive en su propia sección—, y un
+   * "Sin leer 3" con dos filas visibles se lee como un bug.
    *
    * Siguen siendo cotas inferiores —se cargan 300 de 815—, que es lo que ya
    * eran. La diferencia es que ahora no se mueven solos. El conteo exacto exige
    * los totales por filtro desde el servidor, que sigue pendiente.
    */
   const filterCounts = useMemo(() => {
-    const base =
-      search.injectedIds.size === 0
-        ? conversations
-        : conversations.filter((c) => !search.injectedIds.has(c.id));
+    const base = conversations.filter((c) => !c.isStaff && !search.injectedIds.has(c.id));
     const all = base.length;
     const unread = base.filter((c) => c.unreadCount > 0).length;
     const ai_active = base.filter((c) => c.operationalStatus === "ai_active").length;
@@ -2041,17 +2099,41 @@ export default function InboxApp() {
     return { all, unread, ai_active, requires_attention, closed };
   }, [conversations, search.injectedIds]);
 
-  const filtered = useMemo(() => {
-    let list = conversations;
-
+  /**
+   * Tronco común de las dos secciones: la bandeja acotada SOLO por búsqueda.
+   * De acá cuelgan `guestConversations` (que además pasa por los chips) y
+   * `staffConversations` (que no).
+   */
+  const searchScoped = useMemo(() => {
     // Con búsqueda server-side la lista es exactamente la que resolvió el RPC.
     // El criterio local (nombre YA resuelto a teléfono cuando falta, preview del
     // último mensaje, `property`) no coincide con el del servidor (nombre y
     // teléfono con acentos plegados), así que re-filtrar acá mostraría 3 de los
     // 20 que vinieron.
     if (search.active) {
-      list = list.filter((c) => search.resultIds.has(c.id));
+      return conversations.filter((c) => search.resultIds.has(c.id));
     }
+
+    // Filtro de texto local SOLO cuando no hay búsqueda server-side, o sea con
+    // términos de 1 carácter, por debajo del mínimo que exige el RPC.
+    const q = query.trim().toLowerCase();
+    if (!q) return conversations;
+
+    return conversations.filter(
+      (c) =>
+        c.guest.name.toLowerCase().includes(q) ||
+        c.guestPhone.toLowerCase().includes(q) ||
+        c.lastMessagePreview.toLowerCase().includes(q) ||
+        c.guest.property.toLowerCase().includes(q)
+    );
+  }, [conversations, query, search.active, search.resultIds]);
+
+  /**
+   * Sección "Huéspedes": la bandeja de siempre menos el staff. Mismo orden,
+   * mismos chips, mismo comportamiento de búsqueda.
+   */
+  const guestConversations = useMemo(() => {
+    let list = searchScoped.filter((c) => !c.isStaff);
 
     if (statusFilter === "unread") {
       list = list.filter((c) => c.unreadCount > 0);
@@ -2063,23 +2145,31 @@ export default function InboxApp() {
       list = list.filter((c) => c.operationalStatus === "closed");
     }
 
-    // Filtro de texto local SOLO cuando no hay búsqueda server-side, o sea con
-    // términos de 1 carácter, por debajo del mínimo que exige el RPC.
-    if (!search.active) {
-      const q = query.trim().toLowerCase();
-      if (q) {
-        list = list.filter(
-          (c) =>
-            c.guest.name.toLowerCase().includes(q) ||
-            c.guestPhone.toLowerCase().includes(q) ||
-            c.lastMessagePreview.toLowerCase().includes(q) ||
-            c.guest.property.toLowerCase().includes(q)
-        );
-      }
-    }
-
     return sortConversationsByActivity(list);
-  }, [conversations, query, statusFilter, search.active, search.resultIds]);
+  }, [searchScoped, statusFilter]);
+
+  /**
+   * Sección "Staff". A propósito NO pasa por los chips de estado: "IA activa",
+   * "Atención" y "Hechas" describen el ciclo de vida de un huésped y en un hilo
+   * con el personal no significan nada. Si se sub-filtrara, poner "Hechas"
+   * escondería a la camarera que acaba de escribir sin ninguna razón visible.
+   *
+   * La búsqueda SÍ la filtra: cuando alguien busca un número quiere encontrarlo
+   * esté en la sección que esté.
+   */
+  const staffConversations = useMemo(
+    () => sortConversationsByActivity(searchScoped.filter((c) => c.isStaff)),
+    [searchScoped]
+  );
+
+  /**
+   * Señal que impide que la sección colapsada esconda algo pendiente: si acá
+   * hay no leídas, el encabezado las muestra aunque esté cerrada.
+   */
+  const staffUnreadTotal = useMemo(
+    () => staffConversations.reduce((acc, c) => acc + c.unreadCount, 0),
+    [staffConversations]
+  );
 
   const scrollToBottom = useCallback(() => {
     scrollEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -2837,6 +2927,119 @@ export default function InboxApp() {
     void markConversationRead(id);
   };
 
+  /**
+   * Fila de la bandeja. Extraída porque ahora la pintan DOS secciones
+   * (Huéspedes y Staff); duplicar el JSX era garantía de que una de las dos se
+   * quedara vieja al primer cambio.
+   *
+   * No lleva la pastilla "Staff": dentro de la sección Staff es redundante y en
+   * la de Huéspedes no puede aparecer. La pastilla sigue en el encabezado de la
+   * conversación abierta, que es donde sí importa antes de escribir.
+   */
+  const renderConversationRow = (c: Conversation) => {
+    const active = c.id === selectedId;
+    const hasUnread = c.unreadCount > 0;
+    const unreadLabel = c.unreadCount > 99 ? "99+" : String(c.unreadCount);
+    const isPending = c.request === "pending";
+    const isHumanHandled = c.controlMode === "human" && c.operationalStatus !== "closed";
+    // El humano ya la está atendiendo → no la marcamos como "atención" en rojo.
+    const showAttentionBar =
+      isPending || (c.operationalStatus === "requires_attention" && !isHumanHandled);
+    const statusVariant: StatusVariant = isPending
+      ? "pending"
+      : c.operationalStatus === "closed"
+        ? "done"
+        : isHumanHandled
+          ? "human"
+          : c.operationalStatus === "requires_attention"
+            ? "attention"
+            : "ia";
+    const propertyLabel = c.guest.property.split("—")[0]?.trim();
+    const showProperty =
+      propertyLabel &&
+      !["sin propiedad indicada", "true", "false"].includes(propertyLabel.toLowerCase());
+    const followupTimer = followupTimers.get(c.id);
+    const { emoji, rest } = splitLeadingEmoji(c.guest.name);
+    return (
+      <button
+        key={c.id}
+        type="button"
+        onClick={() => openChat(c.id)}
+        className={`d-row relative flex w-full text-left ${active ? "sel" : ""}`}
+        style={{
+          gap: 13,
+          padding: "15px 20px 15px 22px",
+          borderBottom: "1px solid var(--line-2)",
+          boxShadow: active ? "var(--shadow-sm)" : "none",
+        }}
+      >
+        {showAttentionBar && (
+          <span
+            aria-hidden
+            style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--red)" }}
+          />
+        )}
+        <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span
+              className="grotesk truncate"
+              style={{
+                fontWeight: 600,
+                fontSize: 14.5,
+                letterSpacing: "-0.01em",
+                color: "var(--ink)",
+              }}
+            >
+              {(emoji ? emoji + " " : "") + rest}
+            </span>
+            {c.blocked && <BlockedBadge className="shrink-0" />}
+            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+              {c.lastMessageAt}
+            </span>
+          </div>
+          <p
+            className="truncate"
+            style={{
+              margin: "4px 0 8px",
+              fontSize: 13,
+              color: hasUnread ? "var(--ink)" : "var(--ink-2)",
+              fontWeight: hasUnread ? 600 : 400,
+            }}
+          >
+            {stripWhatsappMarkup(c.lastMessagePreview)}
+          </p>
+          <div className="flex items-center gap-2">
+            <StatusToken variant={statusVariant} />
+            {showProperty && (
+              <span className="truncate" style={{ fontSize: 11, color: "var(--ink-3)" }} title={propertyLabel}>
+                {propertyLabel}
+              </span>
+            )}
+            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+              {followupTimer && (
+                <FollowupTimer
+                  quoteCreatedAt={followupTimer.quoteCreatedAt}
+                  onCancel={() => cancelFollowup(c.id, followupTimer.quoteRequestId, followupTimer.stage)}
+                />
+              )}
+              {hasUnread && (
+                <span
+                  className="ibx-mono flex h-[18px] min-w-[18px] items-center justify-center px-1"
+                  style={{ borderRadius: 999, background: "var(--red)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
+                  aria-label={`${c.unreadCount} mensajes sin leer`}
+                  title={`${c.unreadCount} mensajes sin leer`}
+                >
+                  {unreadLabel}
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
+      </button>
+    );
+  };
+
   const filterTabs: { id: StatusFilter; label: string; count: number }[] = [
     { id: "all", label: "Todas", count: filterCounts.all },
     { id: "unread", label: "Sin leer", count: filterCounts.unread },
@@ -2844,7 +3047,17 @@ export default function InboxApp() {
     { id: "closed", label: "Hechas", count: filterCounts.closed },
   ];
 
-  const conversationClosed = selected?.operationalStatus === "closed";
+  const selectedIsStaff = Boolean(selected?.isStaff);
+  /**
+   * "Cerrada" describe el ciclo de vida de un HUÉSPED: la IA resolvió o alguien
+   * marcó completado. En un hilo con el personal no significa nada.
+   *
+   * Y hay una razón dura además de la conceptual: en staff se ocultan "cerrar"
+   * y "reabrir", así que una conversación que hubiera quedado cerrada de antes
+   * dejaría el compositor bloqueado PARA SIEMPRE, sin ningún botón que lo
+   * suelte. Ignorar el cierre en staff cierra ese callejón sin salida.
+   */
+  const conversationClosed = selected?.operationalStatus === "closed" && !selectedIsStaff;
   const inputDisabled = Boolean(conversationClosed || replyBlockedByMeta);
   const selectedFileIsPdf = isPdfFile(selectedFile);
   const selectedFileSizeLabel = selectedFile ? formatFileSize(selectedFile.size) : "";
@@ -2958,23 +3171,9 @@ export default function InboxApp() {
               <IconCompose className="h-4 w-4" />
               <span className="hidden sm:inline">Comenzar conversación</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setStaffContactsOpen(true)}
-              className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
-              style={{
-                padding: "7px 12px",
-                borderRadius: 8,
-                border: "none",
-                background: "transparent",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              <IconStaff className="h-4 w-4" />
-              <span className="hidden sm:inline">Staff</span>
-            </button>
+            {/* La gestión de contactos de staff ya no cuelga del header: se abre
+                desde el "+ Agregar" de la sección Staff de la bandeja, que es
+                donde el asesor ya está mirando cuando le hace falta. */}
             <ThemeToggle />
             <button
               type="button"
@@ -3004,15 +3203,6 @@ export default function InboxApp() {
             >
               <IconCompose className="h-4 w-4 shrink-0" />
               Comenzar conversación
-            </button>
-            <button
-              type="button"
-              onClick={() => setStaffContactsOpen(true)}
-              className={HEADER_MENU_ROW_CLASS}
-              role="menuitem"
-            >
-              <IconStaff className="h-4 w-4 shrink-0" />
-              Staff
             </button>
             <button
               type="button"
@@ -3091,7 +3281,9 @@ export default function InboxApp() {
                     Actualizando…
                   </>
                 ) : (
-                  `${filtered.length}/${queueTotal}`
+                  // Las dos secciones suman: el denominador es el total del
+                  // hotel y el staff también sale de ahí.
+                  `${guestConversations.length + staffConversations.length}/${queueTotal}`
                 )}
               </span>
               <button
@@ -3311,7 +3503,11 @@ export default function InboxApp() {
           >
             {loading ? (
               <InboxListSkeleton />
-            ) : search.status === "searching" ? (
+            ) : (
+              <>
+            {/* ───────── Sección Huéspedes ───────── */}
+            <SectionLabel>Huéspedes</SectionLabel>
+            {search.status === "searching" ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
                 <Spinner className="h-5 w-5 animate-spin" style={{ color: "var(--ink-3)" }} />
                 <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>
@@ -3353,7 +3549,7 @@ export default function InboxApp() {
                   Buscamos por nombre y teléfono en todo el hotel, no solo en lo cargado.
                 </p>
               </div>
-            ) : filtered.length === 0 ? (
+            ) : guestConversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
                 <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>No hay conversaciones</p>
                 <p className="max-w-[240px] text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
@@ -3376,114 +3572,102 @@ export default function InboxApp() {
                     término.
                   </p>
                 )}
-                {filtered.map((c) => {
-                const active = c.id === selectedId;
-                const hasUnread = c.unreadCount > 0;
-                const unreadLabel = c.unreadCount > 99 ? "99+" : String(c.unreadCount);
-                const isPending = c.request === "pending";
-                const isHumanHandled =
-                  c.controlMode === "human" && c.operationalStatus !== "closed";
-                // El humano ya la está atendiendo → no la marcamos como "atención" en rojo.
-                const showAttentionBar =
-                  isPending ||
-                  (c.operationalStatus === "requires_attention" && !isHumanHandled);
-                const statusVariant: StatusVariant = isPending
-                  ? "pending"
-                  : c.operationalStatus === "closed"
-                    ? "done"
-                    : isHumanHandled
-                      ? "human"
-                      : c.operationalStatus === "requires_attention"
-                        ? "attention"
-                        : "ia";
-                const propertyLabel = c.guest.property.split("—")[0]?.trim();
-                const showProperty =
-                  propertyLabel &&
-                  !["sin propiedad indicada", "true", "false"].includes(propertyLabel.toLowerCase());
-                const followupTimer = followupTimers.get(c.id);
-                const { emoji, rest } = splitLeadingEmoji(c.guest.name);
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onClick={() => openChat(c.id)}
-                    className={`d-row relative flex w-full text-left ${active ? "sel" : ""}`}
+                {guestConversations.map(renderConversationRow)}
+              </>
+            )}
+
+            {/* ───────── Sección Staff ─────────
+                Con el hotel en el engine se pinta SIEMPRE, aunque no haya
+                contactos ni resultados de búsqueda: su "+ Agregar" es la única
+                puerta a la gestión de contactos desde que se quitó el botón del
+                header. Si se escondiera con la lista vacía, un hotel sin staff
+                cargado no tendría por dónde cargar el primero.
+
+                `engineEnabled` es la ÚNICA excepción, y va acá a mano porque es
+                el único pedazo de la feature que no cuelga de `isStaff`: con el
+                flag apagado la lista de staff ya viene vacía (ver el memo de
+                `conversations`), pero el encabezado y "+ Agregar" se pintarían
+                igual y ofrecerían registrar contactos que la IA de n8n va a
+                ignorar. Sin el flag, la bandeja es una sola lista, como antes. */}
+            {engineEnabled && (
+            <div style={{ borderTop: "1px solid var(--line)" }}>
+              <div className="flex items-center gap-1.5 px-3 py-2" style={{ background: "var(--panel-2)" }}>
+                <button
+                  type="button"
+                  onClick={() => setStaffSectionOpen((open) => !open)}
+                  className="grotesk d-soft flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1 text-left"
+                  aria-expanded={staffSectionOpen}
+                  aria-controls="ibx-staff-section"
+                >
+                  <IconChevronDown
+                    className={`h-4 w-4 shrink-0 transition-transform ${staffSectionOpen ? "" : "-rotate-90"}`}
+                    style={{ color: "var(--ink-3)" }}
+                    aria-hidden
+                  />
+                  <IconStaff className="h-4 w-4 shrink-0" style={{ color: "var(--staff)" }} aria-hidden />
+                  <span
+                    className="truncate"
                     style={{
-                      gap: 13,
-                      padding: "15px 20px 15px 22px",
-                      borderBottom: "1px solid var(--line-2)",
-                      boxShadow: active ? "var(--shadow-sm)" : "none",
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      letterSpacing: "0.09em",
+                      textTransform: "uppercase",
+                      color: "var(--ink-2)",
                     }}
                   >
-                    {showAttentionBar && (
-                      <span
-                        aria-hidden
-                        style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--red)" }}
-                      />
-                    )}
-                    <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <span
-                          className="grotesk truncate"
-                          style={{
-                            fontWeight: 600,
-                            fontSize: 14.5,
-                            letterSpacing: "-0.01em",
-                            color: "var(--ink)",
-                          }}
-                        >
-                          {(emoji ? emoji + " " : "") + rest}
-                        </span>
-                        {c.isStaff && <StaffBadge className="shrink-0" />}
-                        {c.blocked && <BlockedBadge className="shrink-0" />}
-                        <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 11, color: "var(--ink-3)" }}>
-                          {c.lastMessageAt}
-                        </span>
-                      </div>
-                      <p
-                        className="truncate"
-                        style={{
-                          margin: "4px 0 8px",
-                          fontSize: 13,
-                          color: hasUnread ? "var(--ink)" : "var(--ink-2)",
-                          fontWeight: hasUnread ? 600 : 400,
-                        }}
-                      >
-                        {stripWhatsappMarkup(c.lastMessagePreview)}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <StatusToken variant={statusVariant} />
-                        {showProperty && (
-                          <span className="truncate" style={{ fontSize: 11, color: "var(--ink-3)" }} title={propertyLabel}>
-                            {propertyLabel}
-                          </span>
-                        )}
-                        <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                          {followupTimer && (
-                            <FollowupTimer
-                              quoteCreatedAt={followupTimer.quoteCreatedAt}
-                              onCancel={() =>
-                                cancelFollowup(c.id, followupTimer.quoteRequestId, followupTimer.stage)
-                              }
-                            />
-                          )}
-                          {hasUnread && (
-                            <span
-                              className="ibx-mono flex h-[18px] min-w-[18px] items-center justify-center px-1"
-                              style={{ borderRadius: 999, background: "var(--red)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
-                              aria-label={`${c.unreadCount} mensajes sin leer`}
-                              title={`${c.unreadCount} mensajes sin leer`}
-                            >
-                              {unreadLabel}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    </div>
-                  </button>
-                );
-                })}
+                    Staff
+                  </span>
+                  <span className="ibx-mono shrink-0" style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-3)" }}>
+                    {staffConversations.length}
+                  </span>
+                  {staffUnreadTotal > 0 && (
+                    /* Lo pendiente no se esconde al colapsar: sin esta pastilla,
+                       un mensaje del personal quedaba invisible hasta que a
+                       alguien se le ocurriera abrir la sección. */
+                    <span
+                      className="ibx-mono flex h-[18px] min-w-[18px] shrink-0 items-center justify-center px-1"
+                      style={{ borderRadius: 999, background: "var(--red)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
+                      aria-label={`${staffUnreadTotal} mensajes de staff sin leer`}
+                      title={`${staffUnreadTotal} mensajes de staff sin leer`}
+                    >
+                      {staffUnreadTotal > 99 ? "99+" : staffUnreadTotal}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStaffContactsOpen(true)}
+                  className="grotesk d-act inline-flex shrink-0 items-center gap-1 px-2.5 py-1.5"
+                  style={{
+                    borderRadius: 8,
+                    border: "1px solid var(--line)",
+                    background: "var(--panel)",
+                    color: "var(--ink-2)",
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                  }}
+                  title="Gestionar contactos del personal"
+                >
+                  + Agregar
+                </button>
+              </div>
+              <div id="ibx-staff-section">
+                {staffSectionOpen &&
+                  (staffConversations.length === 0 ? (
+                    <p
+                      className="px-5 py-6 text-center text-[12.5px] leading-relaxed"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {search.active || query.trim()
+                        ? "Ningún contacto del personal coincide con la búsqueda."
+                        : "Todavía no hay conversaciones con el personal. Usa «+ Agregar» para registrar contactos."}
+                    </p>
+                  ) : (
+                    staffConversations.map(renderConversationRow)
+                  ))}
+              </div>
+            </div>
+            )}
               </>
             )}
           </div>
@@ -3600,7 +3784,15 @@ export default function InboxApp() {
                     )}
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    {selected.operationalStatus === "requires_attention" ? (
+                    {/* En staff el semáforo de siempre mentiría: "IA activa" en
+                        el encabezado y "la IA no interviene" tres centímetros
+                        más abajo se contradicen. Va un estado neutro. */}
+                    {selectedIsStaff ? (
+                      <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--staff)" }}>
+                        <Dot color="var(--staff)" />
+                        Sin gestión de IA
+                      </span>
+                    ) : selected.operationalStatus === "requires_attention" ? (
                       <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>
                         <Dot color="var(--red)" />
                         Requiere atención humana
@@ -3627,18 +3819,23 @@ export default function InboxApp() {
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setModerationDialogAction(selected.blocked ? "unblock" : "block")
-                  }
-                  className="d-soft grotesk inline-flex h-9 shrink-0 items-center gap-1.5 px-2.5"
-                  style={{ borderRadius: 999, border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-3)", fontSize: 11.5, fontWeight: 600 }}
-                  title={selected.blocked ? "Desbloquear conversación" : "Bloquear conversación"}
-                >
-                  <IconBlock className="h-4 w-4" />
-                  <span className="hidden sm:inline">{selected.blocked ? "Desbloquear" : "Bloquear"}</span>
-                </button>
+                {/* Bloquear es moderación de huésped: contra el propio personal
+                    del hotel no tiene sentido y es un clic peligroso al alcance
+                    de la mano. En staff se oculta, no se deshabilita. */}
+                {!selectedIsStaff && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setModerationDialogAction(selected.blocked ? "unblock" : "block")
+                    }
+                    className="d-soft grotesk inline-flex h-9 shrink-0 items-center gap-1.5 px-2.5"
+                    style={{ borderRadius: 999, border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-3)", fontSize: 11.5, fontWeight: 600 }}
+                    title={selected.blocked ? "Desbloquear conversación" : "Bloquear conversación"}
+                  >
+                    <IconBlock className="h-4 w-4" />
+                    <span className="hidden sm:inline">{selected.blocked ? "Desbloquear" : "Bloquear"}</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setGuestOpen(true)}
@@ -3691,6 +3888,33 @@ export default function InboxApp() {
                 {(() => {
                   const isPendingRequest = selected.request === "pending";
                   const actionsBusy = pendingAction !== null || resolvingRequest;
+
+                  /*
+                    Staff: se OCULTAN las acciones, no se deshabilitan. Un chip
+                    gris invita a insistir y a preguntar por qué no anda; una
+                    línea que explica el porqué cierra el tema. Ninguna de estas
+                    acciones (tomar control, reactivar IA, completar, reabrir,
+                    resolver asunto) significa nada en un hilo con el personal:
+                    la IA nunca entra ahí.
+
+                    Lo que NO se toca acá: el compositor de abajo y el botón
+                    "Contactar staff" de fuera de la ventana de 24 h. Y marcar
+                    leída sigue viva, porque es automática al abrir el hilo
+                    (`openChat` → `markConversationRead`) y sin ella la fila
+                    quedaría en negrita para siempre.
+                  */
+                  if (selectedIsStaff) {
+                    return (
+                      <div
+                        className="flex items-center gap-2 text-[12.5px] leading-relaxed"
+                        style={{ padding: "10px 2px", color: "var(--ink-3)" }}
+                      >
+                        <IconStaff className="h-4 w-4 shrink-0" style={{ color: "var(--staff)" }} aria-hidden />
+                        <span>Conversación de staff — la IA no interviene</span>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div className="ibx-scroll flex gap-2 overflow-x-auto" style={{ padding: "10px 2px" }}>
                       {conversationClosed ? (
@@ -3878,8 +4102,9 @@ export default function InboxApp() {
                 {replyBlockedByMeta && (
                   <div className="mt-2.5 w-full min-w-0">
                     <p className="text-[12px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--ink-2)" }}>
-                      Han pasado más de 24 horas desde el último mensaje del huésped, o no hay mensajes
-                      suyos. No puedes responder por política de Meta.
+                      Han pasado más de 24 horas desde el último mensaje{" "}
+                      {selected.isStaff ? "del contacto" : "del huésped"}, o no hay mensajes suyos.
+                      No puedes responder por política de Meta.
                     </p>
                     {/*
                       Salida del callejón sin salida: la ventana solo se reabre con
@@ -4196,6 +4421,13 @@ function GuestPanelContent({
   pendingAction: null | "human" | "ai" | "complete" | "reopen";
 }) {
   const { guest } = conversation;
+  /**
+   * En la ficha de un contacto de staff no van ni "Acciones" (todas son gestión
+   * huésped/IA) ni "Resumen del chat" (es la IA leyendo el hilo, lo mismo que
+   * acá no interviene). Los datos crudos de abajo sí se quedan: son lectura y
+   * sirven para depurar.
+   */
+  const isStaff = Boolean(conversation.isStaff);
   const iaEstado =
     conversation.aiActive && conversation.controlMode === "ai" ? "Activa" : "En pausa";
   const hasTags = guest.tags.length > 0;
@@ -4236,6 +4468,13 @@ function GuestPanelContent({
     setSummaryText(null);
     setSummaryDbEmpty(false);
 
+    // En staff el bloque de resumen no se pinta: pedirlo sería una llamada al
+    // engine por cada hilo del personal que alguien abre, para nada.
+    if (isStaff) {
+      setSummaryLoading(false);
+      return;
+    }
+
     void (async () => {
       const result = await fetchConversationSummaryFromApi(cid);
       if (gen !== summaryPanelGenRef.current) {
@@ -4244,7 +4483,7 @@ function GuestPanelContent({
       applySummaryResult(result);
       setSummaryLoading(false);
     })();
-  }, [conversation.id, applySummaryResult]);
+  }, [conversation.id, applySummaryResult, isStaff]);
 
   const createChatSummary = useCallback(async () => {
     const gen = ++summaryPanelGenRef.current;
@@ -4344,6 +4583,15 @@ function GuestPanelContent({
       </div>
 
       {/* Acciones */}
+      {isStaff ? (
+        <div
+          className="flex shrink-0 items-center gap-2 py-4 text-[12.5px] leading-relaxed"
+          style={{ borderBottom: "1px solid var(--line)", color: "var(--ink-3)" }}
+        >
+          <IconStaff className="h-4 w-4 shrink-0" style={{ color: "var(--staff)" }} aria-hidden />
+          <span>Conversación de staff — la IA no interviene</span>
+        </div>
+      ) : (
       <div className="shrink-0 py-4" style={{ borderBottom: "1px solid var(--line)" }}>
         <div className="mb-3">
           <CockpitLabel>Acciones</CockpitLabel>
@@ -4434,9 +4682,11 @@ function GuestPanelContent({
           </>
         )}
       </div>
+      )}
 
       <div className="ibx-scroll min-h-0 flex-1 overflow-y-auto">
         {/* Resumen del chat */}
+        {!isStaff && (
         <div className="py-4" style={{ borderBottom: "1px solid var(--line)" }}>
           <div className="mb-3 flex items-center">
             <CockpitLabel>Resumen del chat</CockpitLabel>
@@ -4486,6 +4736,7 @@ function GuestPanelContent({
             <p className="ibx-mono text-[12px]" style={{ color: "var(--ink-3)" }}>Sin resumen aún.</p>
           )}
         </div>
+        )}
 
         {/* Datos */}
         <div className="py-4">

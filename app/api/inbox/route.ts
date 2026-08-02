@@ -199,6 +199,9 @@ function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelI
     availableHotels,
     activeHotelId,
     hotelWhatsappById: {},
+    // Sin hotel activo resuelto no hay flag que leer. `false` = la UI de staff
+    // no se pinta, que es el default seguro en todos los caminos.
+    engineEnabled: false,
     total: 0,
     conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
     query: null,
@@ -244,7 +247,7 @@ export async function GET(request: Request) {
 
     const { data: hotelWaRows, error: hotelWaError } = await supabase
       .from(HOTELS_TABLE)
-      .select("id, whatsapp_number")
+      .select("id, whatsapp_number, engine_enabled")
       .in("id", allowedHotelIds);
 
     if (hotelWaError) {
@@ -253,6 +256,26 @@ export async function GET(request: Request) {
     }
 
     const hotelWhatsappById = buildHotelWhatsappByIdMap(hotelWaRows ?? []);
+
+    /**
+     * Flag de engine del hotel ACTIVO. Sale de la MISMA fila que el
+     * `whatsapp_number`: una columna más en el select de arriba, CERO consultas
+     * nuevas — esta route salió de una cirugía de OOM y no admite trabajo extra
+     * por GET, y menos por conversación.
+     *
+     * Se manda un booleano del hotel activo, no un mapa por hotel: el único
+     * consumidor es el gate de UI de staff, que solo mira el hotel abierto, y
+     * `activeHotelId` ya viaja en la misma respuesta.
+     *
+     * Default `false` si la fila falta o la columna viene null. Es el lado
+     * seguro: en un hotel que todavía corre en n8n la IA le responde igual al
+     * personal (el guard de staff vive en el engine), así que registrar
+     * contactos ahí haría que la feature pareciera rota.
+     */
+    const engineEnabled = (hotelWaRows ?? []).some(
+      (row: { id?: unknown; engine_enabled?: unknown }) =>
+        String(row.id ?? "") === activeHotelId && row.engine_enabled === true
+    );
 
     // Camino de búsqueda. Aditivo: sin `q` nada de esto corre y el resto del
     // handler queda exactamente como estaba.
@@ -272,6 +295,7 @@ export async function GET(request: Request) {
           availableHotels,
           activeHotelId,
           hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
+          engineEnabled,
           total: 0,
           conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
           query: searchTerm,
@@ -349,6 +373,7 @@ export async function GET(request: Request) {
         availableHotels,
         activeHotelId,
         hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
+        engineEnabled,
         total: hotelTotalResult.count ?? convRows.length,
         conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
         // Eco del término aplicado: el cliente descarta con esto las respuestas
@@ -450,6 +475,7 @@ export async function GET(request: Request) {
       availableHotels,
       activeHotelId,
       hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
+      engineEnabled,
       // Reemplaza a `truncated`, que con el tope sería `true` de forma
       // permanente y por lo tanto no informaría nada. `total` es el count real
       // del hotel: con él, `fetchedConversations < total` dice que hay recorte y

@@ -27,6 +27,12 @@ type InboxResponse = {
   availableHotels?: AvailableHotel[];
   activeHotelId?: string | null;
   hotelWhatsappById?: Record<string, string>;
+  /**
+   * `hotels.engine_enabled` del hotel activo. Los hoteles que todavía corren en
+   * n8n no tienen el guard de staff, así que la UI de staff se apaga entera
+   * para ellos. Ausente = `false`.
+   */
+  engineEnabled?: boolean;
   error?: string;
 };
 
@@ -77,6 +83,13 @@ export function useConversations(options?: UseConversationsOptions) {
   const [availableHotels, setAvailableHotels] = useState<AvailableHotel[]>([]);
   const [resolvedActiveHotelId, setResolvedActiveHotelId] = useState<string | null>(null);
   const [hotelWhatsappById, setHotelWhatsappById] = useState<HotelWhatsappByIdMap>(() => new Map());
+  /**
+   * Arranca en `false` a propósito: hasta que el servidor confirme que el hotel
+   * activo corre en el engine, la bandeja se pinta sin nada de staff. El error
+   * barato es que la sección aparezca un instante tarde; el caro sería ofrecer
+   * registrar contactos en un hotel donde la IA de n8n les responde igual.
+   */
+  const [engineEnabled, setEngineEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [urgentHandoffBannerVisible, setUrgentHandoffBannerVisible] = useState(false);
@@ -178,6 +191,10 @@ export function useConversations(options?: UseConversationsOptions) {
       setAvailableHotels(json.availableHotels ?? []);
       setResolvedActiveHotelId(json.activeHotelId ?? null);
       setHotelWhatsappById(hotelWhatsappMapFromRecord(json.hotelWhatsappById ?? {}));
+      // Se aplica en el MISMO lote que `conversations` y `activeHotelId`: al
+      // cambiar de hotel, lista y flag cambian juntos y no hay un frame con las
+      // conversaciones nuevas y el flag del hotel anterior.
+      setEngineEnabled(json.engineEnabled === true);
       setError(null);
       // Único punto donde se sella: acá el GET ya respondió y se aplicó. Un
       // fetch abortado o fallido cae al catch y no cuenta como reciente.
@@ -311,5 +328,6 @@ export function useConversations(options?: UseConversationsOptions) {
     realtimeErrorDetail,
     availableHotels,
     activeHotelId: resolvedActiveHotelId,
+    engineEnabled,
   };
 }
