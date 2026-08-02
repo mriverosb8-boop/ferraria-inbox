@@ -12,6 +12,14 @@ type StartConversationModalProps = {
   onSuccess: () => void;
   /** `message` trae el motivo real de Meta cuando el engine lo propaga. */
   onError: (message?: string) => void;
+  /**
+   * Teléfono con el que abre el campo, para cuando el modal se lanza desde una
+   * conversación que ya se sabe de quién es (botón de fuera de ventana de 24 h).
+   *
+   * OPCIONAL y retrocompatible: sin él, el modal arranca vacío exactamente como
+   * antes. Queda editable a propósito — prellenar es un atajo, no un candado.
+   */
+  initialPhone?: string;
 };
 
 export function StartConversationModal({
@@ -20,6 +28,7 @@ export function StartConversationModal({
   onClose,
   onSuccess,
   onError,
+  initialPhone,
 }: StartConversationModalProps) {
   const [phone, setPhone] = useState("");
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -76,13 +85,18 @@ export function StartConversationModal({
     };
   }, [open, activeHotelId]);
 
+  // Al abrir, el campo arranca en `initialPhone` (o vacío, que es el
+  // comportamiento de siempre); al cerrar se limpia todo.
   useEffect(() => {
-    if (!open) {
-      setPhone("");
-      setTemplateVariables({});
+    if (open) {
+      setPhone(initialPhone?.trim() ?? "");
       setValidationError(null);
+      return;
     }
-  }, [open]);
+    setPhone("");
+    setTemplateVariables({});
+    setValidationError(null);
+  }, [open, initialPhone]);
 
   useEffect(() => {
     setTemplateVariables({});

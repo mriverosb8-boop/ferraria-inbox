@@ -27,6 +27,10 @@
   --live-soft: #e6f3ec;
   --gold: #b07d2b;
   --gold-soft: #f7edda;
+  /* Personal del hotel (`staff_contacts`). Violeta a propósito: rojo y verde ya
+     significan "necesita acción" e "IA activa", y el gris es "Bloqueado". */
+  --staff: #6a4fbe;
+  --staff-soft: #efeafb;
   --shadow-sm: 0 1px 2px rgba(40, 30, 20, 0.06);
   --shadow: 0 2px 8px rgba(40, 30, 20, 0.07), 0 1px 2px rgba(40, 30, 20, 0.05);
   --shadow-lg: 0 12px 36px rgba(40, 30, 20, 0.14), 0 2px 8px rgba(40, 30, 20, 0.06);
@@ -63,6 +67,8 @@ html.dark {
   --live-soft: #163021;
   --gold: #d6a24a;
   --gold-soft: #33280f;
+  --staff: #a795ee;
+  --staff-soft: #2b2440;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.5);

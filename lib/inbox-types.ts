@@ -157,4 +157,17 @@ export interface Conversation {
    * El agente lo resuelve desde el inbox (vuelve a `null`).
    */
   request: string | null;
+  /**
+   * `true` cuando el teléfono del hilo está en `staff_contacts` (activo) del
+   * hotel. NO es una columna de `conversations`: lo deriva `GET /api/inbox`
+   * cruzando teléfonos normalizados, así que Realtime nunca lo trae.
+   *
+   * Por eso el merge de Realtime (`{ ...prev, ...cambios }`) lo conserva solo.
+   * Consecuencia aceptada: una conversación que NACE por Realtime queda sin
+   * marca hasta el próximo refetch de la bandeja.
+   *
+   * Opcional a propósito: las conversaciones construidas en cliente (optimistas,
+   * mocks) simplemente no lo traen y se pintan como huésped.
+   */
+  isStaff?: boolean;
 }

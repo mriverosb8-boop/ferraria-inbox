@@ -28,6 +28,9 @@ import {
   GUEST_NAME_MAX_LENGTH,
   type ConversationDbRow,
 } from "@/lib/conversation-schema";
+import { STAFF_CONTACT_TEMPLATE_NAME } from "@/lib/staff-contacts";
+import { sendWhatsappTemplate } from "@/lib/send-whatsapp-template";
+import { normalizeColombianWhatsappNumber } from "@/lib/whatsapp-templates";
 import { useConversations } from "@/hooks/useConversations";
 import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
@@ -90,6 +93,30 @@ function BlockedBadge({ className = "" }: { className?: string }) {
       className={`inline-flex shrink-0 items-center rounded-md bg-[#ebe6e0] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#6b665e] ring-1 ring-[#d4cdc3] ${className}`}
     >
       Bloqueado
+    </span>
+  );
+}
+
+/**
+ * Marca de "esta conversación es con personal del hotel, no con un huésped"
+ * (`conversations.guest_phone` presente en `staff_contacts`).
+ *
+ * Violeta, no rojo ni verde: esos dos ya significan "necesita acción" e "IA
+ * activa" en la misma fila, y el gris es "Bloqueado". Tokens en `globals.css`,
+ * así que sigue al tema oscuro.
+ */
+function StaffBadge({ className = "" }: { className?: string }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${className}`}
+      style={{
+        background: "var(--staff-soft)",
+        color: "var(--staff)",
+        boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--staff) 35%, transparent)",
+      }}
+      title="Contacto del personal del hotel"
+    >
+      Staff
     </span>
   );
 }
@@ -1679,6 +1706,13 @@ export default function InboxApp() {
   const [globalActionsOpen, setGlobalActionsOpen] = useState(false);
   const [hotelSelectOpen, setHotelSelectOpen] = useState(false);
   const [startConversationOpen, setStartConversationOpen] = useState(false);
+  /**
+   * Teléfono con el que abre el modal de "Comenzar conversación". Vacío cuando
+   * se abre desde el encabezado (flujo de siempre); con el número del hilo
+   * cuando se abre desde el botón de fuera de ventana de 24 h.
+   */
+  const [startConversationPhone, setStartConversationPhone] = useState("");
+  const [sendingStaffTemplate, setSendingStaffTemplate] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [staffContactsOpen, setStaffContactsOpen] = useState(false);
@@ -1828,7 +1862,10 @@ export default function InboxApp() {
   useEffect(() => {
     if (!templateToast) return;
 
-    const timeout = window.setTimeout(() => setTemplateToast(null), 3500);
+    // Los errores viven más: suelen traer una instrucción (p. ej. "falta la
+    // plantilla, avísale a soporte") y 3,5 s no alcanzan para leerla.
+    const ms = templateToast.type === "error" ? 6500 : 3500;
+    const timeout = window.setTimeout(() => setTemplateToast(null), ms);
     return () => window.clearTimeout(timeout);
   }, [templateToast]);
 
@@ -1894,6 +1931,52 @@ export default function InboxApp() {
     () => (selected ? isReplyBlockedByMetaPolicy(selected.lastGuestMessageAt) : false),
     [selected]
   );
+
+  /** Teléfono del hilo abierto en dígitos, listo para enviar plantillas. */
+  const selectedPhoneDigits = useMemo(
+    () => (selected ? normalizeColombianWhatsappNumber(selected.guestPhone ?? "") : ""),
+    [selected]
+  );
+
+  /** Único punto de apertura del modal: decide con qué teléfono arranca. */
+  const openStartConversation = useCallback((prefillPhone = "") => {
+    setStartConversationPhone(prefillPhone);
+    setStartConversationOpen(true);
+  }, []);
+
+  /**
+   * Fuera de la ventana de 24 h contra un contacto de STAFF: manda DIRECTO la
+   * plantilla fija `STAFF_CONTACT_TEMPLATE_NAME`, sin selector ni variables.
+   *
+   * Reusa la misma cadena de envío que el modal
+   * (`sendWhatsappTemplate` → `/api/send-whatsapp-template` → engine): acá no se
+   * duplica nada de la lógica de envío, solo se saltea la elección de plantilla.
+   */
+  const sendStaffContactTemplate = useCallback(async () => {
+    const hotelId = conversationHotelId?.trim();
+    if (!hotelId || !selectedPhoneDigits || sendingStaffTemplate) return;
+
+    setSendingStaffTemplate(true);
+    try {
+      await sendWhatsappTemplate({
+        to: selectedPhoneDigits,
+        templateName: STAFF_CONTACT_TEMPLATE_NAME,
+        activeHotelId: hotelId,
+      });
+      setTemplateToast({ type: "success", message: "Mensaje enviado al staff" });
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : "";
+      // El fallo más probable con diferencia: al hotel le falta la fila de la
+      // plantilla en `message_templates`. El route responde "Plantilla no válida
+      // para este hotel", que no le dice a la recepcionista qué hacer.
+      const message = /plantilla no v/i.test(raw)
+        ? `Este hotel no tiene configurada la plantilla "${STAFF_CONTACT_TEMPLATE_NAME}". Avísale a soporte.`
+        : raw.trim() || "No se pudo contactar al staff. Intenta de nuevo.";
+      setTemplateToast({ type: "error", message });
+    } finally {
+      setSendingStaffTemplate(false);
+    }
+  }, [conversationHotelId, selectedPhoneDigits, sendingStaffTemplate]);
 
   /**
    * Reacciones resueltas a badge. Se deriva del array de mensajes ya en estado,
@@ -2860,7 +2943,7 @@ export default function InboxApp() {
           <div className="hidden items-center gap-2 sm:flex">
             <button
               type="button"
-              onClick={() => setStartConversationOpen(true)}
+              onClick={() => openStartConversation()}
               className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
               style={{
                 padding: "7px 12px",
@@ -2915,7 +2998,7 @@ export default function InboxApp() {
           <HeaderMobileMenu onRed>
             <button
               type="button"
-              onClick={() => setStartConversationOpen(true)}
+              onClick={() => openStartConversation()}
               className={HEADER_MENU_ROW_CLASS}
               role="menuitem"
             >
@@ -3352,6 +3435,7 @@ export default function InboxApp() {
                         >
                           {(emoji ? emoji + " " : "") + rest}
                         </span>
+                        {c.isStaff && <StaffBadge className="shrink-0" />}
                         {c.blocked && <BlockedBadge className="shrink-0" />}
                         <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 11, color: "var(--ink-3)" }}>
                           {c.lastMessageAt}
@@ -3509,6 +3593,8 @@ export default function InboxApp() {
                         >
                           <IconPencil className="h-4 w-4" />
                         </button>
+                        {/* Que la recepcionista sepa con quién habla antes de escribir. */}
+                        {selected.isStaff && <StaffBadge />}
                         {selected.blocked && <BlockedBadge />}
                       </>
                     )}
@@ -3790,10 +3876,47 @@ export default function InboxApp() {
                   </button>
                 </div>
                 {replyBlockedByMeta && (
-                  <p className="mt-2.5 w-full min-w-0 text-[12px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--ink-2)" }}>
-                    Han pasado más de 24 horas desde el último mensaje del huésped, o no hay mensajes
-                    suyos. No puedes responder por política de Meta.
-                  </p>
+                  <div className="mt-2.5 w-full min-w-0">
+                    <p className="text-[12px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--ink-2)" }}>
+                      Han pasado más de 24 horas desde el último mensaje del huésped, o no hay mensajes
+                      suyos. No puedes responder por política de Meta.
+                    </p>
+                    {/*
+                      Salida del callejón sin salida: la ventana solo se reabre con
+                      una plantilla aprobada.
+                      · Staff  → plantilla fija, un clic, sin elegir nada.
+                      · Huésped → el modal de siempre, con el número ya puesto.
+                      Sin teléfono utilizable no hay a dónde enviar: no se pinta nada.
+                    */}
+                    {selectedPhoneDigits &&
+                      (selected.isStaff ? (
+                        <button
+                          type="button"
+                          onClick={() => void sendStaffContactTemplate()}
+                          disabled={sendingStaffTemplate || !conversationHotelId}
+                          aria-busy={sendingStaffTemplate}
+                          className="grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{ background: "var(--staff)" }}
+                        >
+                          {sendingStaffTemplate && <Spinner className="h-4 w-4 animate-spin" />}
+                          {sendingStaffTemplate ? "Enviando…" : "Contactar staff"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => openStartConversation(selectedPhoneDigits)}
+                          className="grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)]"
+                          style={{
+                            border: "1px solid var(--line)",
+                            background: "var(--panel)",
+                            color: "var(--ink-2)",
+                          }}
+                        >
+                          <IconCompose className="h-4 w-4" />
+                          Enviar plantilla para reabrir
+                        </button>
+                      ))}
+                  </div>
                 )}
                 </div>
               </div>
@@ -3950,6 +4073,7 @@ export default function InboxApp() {
       <StartConversationModal
         open={startConversationOpen}
         activeHotelId={conversationHotelId}
+        initialPhone={startConversationPhone}
         onClose={() => setStartConversationOpen(false)}
         onSuccess={() =>
           setTemplateToast({ type: "success", message: "Plantilla enviada correctamente" })

@@ -21,6 +21,8 @@ import {
 } from "@/lib/conversation-schema";
 import { requireSessionUser } from "@/lib/auth/require-user";
 import { assertConversationInHotel } from "@/lib/auth/require-hotel";
+import { STAFF_CONTACTS_TABLE, normalizeStaffPhone } from "@/lib/staff-contacts";
+import type { Conversation } from "@/lib/inbox-types";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { MESSAGES_LIMIT, POSTGREST_PAGE_SIZE } from "@/lib/message-limits";
 import { WUBBY_PREVIEW_COLUMNS, WUBBY_TABLE, type WubbyWhatsappRow } from "@/lib/wubby-schema";
@@ -132,6 +134,60 @@ function splitEmbeddedRows(rawRows: ConversationRowWithLastMessage[]) {
   return { convRows, lastMessageByConversationId };
 }
 
+/**
+ * Teléfonos del personal del hotel, normalizados, en un solo SELECT.
+ *
+ * UNA consulta por GET de bandeja, no una por conversación: son unas decenas de
+ * filas por hotel y entran de sobra en una página de PostgREST.
+ *
+ * NUNCA tira el GET: si la consulta falla, la bandeja se sirve igual y las filas
+ * salen sin marca. El badge es informativo; que una recepcionista no pueda ver
+ * su bandeja porque `staff_contacts` falló sería un cambio pésimo.
+ */
+async function fetchActiveStaffPhones(
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  hotelId: string
+): Promise<Set<string>> {
+  const phones = new Set<string>();
+
+  const { data, error } = await supabase
+    .from(STAFF_CONTACTS_TABLE)
+    .select("phone")
+    .eq("hotel_id", hotelId)
+    .eq("is_active", true);
+
+  if (error) {
+    // Sin PII: solo el hotel y el code. La bandeja sigue.
+    console.error("[inbox GET] staff_contacts", error.code ?? "sin_code", { hotelId });
+    return phones;
+  }
+
+  for (const row of data ?? []) {
+    const normalized = normalizeStaffPhone(String((row as { phone?: unknown }).phone ?? ""));
+    if (normalized) phones.add(normalized);
+  }
+
+  return phones;
+}
+
+/**
+ * Marca `isStaff` comparando teléfonos NORMALIZADOS por las dos puntas con la
+ * misma utilidad (`normalizeStaffPhone`). `guest_phone` llega con y sin `+` y
+ * `staff_contacts.phone` se guarda solo en dígitos: comparar crudo fallaría de
+ * forma silenciosa justo en la mitad de los hoteles.
+ *
+ * Muta en sitio: el array recién lo construyó este handler.
+ */
+function markStaffConversations(conversations: Conversation[], staffPhones: Set<string>): void {
+  if (staffPhones.size === 0) return;
+  for (const conversation of conversations) {
+    const normalized = normalizeStaffPhone(conversation.guestPhone ?? "");
+    if (normalized && staffPhones.has(normalized)) {
+      conversation.isStaff = true;
+    }
+  }
+}
+
 function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelId: string | null = null) {
   return NextResponse.json({
     conversations: [],
@@ -223,7 +279,7 @@ export async function GET(request: Request) {
         });
       }
 
-      const [rpcResult, hotelTotalResult] = await Promise.all([
+      const [rpcResult, hotelTotalResult, staffPhones] = await Promise.all([
         supabase.rpc(SEARCH_CONVERSATIONS_RPC, {
           p_hotel_id: activeHotelId,
           p_q: searchTerm,
@@ -235,6 +291,9 @@ export async function GET(request: Request) {
           .from(CONVERSATIONS_TABLE)
           .select("id", { count: "exact", head: true })
           .eq("hotel_id", activeHotelId),
+        // El badge de staff también en resultados de búsqueda: si no, la misma
+        // conversación se vería marcada en la bandeja y sin marcar al buscarla.
+        fetchActiveStaffPhones(supabase, activeHotelId),
       ]);
 
       if (rpcResult.error) {
@@ -277,6 +336,7 @@ export async function GET(request: Request) {
 
       const { convRows, lastMessageByConversationId } = splitEmbeddedRows(searchRows);
       const conversations = buildInboxConversations(convRows, lastMessageByConversationId);
+      markStaffConversations(conversations, staffPhones);
       conversations.sort((a, b) => {
         return getConversationDisplayActivityMs(b) - getConversationDisplayActivityMs(a);
       });
@@ -300,7 +360,7 @@ export async function GET(request: Request) {
 
     // Independientes entre sí: ninguna necesita el resultado de otra, así que
     // van en paralelo y el GET cuesta un round trip, no tres.
-    const [recentResult, protectedResult, totalResult] = await Promise.all([
+    const [recentResult, protectedResult, totalResult, staffPhones] = await Promise.all([
       // A) Las más recientes por actividad. `sort_activity_at` es la columna
       // generada `coalesce(last_guest_message_at, created_at)`; el orden por
       // `id` desempata para que el corte sea determinista. Ambos los cubre
@@ -317,6 +377,8 @@ export async function GET(request: Request) {
         .from(CONVERSATIONS_TABLE)
         .select("id", { count: "exact", head: true })
         .eq("hotel_id", activeHotelId),
+      // Contactos de staff del hotel activo, para el badge de la bandeja.
+      fetchActiveStaffPhones(supabase, activeHotelId),
     ]);
 
     if (recentResult.error) {
@@ -374,6 +436,7 @@ export async function GET(request: Request) {
     const { convRows, lastMessageByConversationId } = splitEmbeddedRows(rawRows);
 
     const conversations = buildInboxConversations(convRows, lastMessageByConversationId);
+    markStaffConversations(conversations, staffPhones);
     conversations.sort((a, b) => {
       return getConversationDisplayActivityMs(b) - getConversationDisplayActivityMs(a);
     });

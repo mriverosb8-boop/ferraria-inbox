@@ -13,6 +13,21 @@ import { normalizeColombianWhatsappNumber } from "@/lib/whatsapp-templates";
  */
 export const STAFF_CONTACTS_TABLE = "staff_contacts";
 
+/**
+ * Plantilla fija con la que la recepción reabre la ventana de 24 h contra un
+ * contacto de STAFF (no huésped). Se envía directo, sin selector.
+ *
+ * ⚠️ Este string tiene que coincidir LETRA POR LETRA con:
+ *   1. el nombre de la plantilla aprobada en Meta, y
+ *   2. la columna `name` de su fila en `message_templates` del hotel.
+ *
+ * Si a un hotel le falta esa fila, `POST /api/send-whatsapp-template` responde
+ * "Plantilla no válida para este hotel" y el botón muestra un aviso explicando
+ * exactamente eso. Se asume SIN variables: si la fila del hotel declara alguna,
+ * el envío va a fallar pidiéndola.
+ */
+export const STAFF_CONTACT_TEMPLATE_NAME = "contactar_staff";
+
 /** Límite del CHECK de la columna `name` en la base. */
 export const STAFF_CONTACT_NAME_MAX = 120;
 /** No hay CHECK en `role`, pero acotamos para no depender de un fallo del motor. */
