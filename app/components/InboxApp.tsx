@@ -1374,6 +1374,17 @@ function MessageBubble({
   const isAi = m.sender === "ai";
   const isAgent = m.sender === "agent";
 
+  const [translationOpen, setTranslationOpen] = useState(false);
+  /**
+   * Texto que de verdad le llegó al huésped, solo cuando el engine tradujo la
+   * respuesta (`Wubby_Whatsapp.message_translated`). La burbuja sigue mostrando
+   * el español; esto es un desplegable informativo, sin ninguna acción.
+   *
+   * Se acota a lo SALIENTE: el huésped escribe en su idioma y su burbuja nunca
+   * es "lo que le enviamos", así que un valor ahí sería un dato mal atribuido.
+   */
+  const translatedBody = !isUser && m.translatedBody ? m.translatedBody : null;
+
   // Ver `isWhatsappSticker`: `cause_request` miente en las filas de sticker, así
   // que ni la etiqueta ni el borde rojo salen de ellas.
   const isHandoffCause =
@@ -1549,6 +1560,48 @@ function MessageBubble({
               <WhatsappText text={m.body} />
             </p>
           )}
+          {translatedBody ? (
+            <div className="mt-1 flex max-w-full flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => setTranslationOpen((v) => !v)}
+                aria-expanded={translationOpen}
+                aria-controls={`translated-${m.id}`}
+                className="inline-flex w-fit max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium leading-tight transition-opacity hover:opacity-80"
+                style={{
+                  background: onRed ? "rgba(255,255,255,.18)" : "var(--panel)",
+                  border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--line)",
+                  color: onRed ? "#fff" : "var(--ink-2)",
+                }}
+                title="Al huésped le llegó esta respuesta en su idioma"
+              >
+                <IconGlobe className="h-2.5 w-2.5 shrink-0 opacity-85" aria-hidden />
+                <span>{translationOpen ? "Ocultar traducción" : "Enviado traducido"}</span>
+              </button>
+              {translationOpen ? (
+                <div
+                  id={`translated-${m.id}`}
+                  className="max-w-full rounded-lg px-2 py-1.5"
+                  style={{
+                    background: onRed ? "rgba(255,255,255,.14)" : "var(--panel)",
+                    border: onRed ? "1px solid rgba(255,255,255,.28)" : "1px solid var(--line)",
+                  }}
+                >
+                  <p
+                    className="grotesk mb-0.5 text-[9.5px] font-bold uppercase leading-tight"
+                    style={{ letterSpacing: "0.04em", color: onRed ? "rgba(255,255,255,.85)" : "var(--ink-3)" }}
+                  >
+                    Texto enviado al huésped
+                  </p>
+                  {/* `dir="auto"` deja que el navegador acomode idiomas de derecha
+                      a izquierda (árabe, hebreo) sin voltear el resto de la burbuja. */}
+                  <p dir="auto" className="whitespace-pre-wrap break-words text-[14px]">
+                    <WhatsappText text={translatedBody} />
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <time className="ibx-mono min-w-0 shrink text-[10px] tabular-nums" style={{ color: metaColor }}>
               {timeLabel}
