@@ -634,6 +634,28 @@ function readUnreadCount(v: number | string | null | undefined): number {
   return Math.floor(n);
 }
 
+/** Ventana en la que una reactivación automática sigue siendo una novedad. */
+export const AUTO_REACTIVATION_NOTICE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Fecha de la última reactivación AUTOMÁTICA de la IA, o null si la última la
+ * hizo una persona (o si nunca hubo, o si ya pasó la ventana de aviso).
+ *
+ * El origen lo escribe quien reactiva: el barrido del engine pone "auto", el
+ * botón del inbox pone "manual". No se deduce de otra cosa.
+ *
+ * El corte por antigüedad se resuelve ACÁ y no al pintar: leer el reloj durante
+ * el render es impuro (lo prohíbe react-hooks/purity) y además haría que el
+ * mismo dato se viera distinto en servidor y en cliente.
+ */
+export function readAutoReactivatedAt(row: ConversationDbRow, now: number = Date.now()): string | null {
+  if (row.ai_reactivation_source !== "auto" || !row.ai_reactivated_at) return null;
+
+  const parsed = Date.parse(row.ai_reactivated_at);
+  if (Number.isNaN(parsed) || now - parsed > AUTO_REACTIVATION_NOTICE_MS) return null;
+  return row.ai_reactivated_at;
+}
+
 /**
  * Estado operativo y modo control a partir de la tabla `conversations`.
  */
@@ -807,6 +829,7 @@ function buildConversationFromRow(
     needsHuman: readBoolCol(cr.needs_human, false),
     aiActive: readBoolCol(cr.ai_active, true),
     dbStatus: cr.status,
+    autoReactivatedAt: readAutoReactivatedAt(cr),
     blocked: readBoolCol(cr.blocked, false),
     blockedAt: cr.blocked_at,
     request: requestValue,
@@ -980,6 +1003,9 @@ export function applyConversationRowPatch(
     needsHuman: row.needs_human ?? false,
     aiActive: row.ai_active ?? true,
     dbStatus: row.status,
+    // Por Realtime es como llega el aviso de que la IA volvió sola: el barrido
+    // del engine actualiza la fila y la bandeja lo refleja sin refetch.
+    autoReactivatedAt: readAutoReactivatedAt(row),
     blocked: row.blocked ?? false,
     blockedAt: row.blocked_at,
     // El trigger que mantiene `last_guest_message_at` dispara un UPDATE en

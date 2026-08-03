@@ -354,6 +354,9 @@ export async function POST(request: Request) {
         needs_human: true,
         ai_active: false,
         status: "human_control",
+        // Mandar un archivo es tomar la conversación: corre el reloj de la
+        // reactivación automática igual que responder un texto.
+        human_control_at: now,
       })
       .eq("id", conversationId)
       .eq("hotel_id", hotelId)

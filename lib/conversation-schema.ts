@@ -24,6 +24,8 @@ export const CONVERSATION_SELECT_COLUMNS = [
   "request",
   "unread_count",
   "last_guest_message_at",
+  "ai_reactivated_at",
+  "ai_reactivation_source",
   "created_at",
   "updated_at",
 ].join(", ");
@@ -60,6 +62,16 @@ export type ConversationDbRow = {
    * `Wubby_Whatsapp` + backfill). `null` = el huésped nunca escribió.
    */
   last_guest_message_at: string | null;
+  /**
+   * Última vez que la IA volvió a quedar activa en la conversación, junto con
+   * quién la devolvió: "manual" (botón del inbox) o "auto" (el barrido del
+   * engine, que la devuelve sola tras ~2 h sin actividad humana).
+   *
+   * `human_control_at` queda FUERA a propósito: es el reloj interno del barrido
+   * y la bandeja no lo muestra. Se escribe desde el PATCH, no se lee acá.
+   */
+  ai_reactivated_at: string | null;
+  ai_reactivation_source: string | null;
   created_at: string;
   updated_at: string;
 };

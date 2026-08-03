@@ -149,6 +149,18 @@ export interface Conversation {
   aiActive: boolean;
   /** Copia de `conversations.status` */
   dbStatus: string | null;
+  /**
+   * Fecha en que la IA volvió SOLA a la conversación (barrido del engine tras
+   * ~2 h sin actividad humana), o `null` si la última reactivación la hizo una
+   * persona desde el inbox.
+   *
+   * Existe para que la recepcionista distinga las dos cosas: una IA que volvió
+   * sola en una conversación que ella creía suya no puede aparecer sin aviso.
+   *
+   * Opcional: las conversaciones que se construyen en cliente (optimistas) no
+   * lo traen, y por Realtime llega solo si la fila se vuelve a emitir.
+   */
+  autoReactivatedAt?: string | null;
   blocked: boolean;
   blockedAt: string | null;
   /**

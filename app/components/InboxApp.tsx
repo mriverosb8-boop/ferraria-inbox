@@ -268,6 +268,34 @@ function StatusToken({ variant }: { variant: StatusVariant }) {
   );
 }
 
+/**
+ * Aviso de que la IA volvió SOLA a una conversación (barrido del engine tras
+ * ~2 h sin actividad humana), para que no parezca que el agente se metió por su
+ * cuenta en una conversación que la recepcionista creía suya.
+ *
+ * La vigencia (24 h) la resuelve `readAutoReactivatedAt` al mapear la fila:
+ * acá no se lee el reloj. Desaparece en cuanto alguien toma control o reactiva
+ * a mano, porque eso cambia el origen a "manual".
+ */
+function AutoReactivatedBadge() {
+  return (
+    <span
+      className="grotesk inline-flex shrink-0 items-center"
+      style={{
+        padding: "3px 8px",
+        borderRadius: 999,
+        fontSize: 10.5,
+        fontWeight: 700,
+        color: "var(--ink-2)",
+        background: "var(--line-2)",
+      }}
+      title="Nadie atendió a tiempo: el engine devolvió la IA automáticamente"
+    >
+      Volvió sola
+    </span>
+  );
+}
+
 function IconSearch(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
@@ -3026,6 +3054,9 @@ export default function InboxApp() {
              * son ciertos para staff y se quedan.
              */}
             {!(c.isStaff && statusVariant === "ia") && <StatusToken variant={statusVariant} />}
+            {statusVariant === "ia" && !c.isStaff && c.autoReactivatedAt !== null && c.autoReactivatedAt !== undefined && (
+              <AutoReactivatedBadge />
+            )}
             {showProperty && (
               <span className="truncate" style={{ fontSize: 11, color: "var(--ink-3)" }} title={propertyLabel}>
                 {propertyLabel}

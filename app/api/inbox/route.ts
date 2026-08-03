@@ -538,6 +538,12 @@ export async function PATCH(request: Request) {
           needs_human: true,
           ai_active: false,
           status: "human_control",
+          // Reloj de la reactivación automática del engine: marca desde cuándo
+          // esta conversación está en manos de una persona. Es CORREDIZO —cada
+          // acción humana posterior (responder, mandar plantilla) lo vuelve a
+          // estampar—, así que las ~2 h se cuentan desde la última intervención
+          // y el barrido no le quita la conversación a quien la está atendiendo.
+          human_control_at: now,
         };
         break;
       case "reactivate_ai":
