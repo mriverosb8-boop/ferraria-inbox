@@ -11,6 +11,7 @@ import {
   isMediaWithoutFile,
   isWaLidIdentifier,
   messageNeedsHumanAlert,
+  normalizeGuestIdentityKey,
   normalizePhoneDigits,
   resolveMediaKind,
 } from "@/lib/chat-utils";
@@ -2595,7 +2596,9 @@ export default function InboxApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          guestPhone: normalizePhoneDigits(selectedConv!.guestPhone),
+          // LID-aware: un identificador de Meta viaja crudo al engine; un
+          // teléfono sigue yendo en dígitos, igual que siempre.
+          guestPhone: normalizeGuestIdentityKey(selectedConv!.guestPhone),
           message: text,
           conversationId: selectedConv!.id,
           hotelId: activeHotelId,
