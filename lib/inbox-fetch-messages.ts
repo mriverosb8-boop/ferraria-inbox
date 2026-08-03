@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizePhoneDigits } from "@/lib/chat-utils";
+import { isWaLidIdentifier, normalizePhoneDigits, readWaLid } from "@/lib/chat-utils";
 import {
   MAX_WUBBY_FETCH_PAGES,
   MAX_WUBBY_FETCH_ROWS,
@@ -17,9 +17,27 @@ export type WubbyFetchResult = {
   truncated: boolean;
 };
 
-/** PostgREST .or() para sender/recipient en dígitos y con prefijo +. */
-export function buildGuestPhoneOrFilter(guestDigits: string): string {
-  const digits = normalizePhoneDigits(guestDigits);
+/** `conversations.id` es uuid; nada que no lo sea entra al filtro. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * PostgREST .or() para sender/recipient.
+ *
+ * Teléfono: se emiten las dos formas, con y sin `+`, porque en producción la
+ * misma línea aparece de las dos maneras.
+ *
+ * LID de Meta (`CO.28322187600722863`): se usa el valor CRUDO. Normalizarlo a
+ * dígitos generaba `28322187600722863`, que no matchea ninguna fila — de ahí el
+ * historial vacío. Tampoco se emite la variante con `+`: un LID nunca la tiene.
+ * El valor va entre comillas dobles porque lleva un punto.
+ */
+export function buildGuestPhoneOrFilter(guestPhone: string): string {
+  if (isWaLidIdentifier(guestPhone)) {
+    const lid = readWaLid(guestPhone);
+    return [`sender.eq."${lid}"`, `recipient.eq."${lid}"`].join(",");
+  }
+
+  const digits = normalizePhoneDigits(guestPhone);
   if (!digits) return "";
   const plus = `+${digits}`;
   return [
@@ -28,6 +46,34 @@ export function buildGuestPhoneOrFilter(guestDigits: string): string {
     `recipient.eq.${digits}`,
     `recipient.eq.${plus}`,
   ].join(",");
+}
+
+/**
+ * Filtro de historial: `conversation_id` como criterio PRINCIPAL y el match por
+ * identidad como COMPLEMENTO, unidos por OR.
+ *
+ * `conversation_id` es FK a `conversations.id` (`wubby_conversation_id_fkey`) y
+ * está indexado por `idx_wubby_conv_recent`; es el mismo criterio con el que la
+ * lista arma el preview, y por eso el preview sí salía cuando el hilo no.
+ *
+ * El match por identidad se mantiene porque las filas antiguas traen
+ * `conversation_id` en NULL: sin él, hilos viejos se vaciarían.
+ */
+export function buildGuestHistoryOrFilter(
+  guestPhone: string,
+  conversationId?: string | null
+): string {
+  const parts: string[] = [];
+  const convId = String(conversationId ?? "").trim();
+  // Solo se interpola si tiene forma de UUID. Hoy quien llega acá ya pasó por
+  // un `.eq("id", …)` contra una columna uuid, así que un id inválido nunca
+  // llega; la comprobación evita que ese blindaje dependa del tipo de columna.
+  if (UUID_PATTERN.test(convId)) parts.push(`conversation_id.eq.${convId}`);
+
+  const phoneFilter = buildGuestPhoneOrFilter(guestPhone);
+  if (phoneFilter) parts.push(phoneFilter);
+
+  return parts.join(",");
 }
 
 /**
@@ -95,13 +141,19 @@ async function fetchWubbyPagesAscending(
   return { rows: all, truncated };
 }
 
-/** Historial de un huésped en un hotel; match + y sin + en sender/recipient. */
+/**
+ * Historial de un huésped en un hotel: por `conversation_id` cuando se conoce,
+ * más el match por identidad (teléfono con/sin `+`, o LID crudo) para las filas
+ * antiguas que no traen `conversation_id`. El filtro por `hotel_id` lo aplica
+ * `fetchWubbyPagesAscending` en TODAS las páginas.
+ */
 export async function fetchWubbyRowsForGuestAtHotel(
   supabase: SupabaseClient,
   hotelId: string,
-  guestDigits: string
+  guestPhone: string,
+  conversationId?: string | null
 ): Promise<WubbyFetchResult> {
-  const orFilter = buildGuestPhoneOrFilter(guestDigits);
+  const orFilter = buildGuestHistoryOrFilter(guestPhone, conversationId);
   if (!orFilter) return { rows: [], truncated: false };
   return fetchWubbyPagesAscending(supabase, [hotelId], orFilter);
 }
@@ -114,9 +166,9 @@ export async function fetchWubbyRowsForGuestAtHotel(
 export async function fetchWubbyRowsForGuestAcrossHotels(
   supabase: SupabaseClient,
   hotelIds: string[],
-  guestDigits: string
+  guestPhone: string
 ): Promise<WubbyFetchResult> {
-  const orFilter = buildGuestPhoneOrFilter(guestDigits);
+  const orFilter = buildGuestPhoneOrFilter(guestPhone);
   if (!orFilter) return { rows: [], truncated: false };
   return fetchWubbyPagesAscending(supabase, hotelIds, orFilter);
 }

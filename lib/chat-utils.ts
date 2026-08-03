@@ -19,6 +19,41 @@ export function normalizePhoneDigits(value: string | null | undefined): string {
     .replace(/\D/g, "");
 }
 
+/**
+ * Identificador LID de Meta (p. ej. `CO.28322187600722863`), que llega en lugar
+ * del teléfono cuando el huésped oculta su número.
+ *
+ * Se detecta por FORMA, no por prefijo: sin espacios, con punto, solo
+ * alfanumérico y con al menos 5 dígitos. Los literales `"Human Answer"` y
+ * `"Human Template"` llevan espacio, así que nunca caen acá y la clasificación
+ * de remitente sigue intacta. Un teléfono normal tampoco entra: no tiene punto.
+ *
+ * Importa porque `normalizePhoneDigits` le arranca las letras y produce un
+ * "teléfono" inventado (`28322187600722863`) que no matchea ninguna fila.
+ */
+export function isWaLidIdentifier(value: string | null | undefined): boolean {
+  const raw = String(value ?? "").trim().replace(/whatsapp:/gi, "");
+  if (!raw || /\s/.test(raw)) return false;
+  if (!raw.includes(".")) return false;
+  if (!/^[A-Za-z0-9._-]+$/.test(raw)) return false;
+  return raw.replace(/\D/g, "").length >= 5;
+}
+
+/** LID tal cual: solo se le quita el prefijo `whatsapp:` y los bordes. */
+export function readWaLid(value: string | null | undefined): string {
+  return String(value ?? "").trim().replace(/whatsapp:/gi, "");
+}
+
+/**
+ * Clave de identidad del huésped para AGRUPAR y comparar: LID crudo, o teléfono
+ * en dígitos sin `+`. Es la clave de los `Map` de mensajes por huésped, así que
+ * tiene que coincidir con la que se usa al buscar en ese `Map`.
+ */
+export function normalizeGuestIdentityKey(value: string | null | undefined): string {
+  if (isWaLidIdentifier(value)) return readWaLid(value);
+  return normalizePhoneDigits(value);
+}
+
 export function parseHotelPhoneDigitsCsv(raw: string | null | undefined): string[] {
   return String(raw ?? "")
     .split(",")
@@ -45,8 +80,16 @@ export function getHotelPhoneDigitsFromEnv(): string[] {
 /** Líneas WhatsApp del hotel en dígitos, leídas desde variables de entorno. */
 export const DEFAULT_HOTEL_PHONE_DIGITS = getHotelPhoneDigitsFromEnv();
 
-/** Identidad WhatsApp/Twilio normalizada para comparar (+E.164). */
+/**
+ * Identidad WhatsApp/Twilio normalizada para comparar (+E.164), o el LID crudo
+ * cuando el remitente es un identificador de Meta.
+ *
+ * Nunca antepone `+` a un LID: `+CO.28322187600722863` no es un teléfono y se
+ * mostraba así en el panel de datos. Las líneas del hotel son siempre numéricas,
+ * de modo que su normalización no cambia.
+ */
 export function normalizeWaIdentity(raw: string | null | undefined): string {
+  if (isWaLidIdentifier(raw)) return readWaLid(raw);
   const digits = normalizePhoneDigits(raw);
   return digits ? `+${digits}` : "";
 }
@@ -141,17 +184,19 @@ function hotelPhoneDigitsFromIdentities(hotelIdentities: Set<string>): string {
 export function inferGuestPhone(row: WubbyWhatsappRow, hotelIdentities: Set<string>): string {
   const senderRaw = String(row.sender ?? "").trim();
   const recipientRaw = String(row.recipient ?? "").trim();
-  const senderDigits = normalizePhoneDigits(senderRaw);
-  const recipientDigits = normalizePhoneDigits(recipientRaw);
+  // Clave LID-aware: un huésped con LID se agrupa por su identificador crudo,
+  // no por los dígitos que quedarían al arrancarle las letras.
+  const senderKey = normalizeGuestIdentityKey(senderRaw);
+  const recipientKey = normalizeGuestIdentityKey(recipientRaw);
   const hotelDigits = hotelPhoneDigitsFromIdentities(hotelIdentities);
 
   if (isHumanAnswerSender(senderRaw)) {
-    return recipientDigits || "unknown";
+    return recipientKey || "unknown";
   }
-  if (hotelDigits && senderDigits && senderDigits === hotelDigits) {
-    return recipientDigits || "unknown";
+  if (hotelDigits && senderKey && senderKey === hotelDigits) {
+    return recipientKey || "unknown";
   }
-  return senderDigits || recipientDigits || "unknown";
+  return senderKey || recipientKey || "unknown";
 }
 
 export function getRowField(row: WubbyWhatsappRow, ...keys: string[]): unknown {
@@ -763,9 +808,11 @@ export function mergeConversationsTableWithMessages(
   const out: Conversation[] = [];
 
   for (const cr of convRows) {
-    const guestPhoneDigits = normalizePhoneDigits(cr.guest_phone ?? "");
-    const guestPhone = guestPhoneDigits ? `+${guestPhoneDigits}` : "";
-    const msgList = guestPhoneDigits ? messagesByPhone.get(guestPhoneDigits) ?? [] : [];
+    // Misma clave que `inferGuestPhone` usó para agrupar: si acá se normalizara
+    // a dígitos un LID, el `get` fallaría y la conversación saldría sin hilo.
+    const guestKey = normalizeGuestIdentityKey(cr.guest_phone ?? "");
+    const guestPhone = normalizeWaIdentity(cr.guest_phone ?? "");
+    const msgList = guestKey ? messagesByPhone.get(guestKey) ?? [] : [];
 
     const lastRow = msgList.length > 0 ? msgList[msgList.length - 1]! : null;
     const lastMessage = lastRow
@@ -812,8 +859,9 @@ function buildConversationFromRow(
     messages: Message[];
   }
 ): Conversation {
-  const guestPhoneDigits = normalizePhoneDigits(cr.guest_phone ?? "");
-  const guestPhone = guestPhoneDigits ? `+${guestPhoneDigits}` : "";
+  // `normalizeWaIdentity` devuelve el LID crudo cuando no es un teléfono, así
+  // que acá nunca se arma un `+CO.28322187600722863`.
+  const guestPhone = normalizeWaIdentity(cr.guest_phone ?? "");
   const phoneDisplay = guestPhone || String(cr.guest_phone ?? "").trim() || "—";
 
   const { operationalStatus, controlMode } = mapOperationalFromConversationRow(cr);

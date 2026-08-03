@@ -9,6 +9,7 @@ import {
   formatMessageDisplayTime,
   getConversationDisplayActivityMs,
   isMediaWithoutFile,
+  isWaLidIdentifier,
   messageNeedsHumanAlert,
   normalizePhoneDigits,
   resolveMediaKind,
@@ -4837,7 +4838,10 @@ function GuestPanelContent({
           <div className="mb-2">
             <CockpitLabel>Datos</CockpitLabel>
           </div>
-          <MonoRow k="Teléfono" v={guest.phone} />
+          <MonoRow
+            k={isWaLidIdentifier(guest.phone) ? "ID de WhatsApp" : "Teléfono"}
+            v={guest.phone}
+          />
           <MonoRow k="Canal" v="WhatsApp" />
           <MonoRow k="Estado IA" v={iaEstado} />
           <MonoRow k="Última actividad" v={formatActivityIso(conversation.lastActivityIso)} />
@@ -4908,7 +4912,7 @@ function GuestPanelContent({
             style={{ padding: "10px", borderRadius: 11, border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)", fontSize: 12, fontWeight: 600 }}
           >
             <IconPhone className="h-4 w-4" />
-            Copiar teléfono
+            {isWaLidIdentifier(guest.phone) ? "Copiar ID" : "Copiar teléfono"}
           </button>
         </div>
 

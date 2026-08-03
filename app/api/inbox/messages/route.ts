@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildMessageFromWubbyRow, normalizePhoneDigits, normalizeWaIdentity } from "@/lib/chat-utils";
+import { buildMessageFromWubbyRow, normalizeWaIdentity } from "@/lib/chat-utils";
 import { CONVERSATIONS_TABLE, type ConversationDbRow } from "@/lib/conversation-schema";
 import { fetchWubbyRowsForGuestAtHotel } from "@/lib/inbox-fetch-messages";
 import {
@@ -64,12 +64,13 @@ export async function GET(request: Request) {
     }
 
     const cr = convRow as ConversationDbRow;
-    const guestPhoneDigits = normalizePhoneDigits(cr.guest_phone ?? "");
-    if (!guestPhoneDigits) {
+    // Identidad del huésped: `+E.164` si es teléfono, o el LID crudo de Meta.
+    // Se usa para el filtro complementario y para clasificar cada burbuja.
+    const guestPhone = normalizeWaIdentity(cr.guest_phone ?? "");
+    const guestPhoneRaw = String(cr.guest_phone ?? "").trim();
+    if (!guestPhone && !guestPhoneRaw) {
       return NextResponse.json({ error: "La conversación no tiene teléfono de huésped" }, { status: 400 });
     }
-
-    const guestPhone = `+${guestPhoneDigits}`;
 
     const { data: hotelWaRows, error: hotelWaError } = await supabase
       .from(HOTELS_TABLE)
@@ -86,10 +87,13 @@ export async function GET(request: Request) {
       hotelWaRows ? [{ id: activeHotelId, whatsapp_number: hotelWaRows.whatsapp_number }] : []
     );
 
+    // `conversationId` como criterio principal; la identidad queda de respaldo
+    // para las filas antiguas sin `conversation_id`.
     const { rows: msgRows, truncated } = await fetchWubbyRowsForGuestAtHotel(
       supabase,
       activeHotelId,
-      guestPhoneDigits
+      guestPhoneRaw || guestPhone,
+      conversationId
     );
     if (truncated) {
       console.warn("[inbox messages GET] historial truncado", { conversationId, activeHotelId });
@@ -102,7 +106,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       conversationId,
-      guestPhone: normalizeWaIdentity(cr.guest_phone ?? guestPhone),
+      guestPhone: guestPhone || guestPhoneRaw,
       messages,
       fetchedCount: messages.length,
     });
