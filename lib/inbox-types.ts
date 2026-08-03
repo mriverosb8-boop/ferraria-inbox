@@ -96,6 +96,15 @@ export interface Message {
    * Columna `cause_request`: `yes` = disparó escalación (badge en burbuja).
    */
   causeRequest?: string;
+  /**
+   * Columna `message_translated`: texto EXACTO que le llegó al huésped cuando el
+   * engine tradujo la respuesta a su idioma. `null`/ausente = lo enviado es
+   * idéntico a `body`, que siempre va en español (todo lo interno en español).
+   *
+   * Es solo lectura y solo informativo: la burbuja sigue mostrando `body` y no
+   * hay ningún camino que reenvíe o edite este texto.
+   */
+  translatedBody?: string | null;
   aiMeta?: AiMessageMeta;
   /** UUID generado en cliente; persiste en `Wubby_Whatsapp.client_temp_id`. */
   clientTempId?: string;

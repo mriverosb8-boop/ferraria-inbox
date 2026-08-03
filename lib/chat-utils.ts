@@ -227,6 +227,24 @@ function readWamid(row: WubbyWhatsappRow): string | undefined {
   return readStringField(row, "wamid", "waMid", "meta_wamid");
 }
 
+/**
+ * Columna `message_translated`: texto exacto que salió al huésped cuando el
+ * engine tradujo la respuesta. Devuelve el string TAL CUAL (sin recortar), que
+ * es lo que de verdad recibió: solo se descartan el null y el string vacío.
+ *
+ * Si coincide con el `message` de la fila se trata como "no hubo traducción":
+ * el contrato es que `null` marca ese caso, pero una copia idéntica no aporta
+ * nada que mostrar y no debe pintar el chip.
+ */
+function readTranslatedMessage(row: WubbyWhatsappRow): string | undefined {
+  const v = getRowField(row, "message_translated", "messageTranslated");
+  if (typeof v !== "string") return undefined;
+  if (v.trim().length === 0) return undefined;
+  const original = typeof row.message === "string" ? row.message : "";
+  if (v.trim() === original.trim()) return undefined;
+  return v;
+}
+
 /** Columna `reaction_to_wamid`: solo filas de reacción; wamid del mensaje reaccionado. */
 function readReactionToWamid(row: WubbyWhatsappRow): string | undefined {
   return readStringField(row, "reaction_to_wamid", "reactionToWamid");
@@ -920,6 +938,7 @@ export function buildMessageFromWubbyRow(
     metaMediaId,
   } = media;
   const causeReqHandoff = readCauseRequest(row);
+  const translatedBody = readTranslatedMessage(row);
   const clientTempIdRaw = readStringField(row, "client_temp_id", "clientTempId");
   const clientTempId = clientTempIdRaw?.trim() || undefined;
 
@@ -943,6 +962,9 @@ export function buildMessageFromWubbyRow(
       wamid: readWamid(row) ?? null,
       reactionToWamid: readReactionToWamid(row) ?? null,
       ...(causeReqHandoff ? { causeRequest: causeReqHandoff } : {}),
+      // Solo se adjunta cuando hubo traducción real; sin la columna (filas
+      // viejas, hoteles sin multiidioma) la burbuja queda exactamente igual.
+      ...(translatedBody ? { translatedBody } : {}),
     },
     previewRaw,
     createdAtIso: row.created_at,

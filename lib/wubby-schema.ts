@@ -26,6 +26,12 @@ export type WubbyWhatsappRow = {
   file_url?: string | null;
   /** `yes` si el mensaje provocó handoff a humano */
   cause_request?: string | null;
+  /**
+   * Texto realmente enviado al huésped cuando el engine tradujo la respuesta a
+   * su idioma (hoteles con multiidioma habilitado). `message` guarda SIEMPRE el
+   * español; `null` aquí significa que se envió ese mismo texto sin traducir.
+   */
+  message_translated?: string | null;
   /** UUID del cliente para reconciliar optimista con realtime */
   client_temp_id?: string | null;
   /**
@@ -85,6 +91,10 @@ export const WUBBY_SELECT_COLUMNS = [
   "client_temp_id",
   "wamid",
   "reaction_to_wamid",
+  // Texto que de verdad recibió el huésped cuando hubo traducción. Va acá y no
+  // en `WUBBY_PREVIEW_COLUMNS` a propósito: la lista previsualiza el español,
+  // igual que la burbuja; el traducido solo se despliega dentro del hilo.
+  "message_translated",
 ].join(", ");
 
 /**
