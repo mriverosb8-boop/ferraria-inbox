@@ -3020,7 +3020,12 @@ export default function InboxApp() {
             {stripWhatsappMarkup(c.lastMessagePreview)}
           </p>
           <div className="flex items-center gap-2">
-            <StatusToken variant={statusVariant} />
+            {/*
+             * En staff la IA no interviene nunca, así que el token "IA activa"
+             * sería mentira. Los demás estados (pendiente, humano, cerrada) sí
+             * son ciertos para staff y se quedan.
+             */}
+            {!(c.isStaff && statusVariant === "ia") && <StatusToken variant={statusVariant} />}
             {showProperty && (
               <span className="truncate" style={{ fontSize: 11, color: "var(--ink-3)" }} title={propertyLabel}>
                 {propertyLabel}
@@ -4430,8 +4435,11 @@ function GuestPanelContent({
    * sirven para depurar.
    */
   const isStaff = Boolean(conversation.isStaff);
-  const iaEstado =
-    conversation.aiActive && conversation.controlMode === "ai" ? "Activa" : "En pausa";
+  const iaEstado = isStaff
+    ? "No aplica (staff)"
+    : conversation.aiActive && conversation.controlMode === "ai"
+      ? "Activa"
+      : "En pausa";
   const hasTags = guest.tags.length > 0;
   const notesAreDefault = guest.internalNotes.startsWith("Sin notas");
   const isPendingRequest = conversation.request === "pending";
