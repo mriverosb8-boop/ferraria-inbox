@@ -4,12 +4,32 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 const SUBSCRIPTIONS_TABLE = "push_subscriptions";
 const HOTEL_USERS_TABLE = "hotel_users";
 
+/**
+ * Categoría del evento que disparó la push. El engine la manda en `type`
+ * (ver PushNotifyType en ferraria-engine). El inbox la usa SOLO para presentación:
+ * ícono y estilo en el service worker. Nunca cambia a quién se le envía.
+ *
+ * `handoff` es el default de retrocompatibilidad: un emisor viejo que no manda
+ * `type`, o un valor desconocido, se trata como escalamiento — el caso urgente.
+ */
+export const PUSH_TYPES = ["handoff", "staff", "reservation"] as const;
+export type PushNotificationType = (typeof PUSH_TYPES)[number];
+export const DEFAULT_PUSH_TYPE: PushNotificationType = "handoff";
+
+/** Normaliza cualquier entrada a un tipo válido. Desconocido o ausente → handoff. */
+export function normalizePushType(value: unknown): PushNotificationType {
+  return typeof value === "string" && (PUSH_TYPES as readonly string[]).includes(value)
+    ? (value as PushNotificationType)
+    : DEFAULT_PUSH_TYPE;
+}
+
 /** Shape EXACTO que consume public/sw.js (Batch 4). No cambiar sin actualizar el SW. */
 export type PushPayload = {
   title: string;
   body: string;
   conversation_id: string;
   hotel_id: string;
+  type: PushNotificationType;
 };
 
 export type SendResult = {

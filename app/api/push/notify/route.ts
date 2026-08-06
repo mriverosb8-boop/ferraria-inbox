@@ -1,6 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { sendPushToHotel } from "@/lib/push/send";
+import {
+  normalizePushType,
+  sendPushToHotel,
+  type PushNotificationType,
+} from "@/lib/push/send";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +13,18 @@ type NotifyBody = {
   conversation_id?: string;
   title?: string;
   body?: string;
+  type?: string;
+};
+
+/**
+ * Cuerpo por defecto cuando el emisor no manda `body`. Es por tipo a propósito:
+ * el default de escalamiento habla de "requiere atención humana" y colgarle ese
+ * texto a una reserva confirmada le pondría urgencia a una buena noticia.
+ */
+const DEFAULT_BODY: Record<PushNotificationType, string> = {
+  handoff: "Un huésped requiere atención humana.",
+  staff: "Mensaje del personal.",
+  reservation: "Se confirmó una reserva nueva.",
 };
 
 /** Compara el secreto en tiempo constante (evita fuga por timing). */
@@ -44,11 +60,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Faltan hotel_id o conversation_id" }, { status: 400 });
   }
 
+  // Tipo desconocido o ausente → handoff. Un emisor viejo sigue funcionando igual.
+  const type = normalizePushType(body.type);
+
   const title = typeof body.title === "string" && body.title.trim() ? body.title.trim() : "FerrarIA Inbox";
   const messageBody =
-    typeof body.body === "string" && body.body.trim()
-      ? body.body.trim()
-      : "Un huésped requiere atención humana.";
+    typeof body.body === "string" && body.body.trim() ? body.body.trim() : DEFAULT_BODY[type];
 
   try {
     const result = await sendPushToHotel(hotelId, {
@@ -56,6 +73,7 @@ export async function POST(request: Request) {
       body: messageBody,
       conversation_id: conversationId,
       hotel_id: hotelId,
+      type,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
