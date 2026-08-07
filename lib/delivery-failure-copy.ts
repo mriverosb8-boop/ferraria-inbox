@@ -1,4 +1,4 @@
-import type { MessageDeliveryFailure } from "@/lib/inbox-types";
+import type { MessageDeliveryReceipt } from "@/lib/inbox-types";
 
 /**
  * Traducción de los códigos de error de Meta a algo que un recepcionista pueda
@@ -70,7 +70,7 @@ const DELIVERY_FAILURE_COPY: Record<number, string> = {
  * El código se prioriza sobre el título porque Meta a veces manda títulos
  * genéricos con códigos específicos, nunca al revés.
  */
-export function resolveDeliveryFailureReason(failure: MessageDeliveryFailure): string | null {
+export function resolveDeliveryFailureReason(failure: MessageDeliveryReceipt): string | null {
   if (failure.errorCode != null) {
     const mapped = DELIVERY_FAILURE_COPY[failure.errorCode];
     if (mapped) return mapped;

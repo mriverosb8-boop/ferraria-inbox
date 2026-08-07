@@ -3,6 +3,8 @@ import { requireSessionUser } from "@/lib/auth/require-user";
 import { assertConversationInHotel, requireActiveHotel } from "@/lib/auth/require-hotel";
 import { CONVERSATIONS_TABLE } from "@/lib/conversation-schema";
 import { buildGuestPhoneOrFilter } from "@/lib/inbox-fetch-messages";
+import { pickMostAdvancedReceipt, toMetaDeliveryStatus } from "@/lib/delivery-status";
+import type { MessageDeliveryReceipt } from "@/lib/inbox-types";
 import { WUBBY_TABLE } from "@/lib/wubby-schema";
 
 export const dynamic = "force-dynamic";
@@ -29,8 +31,9 @@ type MessageStatusRow = {
 /**
  * GET /api/conversations/[id]/message-statuses?hotelId=…
  *
- * Devuelve los acuses de Meta FALLIDOS de los mensajes salientes de una
- * conversación, para que el inbox pueda marcar la burbuja como no entregada.
+ * Devuelve los acuses de Meta de los mensajes salientes de una conversación
+ * —sent, delivered, read y failed— para que el inbox pinte los ticks contra el
+ * estado REAL de entrega y no contra el optimista local.
  *
  * Por qué existe este endpoint y no una query directa desde el navegador:
  * `message_statuses` solo es accesible con la service role, así que el cliente
@@ -42,9 +45,10 @@ type MessageStatusRow = {
  * filtrada por el hotel ya autorizado, así que además es el camino tenant-safe:
  * un wamid ajeno nunca entra en el `.in()`.
  *
- * Solo se devuelve `status = 'failed'`. Los acuses sent/delivered/read existen
- * en la tabla, pero el inbox aún pinta ✓/✓✓ contra el estado local del
- * optimista; convertir esos ticks en estado real de Meta es otro cambio.
+ * Antes esto filtraba `.eq('status','failed')` y tiraba el resto, porque los
+ * ticks salían del estado local. Se quitó el filtro: un ✓✓ que solo significaba
+ * "la fila está en la base" le decía al recepcionista que el huésped había
+ * recibido un mensaje que quizá nunca llegó.
  */
 export async function GET(request: Request, context: RouteContext) {
   try {
@@ -118,24 +122,36 @@ export async function GET(request: Request, context: RouteContext) {
     const { data: statusRows, error: statusError } = await tenant.supabase
       .from(STATUSES_TABLE)
       .select("wamid, status, error_code, error_title")
-      .in("wamid", wamids)
-      .eq("status", "failed");
+      .in("wamid", wamids);
 
     if (statusError) {
       console.error("[message-statuses] lookup statuses", statusError.message);
       return NextResponse.json({ error: "No se pudieron leer los estados" }, { status: 502 });
     }
 
-    const statuses = ((statusRows ?? []) as MessageStatusRow[])
-      .filter((row) => typeof row.wamid === "string" && row.wamid.trim())
-      .map((row) => ({
-        wamid: String(row.wamid).trim(),
-        status: row.status ?? "failed",
-        errorCode: row.error_code ?? null,
-        errorTitle: row.error_title ?? null,
-      }));
+    // Se colapsa a un acuse por wamid quedándose con el más avanzado. Hoy la
+    // tabla trae una sola fila por wamid, así que esto no descarta nada; existe
+    // para que un futuro log de transiciones no rompa el tick.
+    const byWamid = new Map<string, MessageDeliveryReceipt>();
+    for (const row of (statusRows ?? []) as MessageStatusRow[]) {
+      const wamid = typeof row.wamid === "string" ? row.wamid.trim() : "";
+      const status = toMetaDeliveryStatus(row.status);
+      // Un status desconocido se descarta: es preferible dejar la burbuja en ✓
+      // ("salió") que inventar una entrega a partir de un valor que no sabemos leer.
+      if (!wamid || !status) continue;
 
-    return NextResponse.json({ statuses });
+      byWamid.set(
+        wamid,
+        pickMostAdvancedReceipt(byWamid.get(wamid), {
+          wamid,
+          status,
+          errorCode: row.error_code ?? null,
+          errorTitle: row.error_title ?? null,
+        })
+      );
+    }
+
+    return NextResponse.json({ statuses: [...byWamid.values()] });
   } catch (e) {
     console.error("[message-statuses]", e);
     return NextResponse.json({ error: "Error desconocido" }, { status: 500 });

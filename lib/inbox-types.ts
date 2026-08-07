@@ -5,22 +5,36 @@ export type ControlMode = "ai" | "human";
 
 export type MessageSender = "user" | "ai" | "agent";
 
-/** Entrega del mensaje saliente (optimista → confirmado en DB). */
+/**
+ * Entrega del mensaje saliente DENTRO DE ESTE INBOX: `pending` mientras la
+ * petición de envío está en vuelo, `confirmed` cuando la fila ya existe en la
+ * base.
+ *
+ * OJO: `confirmed` significa "quedó guardado", NO "le llegó al huésped". La
+ * entrega real solo la sabe Meta y vive en `MessageDeliveryReceipt`.
+ */
 export type MessageDeliveryStatus = "pending" | "confirmed";
 
+/** Estados de entrega que reporta Meta por webhook, de menos a más avanzado. */
+export type MetaDeliveryStatus = "sent" | "delivered" | "read" | "failed";
+
 /**
- * Acuse de Meta que reporta un mensaje saliente como NO entregado, tal y como
- * lo sirve `GET /api/conversations/[id]/message-statuses`.
+ * Acuse de Meta sobre un mensaje saliente, tal y como lo sirve
+ * `GET /api/conversations/[id]/message-statuses`.
  *
  * La fuente es `message_statuses` (service-role only), y se cruza con la
- * burbuja por `wamid`. Los mensajes sin `wamid` —históricos, y todo lo que
- * envían los hoteles que aún van por n8n— no aparecen acá y se pintan como
- * siempre: no hay forma de mapearlos.
+ * burbuja por `wamid`.
+ *
+ * Que NO exista acuse para una burbuja es el caso NORMAL, no una anomalía: a
+ * agosto de 2026 solo ~7 % de los salientes tiene `wamid`. El resto son filas
+ * históricas y los hoteles que todavía envían por n8n, que nunca van a tener
+ * acuse. Por eso "sin acuse" se pinta como ✓ ("salió"), jamás como pendiente:
+ * un reloj eterno sobre una conversación cerrada hace meses miente igual que el
+ * ✓✓ que se pintaba antes, solo que asustando.
  */
-export interface MessageDeliveryFailure {
+export interface MessageDeliveryReceipt {
   wamid: string;
-  /** Siempre `"failed"` hoy: el endpoint no devuelve otros estados. */
-  status: string;
+  status: MetaDeliveryStatus;
   /** Código de error de Meta, p. ej. 131026 (Message Undeliverable). */
   errorCode: number | null;
   /** Título legible del error de Meta; puede venir vacío. */

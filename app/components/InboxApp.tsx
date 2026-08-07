@@ -21,7 +21,7 @@ import type {
   ControlMode,
   Conversation,
   Message,
-  MessageDeliveryFailure,
+  MessageDeliveryReceipt,
   OperationalStatus,
 } from "@/lib/inbox-types";
 import {
@@ -30,6 +30,7 @@ import {
   type ConversationDbRow,
 } from "@/lib/conversation-schema";
 import { resolveDeliveryFailureReason } from "@/lib/delivery-failure-copy";
+import { resolveDeliveryTick } from "@/lib/delivery-status";
 import { STAFF_CONTACT_TEMPLATE_NAME } from "@/lib/staff-contacts";
 import { sendWhatsappTemplate } from "@/lib/send-whatsapp-template";
 import { normalizeColombianWhatsappNumber } from "@/lib/whatsapp-templates";
@@ -37,7 +38,7 @@ import { useConversations } from "@/hooks/useConversations";
 import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
 import { useInboxSearch } from "@/hooks/useInboxSearch";
-import { useMessageDeliveryFailures } from "@/hooks/useMessageDeliveryFailures";
+import { useMessageDeliveryReceipts } from "@/hooks/useMessageDeliveryReceipts";
 import { WUBBY_TABLE } from "@/lib/wubby-schema";
 import { BrandHeaderMark } from "./BrandHeaderMark";
 import { FollowupTimer } from "./FollowupTimer";
@@ -471,7 +472,17 @@ function IconSend(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** Lucide Check (entrega pendiente). */
+/** Reloj: la petición de envío sigue en vuelo, nadie ha confirmado nada. */
+function IconClock(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+
+/** Lucide Check: salió, pero nadie confirmó que llegara. */
 function IconCheck(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} {...props}>
@@ -1421,7 +1432,7 @@ function isWhatsappSticker(m: Message): boolean {
  * Texto del tooltip del chip "No entregado". Duplica la línea secundaria a
  * propósito: si el motivo se corta visualmente, el `title` lo muestra completo.
  */
-function describeDeliveryFailure(failure: MessageDeliveryFailure): string {
+function describeDeliveryFailure(failure: MessageDeliveryReceipt): string {
   const reason = resolveDeliveryFailureReason(failure);
   return reason ? `No entregado — ${reason}` : "No entregado";
 }
@@ -1431,7 +1442,7 @@ function MessageBubble({
   guestName,
   guestSeed,
   reaction,
-  deliveryFailure,
+  deliveryReceipt,
 }: {
   m: Message;
   guestName: string;
@@ -1439,11 +1450,11 @@ function MessageBubble({
   /** Emoji de la reacción vigente sobre ESTA burbuja; ver `buildThreadView`. */
   reaction?: string;
   /**
-   * Acuse `failed` de Meta para ESTA burbuja, cruzado por `wamid`. Solo puede
+   * Acuse de entrega de Meta para ESTA burbuja, cruzado por `wamid`. Solo puede
    * existir en salientes con `wamid`: los históricos y los de los hoteles que
-   * envían por n8n nunca lo traen.
+   * envían por n8n nunca lo traen, y esos se quedan en ✓.
    */
-  deliveryFailure?: MessageDeliveryFailure;
+  deliveryReceipt?: MessageDeliveryReceipt;
 }) {
   const isUser = m.sender === "user";
   const isAi = m.sender === "ai";
@@ -1500,10 +1511,16 @@ function MessageBubble({
         };
   const onRed = isAgent;
   const metaColor = onRed ? "rgba(255,255,255,.8)" : "var(--ink-3)";
-  // Motivo legible del acuse `failed`; `null` si Meta no mandó código conocido
-  // ni título. Se calcula acá para que el chip y la línea de abajo no puedan
-  // contradecirse.
-  const deliveryFailureReason = deliveryFailure ? resolveDeliveryFailureReason(deliveryFailure) : null;
+
+  // Qué tick va al lado de la hora. El acuse de Meta manda; sin acuse queda en
+  // ✓ ("salió"), nunca en ✓✓. Ver `resolveDeliveryTick`.
+  const deliveryTick = resolveDeliveryTick(deliveryStatus, deliveryReceipt);
+  const failedReceipt = deliveryTick === "failed" ? deliveryReceipt : undefined;
+  // Motivo legible del fallo; `null` si Meta no mandó código conocido ni título.
+  // Se calcula acá para que el chip y la línea de abajo no puedan contradecirse.
+  const deliveryFailureReason = failedReceipt
+    ? resolveDeliveryFailureReason(failedReceipt)
+    : null;
 
   return (
     <div
@@ -1686,10 +1703,11 @@ function MessageBubble({
               {timeLabel}
             </time>
             {isOutboundHotel &&
-              // El acuse `failed` de Meta gana sobre el tick local: el ✓✓ solo
-              // significa "la fila está en la base", no que el huésped lo
-              // recibiera. Si Meta dijo que no llegó, manda Meta.
-              (deliveryFailure ? (
+              // Regla dura: el doble check SOLO sale con acuse de Meta. Antes el
+              // ✓✓ se pintaba por defecto y solo significaba "la fila está en la
+              // base", así que recepción daba por entregado lo que quizá nunca
+              // llegó. Sin acuse ahora queda en ✓ ("salió"). Ver `resolveDeliveryTick`.
+              (failedReceipt ? (
                 <span
                   className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight"
                   style={{
@@ -1699,15 +1717,33 @@ function MessageBubble({
                     border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--red)",
                     color: onRed ? "#fff" : "var(--red)",
                   }}
-                  title={describeDeliveryFailure(deliveryFailure)}
+                  title={describeDeliveryFailure(failedReceipt)}
                 >
                   <IconCircleX className="h-3 w-3 shrink-0" aria-hidden />
                   <span>No entregado</span>
                 </span>
-              ) : deliveryStatus === "pending" ? (
+              ) : deliveryTick === "pending" ? (
+                <IconClock className="h-3 w-3 shrink-0" style={{ color: metaColor }} aria-label="Enviando" />
+              ) : deliveryTick === "sent" ? (
                 <IconCheck className="h-3.5 w-3.5 shrink-0" style={{ color: metaColor }} aria-label="Enviado" />
               ) : (
-                <IconCheckCheck className="h-3.5 w-[18px] shrink-0" style={{ color: metaColor }} aria-label="Entregado" />
+                <IconCheckCheck
+                  className="h-3.5 w-[18px] shrink-0"
+                  // Azul solo en `read`, la misma convención de WhatsApp que
+                  // recepción ya trae aprendida: no hay que explicarle nada.
+                  // Sobre la burbuja roja el azul no contrasta, así que ahí el
+                  // "leído" se marca con blanco pleno contra el blanco atenuado
+                  // de `delivered`.
+                  style={{
+                    color:
+                      deliveryTick === "read"
+                        ? onRed
+                          ? "#fff"
+                          : "var(--blue-read)"
+                        : metaColor,
+                  }}
+                  aria-label={deliveryTick === "read" ? "Leído por el huésped" : "Entregado"}
+                />
               ))}
             {isAi && m.aiMeta && (
               <span className="ibx-mono max-w-full break-words text-[10px] tabular-nums" style={{ color: "var(--ink-3)" }}>
@@ -1858,12 +1894,11 @@ export default function InboxApp() {
   );
 
   /**
-   * Acuses `failed` de Meta para el hilo abierto, indexados por `wamid`. Es la
-   * única fuente que sabe que un mensaje NO le llegó al huésped (p. ej. 131026
-   * "Message Undeliverable"); sin esto, recepción ve el ✓✓ y da por hecho que
-   * el mensaje se entregó.
+   * Acuses de entrega de Meta para el hilo abierto, indexados por `wamid`. Es
+   * la ÚNICA fuente que sabe de verdad si un mensaje le llegó al huésped: sin
+   * esto los ticks solo reflejan que la fila quedó guardada en la base.
    */
-  const { deliveryFailures, refetchDeliveryFailures } = useMessageDeliveryFailures(
+  const { deliveryReceipts, refetchDeliveryReceipts } = useMessageDeliveryReceipts(
     selectedId,
     conversationHotelId
   );
@@ -2452,15 +2487,15 @@ export default function InboxApp() {
    * Es best-effort: si el acuse llega más tarde, se verá al reabrir la
    * conversación. No se monta un polling por algo que en la práctica es raro.
    */
-  const scheduleDeliveryFailuresRefetch = useCallback(() => {
+  const scheduleDeliveryReceiptsRefetch = useCallback(() => {
     if (deliveryRefetchTimerRef.current) {
       clearTimeout(deliveryRefetchTimerRef.current);
     }
     deliveryRefetchTimerRef.current = setTimeout(() => {
       deliveryRefetchTimerRef.current = null;
-      refetchDeliveryFailures();
+      refetchDeliveryReceipts();
     }, DELIVERY_STATUS_REFETCH_MS);
-  }, [refetchDeliveryFailures]);
+  }, [refetchDeliveryReceipts]);
 
   // Cambiar de conversación (o desmontar) cancela el refetch pendiente: si no,
   // dispararía contra el hilo que ya no está abierto.
@@ -2618,7 +2653,7 @@ export default function InboxApp() {
         // de control humano lo mueve el engine y llega por Realtime; acá basta
         // con el optimista local que ya se aplicó arriba. Refrescar acá
         // recargaría la bandeja entera en cada archivo enviado.
-        scheduleDeliveryFailuresRefetch();
+        scheduleDeliveryReceiptsRefetch();
       } catch {
         setConversations((prev) =>
           prev.map((c) =>
@@ -2696,9 +2731,9 @@ export default function InboxApp() {
         }
       }
       // Meta puede aceptar el mensaje y rechazarlo después (131026 "Message
-      // Undeliverable"): la burbuja ya está pintada con ✓✓ y solo el acuse
-      // posterior revela que no llegó.
-      scheduleDeliveryFailuresRefetch();
+      // Undeliverable"): la burbuja queda en ✓ y solo el acuse posterior la
+      // mueve a ✓✓ o la marca como no entregada.
+      scheduleDeliveryReceiptsRefetch();
     } catch {
       setSendWarning("Error de red al enviar al engine");
     }
@@ -4057,8 +4092,8 @@ export default function InboxApp() {
                         guestName={selected.guest.name}
                         guestSeed={selected.guest.id}
                         reaction={reactionByMessageId.get(m.id)}
-                        deliveryFailure={
-                          m.wamid ? deliveryFailures.get(m.wamid) : undefined
+                        deliveryReceipt={
+                          m.wamid ? deliveryReceipts.get(m.wamid) : undefined
                         }
                       />
                     ))

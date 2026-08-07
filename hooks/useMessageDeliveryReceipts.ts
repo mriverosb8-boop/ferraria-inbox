@@ -1,28 +1,33 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MessageDeliveryFailure } from "@/lib/inbox-types";
+import type { MessageDeliveryReceipt } from "@/lib/inbox-types";
 
 type StatusesResponse = {
-  statuses?: MessageDeliveryFailure[];
+  statuses?: MessageDeliveryReceipt[];
   error?: string;
 };
 
 /**
- * Trae de `GET /api/conversations/[id]/message-statuses` los mensajes salientes
- * que Meta reportó como NO entregados, indexados por `wamid`.
+ * Trae de `GET /api/conversations/[id]/message-statuses` los acuses de entrega
+ * de Meta —sent, delivered, read, failed— indexados por `wamid`.
  *
  * Se carga al abrir la conversación y se refresca a mano tras enviar
  * (`refetch`). No usa Realtime a propósito: `message_statuses` es service-role
- * only, así que el navegador no puede suscribirse; y un acuse de fallo no es
- * información que se necesite al segundo.
+ * only, así que el navegador no puede suscribirse; y un tick que tarda unos
+ * segundos en pasar de ✓ a ✓✓ no le cuesta nada a recepción.
  *
- * Un fallo del fetch se traga en silencio (solo `console.warn`): el hilo se
- * sigue viendo igual, sin marcas de no entregado. Degradar así es preferible a
- * un banner de error por algo que es puramente decorativo sobre la burbuja.
+ * Consecuencia de no usar Realtime: si el huésped LEE el mensaje mientras la
+ * conversación está abierta, el ✓✓ azul no aparece hasta el siguiente envío o
+ * hasta reabrir el hilo. Es una subestimación, nunca una sobreestimación, que
+ * es el lado seguro del error.
+ *
+ * Un fallo del fetch se traga en silencio (solo `console.warn`): sin acuses el
+ * hilo se sigue viendo, con todos los salientes en ✓. Degradar así es preferible
+ * a un banner de error por algo decorativo sobre la burbuja.
  */
-export function useMessageDeliveryFailures(conversationId: string, hotelId: string | null) {
-  const [failures, setFailures] = useState<Map<string, MessageDeliveryFailure>>(
+export function useMessageDeliveryReceipts(conversationId: string, hotelId: string | null) {
+  const [receipts, setReceipts] = useState<Map<string, MessageDeliveryReceipt>>(
     () => new Map()
   );
   const fetchKeyRef = useRef("");
@@ -45,12 +50,12 @@ export function useMessageDeliveryFailures(conversationId: string, hotelId: stri
       if (!res.ok) throw new Error(json.error ?? "No se pudieron cargar los estados de envío");
       if (controller.signal.aborted || fetchKeyRef.current !== key) return;
 
-      setFailures(
+      setReceipts(
         new Map((json.statuses ?? []).map((entry) => [entry.wamid, entry]))
       );
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
-      console.warn("[useMessageDeliveryFailures]", e);
+      console.warn("[useMessageDeliveryReceipts]", e);
     }
   }, []);
 
@@ -59,13 +64,13 @@ export function useMessageDeliveryFailures(conversationId: string, hotelId: stri
     const hid = hotelId?.trim() ?? "";
     if (!convId || !hid) {
       fetchKeyRef.current = "";
-      setFailures(new Map());
+      setReceipts(new Map());
       return;
     }
 
     // Vaciar antes de pedir: si no, al saltar de conversación se verían por un
-    // instante los fallos de la anterior sobre burbujas que no son suyas.
-    setFailures(new Map());
+    // instante los acuses de la anterior sobre burbujas que no son suyas.
+    setReceipts(new Map());
     void load(convId, hid);
 
     return () => {
@@ -84,5 +89,5 @@ export function useMessageDeliveryFailures(conversationId: string, hotelId: stri
     void load(convId, hid);
   }, [conversationId, hotelId, load]);
 
-  return { deliveryFailures: failures, refetchDeliveryFailures: refetch };
+  return { deliveryReceipts: receipts, refetchDeliveryReceipts: refetch };
 }
