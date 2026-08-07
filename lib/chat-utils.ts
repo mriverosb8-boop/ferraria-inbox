@@ -5,6 +5,11 @@ import {
   resolveHotelWaIdentitiesForRow,
 } from "@/lib/hotel-whatsapp-map";
 import { MESSAGES_LIMIT } from "@/lib/message-limits";
+import {
+  COLOMBIA_TIME_ZONE,
+  parseWhatsappInstant,
+  parseWhatsappInstantMs,
+} from "@/lib/meta-window";
 import type { WubbyWhatsappRow } from "@/lib/wubby-schema";
 
 /**
@@ -559,31 +564,50 @@ export function classifyMessageSender(
   return "ai";
 }
 
+/**
+ * Día calendario EN BOGOTÁ (`YYYY-MM-DD`) de un instante.
+ *
+ * "Hoy" y "Ayer" se decidían con `getFullYear/getMonth/getDate`, que responden
+ * en la zona del navegador: fuera de Colombia el mismo mensaje cambiaba de día
+ * y la lista decía "Ayer" donde en recepción decía la hora.
+ */
+function colombiaDayKey(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 export function formatMessageListTime(iso: string, locale = "es"): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
+  const d = parseWhatsappInstant(iso);
+  if (!d) return "—";
+
   const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  if (sameDay) {
-    return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(d);
+  const day = colombiaDayKey(d);
+  if (day === colombiaDayKey(now)) {
+    return new Intl.DateTimeFormat(locale, {
+      timeZone: COLOMBIA_TIME_ZONE,
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
   }
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (
-    d.getFullYear() === yesterday.getFullYear() &&
-    d.getMonth() === yesterday.getMonth() &&
-    d.getDate() === yesterday.getDate()
-  ) {
+  if (day === colombiaDayKey(new Date(now.getTime() - 24 * 60 * 60 * 1000))) {
     return "Ayer";
   }
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: COLOMBIA_TIME_ZONE,
+    day: "numeric",
+    month: "short",
+  }).format(d);
 }
 
 export function formatMessageDetailTime(iso: string, locale = "es"): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
+  const d = parseWhatsappInstant(iso);
+  if (!d) return "—";
   return new Intl.DateTimeFormat(locale, {
+    timeZone: COLOMBIA_TIME_ZONE,
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -624,13 +648,10 @@ export function getMessageDisplayDate(message: Record<string, unknown>): Date {
     message.created_at ??
     message.createdAt ??
     message.sentAtIso;
-  const date = new Date(String(raw ?? ""));
 
-  if (Number.isNaN(date.getTime())) {
-    return new Date(0);
-  }
-
-  return date;
+  // `created_at` de Wubby es naive en hora Bogotá: se interpreta explícitamente
+  // ahí, nunca en la zona del navegador.
+  return parseWhatsappInstant(typeof raw === "string" ? raw : String(raw ?? "")) ?? new Date(0);
 }
 
 export function getMessageDisplayMs(message: Record<string, unknown>): number {
@@ -643,6 +664,7 @@ export function formatMessageDisplayTime(message: Record<string, unknown>, local
   if (Number.isNaN(date.getTime())) return "";
 
   return new Intl.DateTimeFormat(locale, {
+    timeZone: COLOMBIA_TIME_ZONE,
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -654,22 +676,24 @@ export function formatMessageDisplayTime(message: Record<string, unknown>, local
 export function formatMessageDisplayListTime(message: Record<string, unknown>, locale = "es"): string {
   const d = getMessageDisplayDate(message);
   if (Number.isNaN(d.getTime())) return "—";
+
   const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
-  if (sameDay) {
-    return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(d);
+  const day = colombiaDayKey(d);
+  if (day === colombiaDayKey(now)) {
+    return new Intl.DateTimeFormat(locale, {
+      timeZone: COLOMBIA_TIME_ZONE,
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(d);
   }
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (
-    d.getFullYear() === yesterday.getFullYear() &&
-    d.getMonth() === yesterday.getMonth() &&
-    d.getDate() === yesterday.getDate()
-  ) {
+  if (day === colombiaDayKey(new Date(now.getTime() - 24 * 60 * 60 * 1000))) {
     return "Ayer";
   }
-  return new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(d);
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: COLOMBIA_TIME_ZONE,
+    day: "numeric",
+    month: "short",
+  }).format(d);
 }
 
 export function getConversationDisplayActivityMs(conversation: Pick<Conversation, "messages" | "lastActivityIso">): number {
@@ -677,7 +701,7 @@ export function getConversationDisplayActivityMs(conversation: Pick<Conversation
   if (lastMessage) {
     return getMessageDisplayMs(lastMessage as unknown as Record<string, unknown>);
   }
-  return new Date(conversation.lastActivityIso).getTime();
+  return parseWhatsappInstantMs(conversation.lastActivityIso) ?? 0;
 }
 
 export function displayGuestName(guestName: string | null | undefined, guestPhone: string): string {

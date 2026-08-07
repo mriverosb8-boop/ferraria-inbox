@@ -139,12 +139,14 @@ export interface Conversation {
    * ISO 8601 del último mensaje ENTRANTE del huésped, copiado de
    * `conversations.last_guest_message_at` (timestamptz mantenida por trigger).
    *
-   * `null` significa que el huésped nunca escribió. Es un valor ESPERADO, no un
-   * error: implica composer bloqueado por la ventana de 24 h de Meta. Nada de
-   * warnings ni estados de carga para ese caso.
+   * `null` NO significa necesariamente que el huésped nunca escribió: el
+   * trigger deja la columna vacía cuando la fila de `Wubby_Whatsapp` llega con
+   * `conversation_id` en NULL. Por eso la ventana de 24 h no se decide solo con
+   * este campo, sino con el máximo entre él y el último entrante del hilo
+   * (`lib/meta-window.ts`). Nada de warnings ni estados de carga para el null.
    *
-   * Sustituye a derivar la ventana del array `messages`, que la bandeja ya no
-   * trae. La columna ya viene con offset; no aplicar conversiones extra.
+   * La columna ya viene con offset (timestamptz); `parseWhatsappInstantMs` lo
+   * respeta y solo asume Bogotá en los timestamps naive de `Wubby_Whatsapp`.
    */
   lastGuestMessageAt: string | null;
   operationalStatus: OperationalStatus;

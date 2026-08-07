@@ -30,6 +30,11 @@ import {
   type ConversationDbRow,
 } from "@/lib/conversation-schema";
 import { resolveDeliveryFailureReason } from "@/lib/delivery-failure-copy";
+import {
+  COLOMBIA_TIME_ZONE,
+  isReplyBlockedByMetaPolicy,
+  parseWhatsappInstant,
+} from "@/lib/meta-window";
 import { resolveDeliveryTick } from "@/lib/delivery-status";
 import { STAFF_CONTACT_TEMPLATE_NAME } from "@/lib/staff-contacts";
 import { sendWhatsappTemplate } from "@/lib/send-whatsapp-template";
@@ -71,8 +76,6 @@ type InboxPatchResponse = {
   conversation?: ConversationDbRow | null;
 };
 
-/** Ventana de conversación (WhatsApp / Meta) desde el último mensaje con `sender: "user"`. */
-const META_INBOX_REPLY_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Imágenes/PDFs más recientes que esto cargan signed-url al abrir; el resto espera clic del usuario. */
 const LAZY_MEDIA_AUTO_LOAD_MS = 24 * 60 * 60 * 1000;
 /** Composer humano: altura mínima (1 línea) y máxima (~6 líneas) antes de scroll interno. */
@@ -126,13 +129,13 @@ function StaffBadge({ className = "" }: { className?: string }) {
 
 function formatBlockedAtColombia(iso: string): string {
   const parts = new Intl.DateTimeFormat("es-CO", {
-    timeZone: "America/Bogota",
+    timeZone: COLOMBIA_TIME_ZONE,
     day: "numeric",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }).formatToParts(new Date(iso));
+  }).formatToParts(parseWhatsappInstant(iso) ?? new Date(0));
   const day = parts.find((p) => p.type === "day")?.value ?? "";
   const month = (parts.find((p) => p.type === "month")?.value ?? "").replace(/\.$/, "");
   const hour = parts.find((p) => p.type === "hour")?.value ?? "";
@@ -190,34 +193,28 @@ function sortGuestConversations(list: Conversation[]): Conversation[] {
 }
 
 /**
- * Ventana de 24 h de Meta: solo se puede responder libremente si el último
- * mensaje ENTRANTE del huésped es más reciente que `META_INBOX_REPLY_WINDOW_MS`.
+ * Ventana de 24 h de Meta para la conversación seleccionada.
  *
- * Lee `conversation.lastGuestMessageAt` —copia de
- * `conversations.last_guest_message_at`, timestamptz mantenida por trigger— en
- * vez de derivarlo del array `messages`, que la bandeja ya no trae.
+ * La lógica vive en `lib/meta-window.ts`; acá solo se le pasan las dos fuentes
+ * del último entrante y se queda con la más reciente:
  *
- * `null` significa que el huésped nunca escribió: bloquea igual que una ventana
- * vencida y es un valor esperado, no un error. El copy bajo el composer ya
- * cubre ambos casos ("…o no hay mensajes suyos").
+ * - `lastGuestMessageAt`, copia de `conversations.last_guest_message_at`.
+ * - el hilo cargado, con el mismo criterio de entrante que pinta las burbujas.
  *
- * La columna ya viene con offset (timestamptz), a diferencia de
- * `Wubby_Whatsapp.created_at` que es naive en hora Bogotá. No se aplica ninguna
- * conversión extra aquí.
+ * Antes se leía SOLO la columna, y eso bloqueaba el composer cuando la fila de
+ * `Wubby_Whatsapp` llegaba con `conversation_id` en NULL: el trigger dejaba la
+ * columna vacía y el inbox lo interpretaba como "el huésped nunca escribió",
+ * aunque el hilo mostrara el mensaje recién llegado.
  *
  * Llamadores (únicos, ambos en este archivo): `replyBlockedByMeta`, que habilita
  * el composer, y `sendMessage`.
  */
-function isReplyBlockedByMetaPolicy(lastGuestMessageAt: string | null | undefined): boolean {
-  const raw = lastGuestMessageAt?.trim();
-  if (!raw) {
-    return true;
-  }
-  const ms = new Date(raw).getTime();
-  if (Number.isNaN(ms)) {
-    return true;
-  }
-  return Date.now() - ms > META_INBOX_REPLY_WINDOW_MS;
+function isConversationReplyBlocked(conversation: Conversation | null | undefined): boolean {
+  if (!conversation) return false;
+  return isReplyBlockedByMetaPolicy({
+    lastGuestMessageAt: conversation.lastGuestMessageAt,
+    messages: conversation.messages,
+  });
 }
 
 /** Estado visible de la conversación en la cola (una sola etiqueta clara). */
@@ -2186,10 +2183,7 @@ export default function InboxApp() {
     [conversations, selectedId]
   );
 
-  const replyBlockedByMeta = useMemo(
-    () => (selected ? isReplyBlockedByMetaPolicy(selected.lastGuestMessageAt) : false),
-    [selected]
-  );
+  const replyBlockedByMeta = useMemo(() => isConversationReplyBlocked(selected), [selected]);
 
   /** Teléfono del hilo abierto en dígitos, listo para enviar plantillas. */
   const selectedPhoneDigits = useMemo(
@@ -2513,7 +2507,7 @@ export default function InboxApp() {
     if ((!text && !selectedFile) || !selectedId || sendingMedia) return;
     const selectedConv = conversations.find((c) => c.id === selectedId);
     if (selectedConv?.operationalStatus === "closed") return;
-    if (isReplyBlockedByMetaPolicy(selectedConv?.lastGuestMessageAt)) return;
+    if (isConversationReplyBlocked(selectedConv)) return;
 
     if (selectedFile) {
       const selectedFileIsPdf = isPdfFile(selectedFile);
@@ -4546,9 +4540,23 @@ export default function InboxApp() {
   );
 }
 
+/**
+ * Fecha del panel de datos, SIEMPRE en hora Bogotá.
+ *
+ * Sin `timeZone` explícito, `Intl` pinta en la zona del navegador: una
+ * recepcionista en UTC+2 veía "19:26" sobre un mensaje de las 12:26 en Bogotá y
+ * lo reportaba como dato equivocado. La operación es colombiana; la hora que se
+ * muestra también.
+ */
 function formatActivityIso(iso: string) {
+  const date = parseWhatsappInstant(iso);
+  if (!date) return "—";
   try {
-    return new Intl.DateTimeFormat("es", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+    return new Intl.DateTimeFormat("es-CO", {
+      timeZone: COLOMBIA_TIME_ZONE,
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
   } catch {
     return "—";
   }
