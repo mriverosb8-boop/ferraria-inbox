@@ -29,6 +29,7 @@ import {
   GUEST_NAME_MAX_LENGTH,
   type ConversationDbRow,
 } from "@/lib/conversation-schema";
+import { resolveDeliveryFailureReason } from "@/lib/delivery-failure-copy";
 import { STAFF_CONTACT_TEMPLATE_NAME } from "@/lib/staff-contacts";
 import { sendWhatsappTemplate } from "@/lib/send-whatsapp-template";
 import { normalizeColombianWhatsappNumber } from "@/lib/whatsapp-templates";
@@ -1417,15 +1418,12 @@ function isWhatsappSticker(m: Message): boolean {
 }
 
 /**
- * Texto del tooltip del chip "No entregado". Meta no siempre manda
- * `error_title`, así que se degrada a solo el código, y si tampoco hay, a la
- * frase seca.
+ * Texto del tooltip del chip "No entregado". Duplica la línea secundaria a
+ * propósito: si el motivo se corta visualmente, el `title` lo muestra completo.
  */
 function describeDeliveryFailure(failure: MessageDeliveryFailure): string {
-  const title = failure.errorTitle?.trim();
-  if (title) return `No entregado — ${title}`;
-  if (failure.errorCode != null) return `No entregado — error ${failure.errorCode} de WhatsApp`;
-  return "No entregado";
+  const reason = resolveDeliveryFailureReason(failure);
+  return reason ? `No entregado — ${reason}` : "No entregado";
 }
 
 function MessageBubble({
@@ -1502,6 +1500,10 @@ function MessageBubble({
         };
   const onRed = isAgent;
   const metaColor = onRed ? "rgba(255,255,255,.8)" : "var(--ink-3)";
+  // Motivo legible del acuse `failed`; `null` si Meta no mandó código conocido
+  // ni título. Se calcula acá para que el chip y la línea de abajo no puedan
+  // contradecirse.
+  const deliveryFailureReason = deliveryFailure ? resolveDeliveryFailureReason(deliveryFailure) : null;
 
   return (
     <div
@@ -1713,6 +1715,27 @@ function MessageBubble({
               </span>
             )}
           </div>
+          {/*
+            Motivo del fallo en texto plano bajo el chip. Va SIEMPRE visible y no
+            en el tooltip porque recepción atiende de afán y muchas veces desde
+            tablet, donde el `title` del navegador no existe: un motivo que hay
+            que descubrir pasando el mouse es un motivo que nadie lee.
+
+            Solo aparece en burbujas ya fallidas, que son raras, así que el costo
+            de layout es acotado. Si Meta no dio ni código conocido ni título, no
+            se pinta nada y el chip queda solo.
+          */}
+          {isOutboundHotel && deliveryFailureReason ? (
+            <p
+              className="mt-0.5 max-w-full break-words text-[10.5px] font-medium"
+              style={{
+                lineHeight: 1.35,
+                color: onRed ? "rgba(255,255,255,.85)" : "var(--red)",
+              }}
+            >
+              {deliveryFailureReason}
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
