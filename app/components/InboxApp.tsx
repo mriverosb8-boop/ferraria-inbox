@@ -12,7 +12,6 @@ import {
   isWaLidIdentifier,
   messageNeedsHumanAlert,
   normalizeGuestIdentityKey,
-  normalizePhoneDigits,
   resolveMediaKind,
 } from "@/lib/chat-utils";
 import type { MediaKind } from "@/lib/chat-utils";
@@ -2507,7 +2506,11 @@ export default function InboxApp() {
       try {
         const formData = new FormData();
         formData.set("conversationId", selectedConv!.id);
-        formData.set("to", normalizePhoneDigits(selectedConv!.guestPhone));
+        // LID-aware, igual que el camino de texto: un identificador de Meta
+        // viaja crudo al engine; un teléfono sigue yendo en dígitos. Con
+        // `normalizePhoneDigits` un LID quedaba destrozado y el adjunto no
+        // llegaba.
+        formData.set("to", normalizeGuestIdentityKey(selectedConv!.guestPhone));
         if (text) formData.set("caption", text);
         formData.set("hotelId", activeHotelId ?? "");
         formData.set("clientTempId", clientTempId);
@@ -2517,25 +2520,14 @@ export default function InboxApp() {
           method: "POST",
           body: formData,
         });
+        // La route ya no inserta la fila ni toca `conversations`: reenvía al
+        // engine, que es quien inserta en `Wubby_Whatsapp` y mueve el reloj de
+        // control humano. Por eso no devuelve `message` ni `conversation`.
         const j = (await res.json().catch(() => ({}))) as {
           error?: string;
-          message?: {
-            id?: string | number;
-            created_at?: string;
-            media_storage_path?: string | null;
-            media_bucket?: string | null;
-            media_mime_type?: string | null;
-            media_caption?: string | null;
-            media_filename?: string | null;
-            media_meta_id?: string | null;
-            meta_media_id?: string | null;
-            message_type?: string | null;
-            wamid?: string | null;
-          };
-          /** Id de Meta del mensaje; la route lo devuelve además suelto. */
+          skipped?: boolean;
+          /** Id de Meta del mensaje, tal como lo devolvió el engine. */
           whatsappMessageId?: string | null;
-          /** Fila de `conversations`, distinta de `message` (fila de Wubby). */
-          conversation?: ConversationDbRow | null;
           mediaStoragePath?: string;
           mediaBucket?: string;
           mediaFilename?: string;
@@ -2553,27 +2545,33 @@ export default function InboxApp() {
                 : c
             )
           );
-          setFileError(j.error ?? "No se pudo enviar el archivo por WhatsApp.");
+          setFileError(
+            j.skipped
+              ? "El envío de archivos no está configurado: faltan ENGINE_HUMAN_MEDIA_URL / INBOX_SHARED_SECRET."
+              : j.error ?? "No se pudo enviar el archivo por WhatsApp."
+          );
           return;
         }
 
-        const sentAtIso = j.message?.created_at ?? pendingSentAtIso;
-        const messageType = j.message?.message_type ?? j.whatsappType ?? pendingMessageType;
+        const sentAtIso = pendingSentAtIso;
+        const messageType = j.whatsappType ?? pendingMessageType;
         const confirmedMediaMessage: Message = {
           ...optimisticMediaMessage,
-          id: String(j.message?.id ?? optimisticMediaMessage.id),
           status: "confirmed",
           sentAt: formatMessageDetailTime(sentAtIso),
           sentAtIso,
           messageType,
-          mediaStoragePath: j.message?.media_storage_path ?? j.mediaStoragePath ?? null,
-          mediaBucket: j.message?.media_bucket ?? j.mediaBucket ?? null,
-          mediaCaption: j.message?.media_caption ?? (text || null),
-          mediaFilename: j.message?.media_filename ?? j.mediaFilename ?? selectedFile.name,
-          metaMediaId: j.message?.media_meta_id ?? j.message?.meta_media_id ?? null,
+          // La route sí conoce estos datos (subió el archivo ella misma), así que
+          // la burbuja se pinta sin esperar a Realtime. Cuando llegue la fila que
+          // insertó el engine, `upsertConversationMessage` la reemplaza por
+          // `clientTempId`.
+          mediaStoragePath: j.mediaStoragePath ?? null,
+          mediaBucket: j.mediaBucket ?? null,
+          mediaCaption: text || null,
+          mediaFilename: j.mediaFilename ?? selectedFile.name,
           // Sin esto la burbuja recién enviada no tendría con qué cruzarse
           // contra `message_statuses` hasta el siguiente refetch del hilo.
-          wamid: j.message?.wamid ?? j.whatsappMessageId ?? null,
+          wamid: j.whatsappMessageId ?? null,
         };
 
         setConversations((prev) =>
@@ -2592,28 +2590,11 @@ export default function InboxApp() {
 
         setDraft("");
         clearSelectedFile();
-        if (j.conversation) {
-          // Camino feliz: la route devuelve la fila que dejó su propio UPDATE
-          // (needs_human / ai_active / status / unread_count). Cero GET.
-          applyServerConversationRow(j.conversation);
-        } else {
-          // Red de seguridad, sin equivalente en el camino del PATCH.
-          //
-          // Esta route responde `ok` con `conversation: null` cuando su UPDATE a
-          // `conversations` falla, y hace bien: el archivo ya salió por Meta, así
-          // que abortar con 502 haría que el cliente borre la burbuja de un
-          // mensaje que el huésped SÍ recibió. Pero entonces `needs_human`,
-          // `ai_active: false` y `status: "human_control"` nunca se escribieron —
-          // y al no haber UPDATE tampoco llega evento de Realtime, así que la
-          // divergencia no se cierra sola: el asesor creería que tomó el control
-          // mientras la IA le sigue contestando al huésped. Acá sí hace falta ir
-          // a buscar el estado real.
-          //
-          // `PATCH /api/inbox` no necesita esto: devuelve la fila o 404, nunca un
-          // `null` silencioso.
-          void refetch({ silent: true });
-        }
-
+        // Sin refetch, igual que el camino de texto: la route ya no escribe en la
+        // base, así que no puede devolver la fila de `conversations`. El estado
+        // de control humano lo mueve el engine y llega por Realtime; acá basta
+        // con el optimista local que ya se aplicó arriba. Refrescar acá
+        // recargaría la bandeja entera en cada archivo enviado.
         scheduleDeliveryFailuresRefetch();
       } catch {
         setConversations((prev) =>

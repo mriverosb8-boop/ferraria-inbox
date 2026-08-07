@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
 import { assertConversationInHotel, requireActiveHotel } from "@/lib/auth/require-hotel";
-import { nowInColombiaNaive } from "@/lib/colombia-time";
-import { normalizePhoneDigits, normalizeWaIdentity } from "@/lib/chat-utils";
-import { CONVERSATIONS_TABLE, CONVERSATION_SELECT_COLUMNS } from "@/lib/conversation-schema";
+import { attachWamidByClientTempId, extractWamid } from "@/lib/outbound-wamid";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-import { WUBBY_TABLE } from "@/lib/wubby-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -13,37 +10,67 @@ const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const PDF_MIME_TYPE = "application/pdf";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_PDF_BYTES = 10 * 1024 * 1024;
-const DEFAULT_GRAPH_API_VERSION = "v21.0";
-const HOTELS_TABLE = "hotels";
-const OPTIONAL_WUBBY_COLUMNS = [
-  "conversation_id",
-  "direction",
-  "sender_type",
-  "message_author",
-  "from_ai",
-  "message_type",
-  "media_storage_path",
-  "media_mime_type",
-  "media_caption",
-  "media_filename",
-  "media_meta_id",
-  "meta_media_id",
-  "media_bucket",
-  "wamid",
-  "hotel_id",
-] as const;
+
+/**
+ * Vida de la URL firmada que se le pasa al engine.
+ *
+ * Meta descarga el archivo a los segundos de aceptar el POST, así que 24 h es
+ * margen de sobra incluso con los reintentos del engine. NO se hace público el
+ * bucket: `hotel-media` guarda también los adjuntos ENTRANTES de los huéspedes
+ * (documentos personales) y, con RLS abierto, publicarlo sería exponerlos.
+ */
+const SIGNED_URL_TTL_SECONDS = 24 * 60 * 60;
+
+/** Tope del campo `filename` en el schema del engine. */
+const MAX_FILENAME_LENGTH = 240;
 
 type WhatsappMediaType = "image" | "document";
 
-type MetaMediaUploadResponse = {
-  id?: string;
-  error?: { message?: string };
-};
+function safeJsonParse(raw: string): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
-type MetaMessageResponse = {
-  messages?: Array<{ id?: string }>;
-  error?: { message?: string };
-};
+const GENERIC_ENGINE_ERROR = "No se pudo enviar el archivo por WhatsApp.";
+
+/**
+ * Borra cualquier URL del texto.
+ *
+ * El `link` que viaja al engine es una URL FIRMADA: quien la tenga puede bajar
+ * el archivo durante 24 h. Meta suele devolverla dentro del mensaje de error
+ * cuando no logra descargarla, y el engine reenvía ese error tal cual. Sin esto
+ * la URL terminaría en los logs del servidor y en el navegador del recepcionista.
+ */
+function redactUrls(value: string): string {
+  return value.replace(/https?:\/\/\S+/gi, "[url]");
+}
+
+/**
+ * Mensaje de error del engine para mostrar al usuario. Prioriza
+ * `error`/`message`/`detail` del JSON (incluido el anidado de Meta
+ * `{ error: { message } }`), que viene curado.
+ *
+ * Si el cuerpo no es JSON o no trae ninguna de esas claves, devuelve un
+ * genérico: el crudo puede ser un stack del engine y NO debe llegar al cliente.
+ */
+function readEngineError(parsed: unknown): string {
+  if (parsed && typeof parsed === "object") {
+    const record = parsed as Record<string, unknown>;
+    for (const key of ["error", "message", "detail"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) return redactUrls(value.trim());
+      if (value && typeof value === "object") {
+        const nested = (value as Record<string, unknown>).message;
+        if (typeof nested === "string" && nested.trim()) return redactUrls(nested.trim());
+      }
+    }
+  }
+  return GENERIC_ENGINE_ERROR;
+}
 
 function readEnv(...keys: string[]): string {
   for (const key of keys) {
@@ -53,52 +80,34 @@ function readEnv(...keys: string[]): string {
   return "";
 }
 
-function cloudApiToNumber(raw: string): string {
-  return normalizeWaIdentity(raw).replace(/^\+/, "");
-}
+/**
+ * URL de `POST /inbox/human-media` en el engine.
+ *
+ * Cada endpoint del engine tiene su propia variable con la URL completa; si no
+ * está definida, se deriva del origen de la de respuestas humanas para no
+ * exigir una variable nueva en el despliegue.
+ */
+function resolveEngineMediaUrl(): string | null {
+  const explicit = process.env.ENGINE_HUMAN_MEDIA_URL?.trim();
+  if (explicit) return explicit;
 
-async function readHotelWhatsappConfig(
-  hotelId: string | null
-): Promise<
-  | { ok: true; phoneNumberId: string; sender: string }
-  | { ok: false; error: string }
-> {
-  if (!hotelId) {
-    return { ok: false, error: "El hotel no tiene WhatsApp configurado" };
+  const fallbackBase = process.env.ENGINE_HUMAN_REPLY_URL?.trim();
+  if (!fallbackBase) return null;
+
+  try {
+    const url = new URL(fallbackBase);
+    url.pathname = "/inbox/human-media";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return null;
   }
-
-  const supabase = getSupabaseServerClient();
-  const { data: hotel, error } = await supabase
-    .from(HOTELS_TABLE)
-    .select("whatsapp_phone_number_id, whatsapp_number")
-    .eq("id", hotelId)
-    .maybeSingle();
-
-  if (error) {
-    console.error("[send-whatsapp-media] hotel lookup failed", error);
-    return { ok: false, error: "El hotel no tiene WhatsApp configurado" };
-  }
-
-  const phoneNumberId = String(hotel?.whatsapp_phone_number_id ?? "").trim();
-  const sender = normalizePhoneDigits(hotel?.whatsapp_number ?? "");
-
-  if (!phoneNumberId || !sender) {
-    return { ok: false, error: "El hotel no tiene WhatsApp configurado" };
-  }
-
-  return { ok: true, phoneNumberId, sender };
-}
-
-function readMissingColumn(errorMessage: string): string | null {
-  const quoted = errorMessage.match(/'([^']+)' column/i)?.[1];
-  if (quoted) return quoted;
-  const unquoted = errorMessage.match(/column "?([A-Za-z0-9_]+)"? (?:of relation .* )?does not exist/i)?.[1];
-  return unquoted ?? null;
 }
 
 function sanitizeFilename(value: string, fallback: string): string {
   const name = value.trim().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ");
-  return name || fallback;
+  return (name || fallback).slice(0, MAX_FILENAME_LENGTH);
 }
 
 function extensionForMime(mimeType: string): string {
@@ -126,36 +135,22 @@ function validateMedia(file: File): { ok: true; whatsappType: WhatsappMediaType 
   return { ok: false, error: "Solo se permiten imágenes JPG, PNG, WebP o PDF" };
 }
 
-async function insertWubbyRowWithFallback(row: Record<string, unknown>) {
-  const supabase = getSupabaseServerClient();
-  let candidate = { ...row };
-
-  for (let attempt = 0; attempt <= OPTIONAL_WUBBY_COLUMNS.length; attempt += 1) {
-    const { data, error } = await supabase
-      .from(WUBBY_TABLE)
-      .insert(candidate)
-      .select("*")
-      .single();
-
-    if (!error) return { data, error: null };
-
-    const missingColumn = readMissingColumn(error.message);
-    if (
-      !missingColumn ||
-      !OPTIONAL_WUBBY_COLUMNS.includes(missingColumn as (typeof OPTIONAL_WUBBY_COLUMNS)[number]) ||
-      !(missingColumn in candidate)
-    ) {
-      return { data: null, error };
-    }
-
-    const rest = { ...candidate };
-    delete rest[missingColumn];
-    candidate = rest;
-  }
-
-  return { data: null, error: new Error("No se pudo insertar el mensaje saliente") };
-}
-
+/**
+ * Sube el adjunto a Storage y se lo entrega a ferraria-engine.
+ *
+ * Esta route YA NO le postea a la Graph API de Meta. Ese camino paralelo se
+ * saltaba todo lo que vive en el engine (limpieza de identidades LID, el
+ * `context.message_id` que hace entregable a un LID, y los reintentos de
+ * errores transitorios), y por eso había huéspedes a los que les llegaba el
+ * texto pero no el PDF. Ahora TODO egreso sale por el engine.
+ *
+ * El engine también inserta la fila en `Wubby_Whatsapp` (como `Human Answer`) y
+ * mueve `conversations` (reloj de control humano), así que acá no se escribe
+ * nada de eso: duplicarlo dejaría dos burbujas y dos relojes.
+ *
+ * Configura `ENGINE_HUMAN_MEDIA_URL` (o `ENGINE_HUMAN_REPLY_URL`) e
+ * `INBOX_SHARED_SECRET`.
+ */
 export async function POST(request: Request) {
   try {
     const auth = await requireSessionUser();
@@ -184,7 +179,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
-    // GATE de tenancy ANTES de cualquier efecto (storage/Meta/insert):
+    // GATE de tenancy ANTES de cualquier efecto (storage/engine):
     // 1) el hotelId del formData debe pertenecer al usuario;
     // 2) la conversación debe ser suya, y SU hotel es el autoritativo para enviar.
     const tenant = await requireActiveHotel(request, auth.user, { requestedHotelId: hotelIdRaw });
@@ -197,26 +192,18 @@ export async function POST(request: Request) {
     if (ownership.response) return ownership.response;
     const hotelId = ownership.hotelId;
 
-    const hotelWhatsapp = await readHotelWhatsappConfig(hotelId);
-    if (!hotelWhatsapp.ok) {
-      return NextResponse.json({ error: hotelWhatsapp.error }, { status: 400 });
-    }
-
-    const token = readEnv("WHATSAPP_TOKEN", "WHATSAPP_ACCESS_TOKEN", "META_WHATSAPP_TOKEN");
-    const graphVersion = readEnv("WHATSAPP_GRAPH_API_VERSION", "META_GRAPH_API_VERSION") || DEFAULT_GRAPH_API_VERSION;
-    const phoneNumberId = hotelWhatsapp.phoneNumberId;
-    const sender = hotelWhatsapp.sender;
-
-    if (!token) {
+    const engineUrl = resolveEngineMediaUrl();
+    const sharedSecret = process.env.INBOX_SHARED_SECRET;
+    if (!engineUrl || !sharedSecret) {
       return NextResponse.json(
-        { error: "Falta WHATSAPP_TOKEN/WHATSAPP_ACCESS_TOKEN" },
-        { status: 500 }
+        {
+          ok: false,
+          skipped: true,
+          error:
+            "Faltan ENGINE_HUMAN_MEDIA_URL/ENGINE_HUMAN_REPLY_URL o INBOX_SHARED_SECRET. Añádelas en .env.local para enviar archivos.",
+        },
+        { status: 503 }
       );
-    }
-
-    const to = cloudApiToNumber(toRaw);
-    if (!to) {
-      return NextResponse.json({ error: "Número destino inválido" }, { status: 400 });
     }
 
     const whatsappType = validation.whatsappType;
@@ -238,152 +225,69 @@ export async function POST(request: Request) {
     });
 
     if (uploadResult.error) {
-      return NextResponse.json({ error: uploadResult.error.message }, { status: 502 });
+      console.error("[send-whatsapp-media] upload a storage falló", uploadResult.error.message);
+      return NextResponse.json({ error: "No se pudo guardar el archivo" }, { status: 502 });
     }
 
-    const mediaForm = new FormData();
-    mediaForm.append("messaging_product", "whatsapp");
-    mediaForm.append("file", new Blob([fileBuffer], { type: file.type }), filename);
+    // El engine NO recibe los bytes: le pasa este link a Meta y Meta descarga el
+    // archivo desde sus servidores. Si la URL no es alcanzable, Meta rechaza el
+    // mensaje, así que el fallo acá tiene que abortar antes de enviar nada.
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from(storageBucket)
+      .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
 
-    const mediaRes = await fetch(
-      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/media`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: mediaForm,
-      }
-    );
-    const mediaPayload = (await mediaRes.json().catch(() => ({}))) as MetaMediaUploadResponse;
-    if (!mediaRes.ok || !mediaPayload.id) {
+    if (signedError || !signedData?.signedUrl) {
+      console.error("[send-whatsapp-media] signed URL falló", signedError?.message);
       return NextResponse.json(
-        { error: mediaPayload.error?.message ?? `Meta media respondió ${mediaRes.status}` },
+        { error: "No se pudo preparar el archivo para el envío" },
         { status: 502 }
       );
     }
 
-    const mediaObject = isDocument
-      ? {
-          document: {
-            id: mediaPayload.id,
-            filename,
-            ...(caption ? { caption } : {}),
-          },
-        }
-      : {
-          image: {
-            id: mediaPayload.id,
-            ...(caption ? { caption } : {}),
-          },
-        };
-
-    const messageRes = await fetch(
-      `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to,
-          type: whatsappType,
-          ...mediaObject,
-        }),
-      }
-    );
-    const messagePayload = (await messageRes.json().catch(() => ({}))) as MetaMessageResponse;
-    if (!messageRes.ok) {
-      return NextResponse.json(
-        { error: messagePayload.error?.message ?? `Meta messages respondió ${messageRes.status}` },
-        { status: 502 }
-      );
-    }
-
-    const now = nowInColombiaNaive();
-    const metaMessageId = messagePayload.messages?.[0]?.id ?? null;
-    const insertPayload = {
-      created_at: now,
-      message: caption || "",
-      recipient: normalizePhoneDigits(toRaw),
-      sender,
-      conversation_id: conversationId,
-      ...(clientTempId ? { client_temp_id: clientTempId } : {}),
-      ...(hotelId ? { hotel_id: hotelId } : {}),
-      direction: "outbound",
-      origin: "human",
-      format: whatsappType,
-      message_type: whatsappType,
-      media_storage_path: storagePath,
-      media_mime_type: file.type,
-      media_caption: caption || null,
-      media_filename: filename,
-      media_meta_id: mediaPayload.id,
-      meta_media_id: mediaPayload.id,
-      media_bucket: storageBucket,
-      // Columna real de la tabla (antes se escribía `whatsapp_message_id`, que
-      // NO existe: el fallback de columnas la descartaba en silencio y la fila
-      // quedaba sin id de Meta). Es la clave que cruza con `message_statuses`
-      // para poder marcar el mensaje como no entregado en el inbox.
-      wamid: metaMessageId,
-    };
-
-    const insertResult = await insertWubbyRowWithFallback(insertPayload);
-    if (insertResult.error) {
-      return NextResponse.json(
-        { error: insertResult.error.message ?? "No se pudo guardar el mensaje saliente" },
-        { status: 502 }
-      );
-    }
-
-    // Antes este UPDATE no tenía `.select()` ni comprobación: si fallaba, la
-    // conversación quedaba en el estado anterior y nadie se enteraba.
-    //
-    // NO aborta la petición si falla. Llegados acá el archivo ya salió por la
-    // API de Meta y la fila de `Wubby_Whatsapp` ya está insertada: responder 502
-    // haría que el cliente borre la burbuja optimista (ver el manejo de `!res.ok`
-    // en InboxApp) de un mensaje que el huésped SÍ recibió. Se registra el fallo
-    // y se devuelve `conversation: null`; el cliente conserva su estado local y
-    // Realtime reconcilia.
-    const { data: conversationRow, error: conversationError } = await supabase
-      .from(CONVERSATIONS_TABLE)
-      .update({
-        updated_at: now,
-        unread_count: 0,
-        last_read_at: now,
-        needs_human: true,
-        ai_active: false,
-        status: "human_control",
-        // Mandar un archivo es tomar la conversación: corre el reloj de la
-        // reactivación automática igual que responder un texto.
-        human_control_at: now,
-      })
-      .eq("id", conversationId)
-      .eq("hotel_id", hotelId)
-      .select(CONVERSATION_SELECT_COLUMNS)
-      .maybeSingle();
-
-    if (conversationError) {
-      console.error("[send-whatsapp-media] update conversación", {
-        conversationId,
+    const res = await fetch(engineUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-inbox-secret": sharedSecret,
+      },
+      body: JSON.stringify({
         hotelId,
-        error: conversationError.message,
-      });
-    } else if (!conversationRow) {
-      console.error("[send-whatsapp-media] update conversación sin filas", {
         conversationId,
-        hotelId,
-      });
+        // Crudo, tal como viene de la conversación: el engine es quien limpia la
+        // identidad (y un LID de Meta se rompe si se normaliza acá).
+        guestPhone: toRaw,
+        kind: whatsappType,
+        link: signedData.signedUrl,
+        filename,
+        ...(caption ? { caption } : {}),
+        clientTempId,
+      }),
+    });
+
+    const rawBody = await res.text().catch(() => "");
+    const parsedBody = safeJsonParse(rawBody);
+
+    if (!res.ok) {
+      // Solo el mensaje curado y sin URLs: el crudo trae de vuelta el `link`
+      // firmado y el error completo de Meta.
+      console.error("[send-whatsapp-media] engine", res.status, readEngineError(parsedBody));
+      return NextResponse.json({ error: readEngineError(parsedBody) }, { status: 502 });
+    }
+
+    // El engine inserta la fila con su `wamid`; este update es el backstop para
+    // las que quedaran sin él, anclado en el `client_temp_id` que el engine
+    // copia a la fila. Nunca aborta: el archivo ya salió al huésped y el único
+    // efecto de fallar acá es no poder cruzarlo con `message_statuses`.
+    const wamid = extractWamid(parsedBody);
+    if (wamid && clientTempId) {
+      await attachWamidByClientTempId({ wamid, clientTempId, hotelId });
     }
 
     return NextResponse.json({
       ok: true,
-      message: insertResult.data,
-      // Fila de `conversations` (distinta de `message`, que es la de
-      // `Wubby_Whatsapp`): alimenta `applyConversationRowPatch` en el cliente.
-      conversation: conversationRow ?? null,
-      mediaId: mediaPayload.id,
-      whatsappMessageId: metaMessageId,
+      whatsappMessageId: wamid ?? null,
+      // El cliente pinta la burbuja con estos datos hasta que Realtime traiga la
+      // fila que insertó el engine.
       mediaStoragePath: storagePath,
       mediaBucket: storageBucket,
       mediaFilename: filename,
