@@ -26,6 +26,7 @@ export const CONVERSATION_SELECT_COLUMNS = [
   "last_guest_message_at",
   "ai_reactivated_at",
   "ai_reactivation_source",
+  "ai_triage_at",
   "created_at",
   "updated_at",
 ].join(", ");
@@ -72,6 +73,20 @@ export type ConversationDbRow = {
    */
   ai_reactivated_at: string | null;
   ai_reactivation_source: string | null;
+  /**
+   * Última vez que el triage de reactivación del engine ESCALÓ esta
+   * conversación: quedó abandonada más de ~2 h con `needs_human` y el
+   * clasificador vio que el huésped espera algo que solo una persona resuelve
+   * (factura, confirmación de reserva, pago, cancelación).
+   *
+   * `null` = nunca escaló por triage. El engine solo la escribe en el caso
+   * escalado; las que reactiva en silencio o contestando no la tocan.
+   *
+   * NO es por sí sola una señal de "esto sigue sin atender": es una marca
+   * histórica que el engine nunca limpia. Quién sigue pendiente lo decide
+   * `readTriageEscalatedAt` cruzándola con `needs_human` y `status`.
+   */
+  ai_triage_at: string | null;
   created_at: string;
   updated_at: string;
 };

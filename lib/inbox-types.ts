@@ -170,6 +170,18 @@ export interface Conversation {
    * lo traen, y por Realtime llega solo si la fila se vuelve a emitir.
    */
   autoReactivatedAt?: string | null;
+  /**
+   * Fecha en que el triage del engine escaló esta conversación Y sigue sin
+   * atender; `null` si ya la tomaron, la resolvieron o la cerraron.
+   *
+   * No es la columna cruda: `readTriageEscalatedAt` ya cruzó `ai_triage_at` con
+   * `needs_human` y `status`. Quien lee este campo no tiene que volver a
+   * decidir nada — si tiene fecha, hay un huésped esperando a una persona.
+   *
+   * Opcional por la misma razón que `autoReactivatedAt`: las conversaciones
+   * optimistas que arma el cliente no lo traen.
+   */
+  triageEscalatedAt?: string | null;
   blocked: boolean;
   blockedAt: string | null;
   /**

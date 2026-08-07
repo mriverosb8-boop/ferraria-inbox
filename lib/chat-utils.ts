@@ -720,6 +720,38 @@ export function readAutoReactivatedAt(row: ConversationDbRow, now: number = Date
 }
 
 /**
+ * Fecha en que el triage del engine escaló esta conversación, SOLO si sigue sin
+ * atender. `null` en cualquier otro caso.
+ *
+ * `ai_triage_at` es una marca histórica: el engine la estampa al escalar y no la
+ * limpia nunca (le sirve de anti-loop por 24 h y de tope de escalamientos). Por
+ * eso sola no alcanza —una conversación escalada la semana pasada y resuelta
+ * seguiría teniendo fecha—, y hay que cruzarla con el estado actual:
+ *
+ * - `needs_human` en false: alguien la resolvió o la IA volvió a hacerse cargo.
+ * - `status = "human_control"`: alguien ya la tomó. OJO, este es el caso que
+ *   obliga a mirar `status` y no solo `needs_human`: tanto el PATCH
+ *   `human_control` como responder o mandar un archivo dejan `needs_human` en
+ *   TRUE a propósito. Sin este corte, el distintivo seguiría gritando "sin
+ *   atender" en una conversación que la recepcionista acaba de tomar.
+ * - `status = "completed"`: al cerrar no se tocan `needs_human` ni `ai_active`,
+ *   así que una conversación cerrada puede quedar con ambas marcas puestas.
+ *
+ * A diferencia de `readAutoReactivatedAt` NO caduca por tiempo: "volvió sola" es
+ * una novedad que envejece, esto es un pendiente que sigue pendiente hasta que
+ * alguien haga algo. Que se apague solo a las 24 h es justo lo que ya pasa hoy.
+ */
+export function readTriageEscalatedAt(row: ConversationDbRow): string | null {
+  if (!row.ai_triage_at) return null;
+  if (!readBoolCol(row.needs_human, false)) return null;
+
+  const st = String(row.status ?? "").toLowerCase();
+  if (st === "human_control" || st === "completed") return null;
+
+  return Number.isNaN(Date.parse(row.ai_triage_at)) ? null : row.ai_triage_at;
+}
+
+/**
  * Estado operativo y modo control a partir de la tabla `conversations`.
  */
 export function mapOperationalFromConversationRow(row: ConversationDbRow): {
@@ -896,6 +928,7 @@ function buildConversationFromRow(
     aiActive: readBoolCol(cr.ai_active, true),
     dbStatus: cr.status,
     autoReactivatedAt: readAutoReactivatedAt(cr),
+    triageEscalatedAt: readTriageEscalatedAt(cr),
     blocked: readBoolCol(cr.blocked, false),
     blockedAt: cr.blocked_at,
     request: requestValue,
@@ -1076,6 +1109,11 @@ export function applyConversationRowPatch(
     // Por Realtime es como llega el aviso de que la IA volvió sola: el barrido
     // del engine actualiza la fila y la bandeja lo refleja sin refetch.
     autoReactivatedAt: readAutoReactivatedAt(row),
+    // Mismo camino para el escalamiento del triage: el engine estampa
+    // `ai_triage_at` y la fila viaja por Realtime, así que el distintivo
+    // aparece sin refetch. Y como el corte mira `needs_human` y `status`,
+    // tomar la conversación o cerrarla lo apaga por el mismo canal.
+    triageEscalatedAt: readTriageEscalatedAt(row),
     blocked: row.blocked ?? false,
     blockedAt: row.blocked_at,
     // El trigger que mantiene `last_guest_message_at` dispara un UPDATE en

@@ -156,6 +156,39 @@ function sortConversationsByActivity(list: Conversation[]): Conversation[] {
 }
 
 /**
+ * Orden de la vista Huéspedes: primero lo que el triage escaló y nadie tomó;
+ * dentro de cada grupo, la actividad de siempre.
+ *
+ * Por qué prioridad de orden y NO una pestaña nueva:
+ *
+ * - Estas conversaciones YA están en la pestaña "Atención": llegan con
+ *   `needs_human` en true, que `mapOperationalFromConversationRow` traduce a
+ *   `requires_attention`. Una pestaña más no las haría aparecer, solo
+ *   duplicaría las mismas filas en un quinto chip.
+ * - El problema no es que falten, es que están SEPULTADAS: la lista ordena por
+ *   última actividad y estas llevan horas sin ninguna, así que se hunden justo
+ *   por lo que las hace urgentes. Subirlas ataca la causa.
+ * - Una pestaña hay que ir a buscarla. En recepción nadie va a mirar un chip
+ *   nuevo si no sabe que existe; arriba de la lista se ven sin buscar nada, en
+ *   "Todas" y también dentro de "Atención" y "Sin leer".
+ *
+ * Se aplica solo acá y no dentro de `sortConversationsByActivity`, que también
+ * ordena la vista Staff: ahí la IA no interviene y este criterio no significa
+ * nada.
+ *
+ * El empate entre dos escaladas lo rompe la actividad, no `triageEscalatedAt`:
+ * entre dos huéspedes esperando, primero el que habló hace menos.
+ */
+function sortGuestConversations(list: Conversation[]): Conversation[] {
+  return [...list].sort((a, b) => {
+    const aEscalated = a.triageEscalatedAt ? 1 : 0;
+    const bEscalated = b.triageEscalatedAt ? 1 : 0;
+    if (aEscalated !== bEscalated) return bEscalated - aEscalated;
+    return getConversationDisplayActivityMs(b) - getConversationDisplayActivityMs(a);
+  });
+}
+
+/**
  * Ventana de 24 h de Meta: solo se puede responder libremente si el último
  * mensaje ENTRANTE del huésped es más reciente que `META_INBOX_REPLY_WINDOW_MS`.
  *
@@ -294,6 +327,49 @@ function AutoReactivatedBadge() {
       title="Nadie atendió a tiempo: el engine devolvió la IA automáticamente"
     >
       Volvió sola
+    </span>
+  );
+}
+
+/**
+ * El triage del engine detectó que este huésped lleva horas esperando algo que
+ * solo una persona resuelve (factura, confirmación de reserva, pago,
+ * cancelación) y nadie lo tomó.
+ *
+ * Por qué tiene que gritar más que el resto: una conversación así llega acá con
+ * `needs_human` en true, y eso hace que `mapOperationalFromConversationRow` le
+ * ponga `controlMode: "human"`. Resultado: la fila muestra la pastilla DORADA
+ * "Humano", que significa "alguien la está atendiendo" — exactamente lo
+ * contrario de lo que pasa. Este distintivo existe para desmentirla.
+ *
+ * Rojo sólido en mayúsculas con halo. No choca con la pastilla de al lado
+ * (dorada) y pesa más que "Volvió sola" (gris) y "Bloqueado" (gris). El rojo de
+ * `StatusToken` ("Pendiente" / "Atención") no se ve nunca junto a este, porque
+ * en esos dos casos la fila no es dorada.
+ *
+ * La vigencia NO se resuelve acá ni con el reloj: `readTriageEscalatedAt` ya
+ * decidió al mapear la fila, y por eso desaparece solo en cuanto alguien toma
+ * la conversación, responde o la cierra.
+ */
+function TriageEscalatedBadge() {
+  return (
+    <span
+      className="grotesk inline-flex shrink-0 items-center gap-1.5"
+      style={{
+        padding: "3px 9px 3px 7px",
+        borderRadius: 999,
+        fontSize: 10,
+        fontWeight: 800,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        color: "#fff",
+        background: "var(--red)",
+        boxShadow: "0 0 0 3px color-mix(in srgb, var(--red) 22%, transparent)",
+      }}
+      title="Lleva horas esperando algo que solo una persona resuelve y nadie la tomó"
+    >
+      <Dot size={6} color="rgba(255,255,255,.85)" />
+      Sin atender
     </span>
   );
 }
@@ -2214,7 +2290,7 @@ export default function InboxApp() {
       list = list.filter((c) => c.operationalStatus === "closed");
     }
 
-    return sortConversationsByActivity(list);
+    return sortGuestConversations(list);
   }, [searchScoped, statusFilter]);
 
   /**
@@ -3113,6 +3189,14 @@ export default function InboxApp() {
             {!(c.isStaff && statusVariant === "ia") && <StatusToken variant={statusVariant} />}
             {statusVariant === "ia" && !c.isStaff && c.autoReactivatedAt !== null && c.autoReactivatedAt !== undefined && (
               <AutoReactivatedBadge />
+            )}
+            {/*
+             * Fuera de staff, igual que "Volvió sola": el triage corre sobre
+             * hilos de huésped y en staff la IA no interviene, así que un
+             * distintivo que habla de lo que decidió la IA no aplica.
+             */}
+            {!c.isStaff && c.triageEscalatedAt !== null && c.triageEscalatedAt !== undefined && (
+              <TriageEscalatedBadge />
             )}
             {showProperty && (
               <span className="truncate" style={{ fontSize: 11, color: "var(--ink-3)" }} title={propertyLabel}>
