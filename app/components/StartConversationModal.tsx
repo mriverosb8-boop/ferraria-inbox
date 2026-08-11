@@ -151,7 +151,12 @@ export function StartConversationModal({
       onSuccess();
       onClose();
     } catch (e) {
-      onError(e instanceof Error ? e.message : undefined);
+      const motivo = e instanceof Error ? e.message : undefined;
+      onError(motivo);
+      // Además del toast: el toast se autodestruye y el modal queda abierto con
+      // el número mal escrito y sin decir por qué. La cajita roja está pegada al
+      // campo y se queda hasta que se corrija.
+      setValidationError(motivo ?? "No se pudo enviar la plantilla.");
     } finally {
       setSubmitting(false);
     }
@@ -209,6 +214,10 @@ export function StartConversationModal({
               style={inputStyle}
               disabled={submitting}
             />
+            <p className="mt-1.5 text-[11px]" style={{ color: "var(--ink-3)" }}>
+              Un celular colombiano de 10 dígitos que empiece en 3 se completa solo. Cualquier otro número necesita el
+              indicativo del país, por ejemplo 34612345678.
+            </p>
             {validationError && (
               <p
                 className="mt-2 rounded-lg px-3 py-2 text-[12px]"
