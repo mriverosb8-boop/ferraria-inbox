@@ -3147,8 +3147,11 @@ export default function InboxApp() {
     const isPending = c.request === "pending";
     const isHumanHandled = c.controlMode === "human" && c.operationalStatus !== "closed";
     // El humano ya la está atendiendo → no la marcamos como "atención" en rojo.
+    // En staff nunca: la barra roja es el acompañamiento visual del token de
+    // estado, y ese token no se pinta ahí (ver más abajo). Sin token, una barra
+    // roja suelta sería una alarma sin explicación.
     const showAttentionBar =
-      isPending || (c.operationalStatus === "requires_attention" && !isHumanHandled);
+      !c.isStaff && (isPending || (c.operationalStatus === "requires_attention" && !isHumanHandled));
     const statusVariant: StatusVariant = isPending
       ? "pending"
       : c.operationalStatus === "closed"
@@ -3215,11 +3218,15 @@ export default function InboxApp() {
           </p>
           <div className="flex items-center gap-2">
             {/*
-             * En staff la IA no interviene nunca, así que el token "IA activa"
-             * sería mentira. Los demás estados (pendiente, humano, cerrada) sí
-             * son ciertos para staff y se quedan.
+             * En staff la IA no interviene nunca, así que ningún token de este
+             * semáforo aplica: "Pendiente"/"Atención", "Humano" e "IA activa"
+             * describen el ciclo de vida del agente. Los campos que los alimentan
+             * (`request`, `controlMode`, `operationalStatus`) sí vienen poblados
+             * en la base —por datos históricos y porque responder desde el inbox
+             * marca control humano—, pero no significan nada en un hilo de
+             * personal. El guard es de render: no se toca el dato.
              */}
-            {!(c.isStaff && statusVariant === "ia") && <StatusToken variant={statusVariant} />}
+            {!c.isStaff && <StatusToken variant={statusVariant} />}
             {statusVariant === "ia" && !c.isStaff && c.autoReactivatedAt !== null && c.autoReactivatedAt !== undefined && (
               <AutoReactivatedBadge />
             )}
