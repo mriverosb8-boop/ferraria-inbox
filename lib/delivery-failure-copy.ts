@@ -40,6 +40,11 @@ const DELIVERY_FAILURE_COPY: Record<number, string> = {
   131051:
     "WhatsApp no admite este tipo de contenido. Intenta enviarlo como texto o como archivo adjunto.",
 
+  // Meta recibió el archivo pero no logró procesarlo. Distinto de 131053, que
+  // falla antes, al subirlo.
+  131052:
+    "WhatsApp no pudo procesar el archivo. Vuelve a enviarlo, y si sigue fallando prueba con otro formato.",
+
   131053:
     "El archivo adjunto no se pudo subir a WhatsApp. Revisa el formato y el tamaño, y vuelve a enviarlo.",
 
@@ -54,6 +59,11 @@ const DELIVERY_FAILURE_COPY: Record<number, string> = {
 
   132016:
     "Meta deshabilitó esta plantilla. Usa otra plantilla o contacta al huésped por otro medio.",
+
+  // Problema de la cuenta del hotel, no del huésped ni del mensaje. Recepción
+  // no puede resolverlo sola, por eso el texto cierra escalando al equipo.
+  131042:
+    "WhatsApp bloqueó el envío por un problema de facturación de la cuenta del hotel. Esto requiere revisión técnica, avisa al equipo.",
 
   133010:
     "El número de WhatsApp del hotel no está registrado en Meta. Esto requiere revisión técnica.",
