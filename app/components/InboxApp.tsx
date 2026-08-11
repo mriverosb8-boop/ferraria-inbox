@@ -4079,7 +4079,7 @@ export default function InboxApp() {
               >
                 <div className="w-full min-w-0 space-y-2.5">
                   <p className="break-words px-0.5 text-[10px] font-medium uppercase tracking-widest [overflow-wrap:anywhere] lg:text-center" style={{ color: "var(--ink-3)" }}>
-                    Historial de la conversación · la marca de IA o humano es aproximada
+                    Historial de la conversación
                   </p>
                   {threadLoading ? (
                     <InboxThreadSkeleton />
