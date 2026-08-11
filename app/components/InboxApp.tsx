@@ -25,7 +25,6 @@ import type {
   OperationalStatus,
 } from "@/lib/inbox-types";
 import {
-  CONVERSATIONS_TABLE,
   GUEST_NAME_MAX_LENGTH,
   type ConversationDbRow,
 } from "@/lib/conversation-schema";
@@ -44,7 +43,6 @@ import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
 import { useInboxSearch } from "@/hooks/useInboxSearch";
 import { useMessageDeliveryReceipts } from "@/hooks/useMessageDeliveryReceipts";
-import { WUBBY_TABLE } from "@/lib/wubby-schema";
 import { BrandHeaderMark } from "./BrandHeaderMark";
 import { FollowupTimer } from "./FollowupTimer";
 import { InboxListSkeleton, InboxLoadingSkeleton, InboxThreadSkeleton } from "./InboxLoadingSkeleton";
@@ -3367,7 +3365,7 @@ export default function InboxApp() {
               color: "#fff",
               border: "1px solid rgba(255,255,255,.28)",
             }}
-            title={`Supabase Realtime: public.${CONVERSATIONS_TABLE}, public.${WUBBY_TABLE}${realtimeErrorDetail ? ` · ${realtimeErrorDetail}` : ""}`}
+            title={`Actualización en vivo de conversaciones y mensajes${realtimeErrorDetail ? ` · ${realtimeErrorDetail}` : ""}`}
           >
             <Dot
               color={
@@ -4081,7 +4079,7 @@ export default function InboxApp() {
               >
                 <div className="w-full min-w-0 space-y-2.5">
                   <p className="break-words px-0.5 text-[10px] font-medium uppercase tracking-widest [overflow-wrap:anywhere] lg:text-center" style={{ color: "var(--ink-3)" }}>
-                    Historial desde Supabase · IA vs humano es heurístico sin columna dedicada
+                    Historial de la conversación · la marca de IA o humano es aproximada
                   </p>
                   {threadLoading ? (
                     <InboxThreadSkeleton />
@@ -4479,7 +4477,7 @@ export default function InboxApp() {
               {moderationDialogAction === "block" ? (
                 <>
                   ¿Bloquear a {selected.guest.name || selected.guestPhone}? Esta acción se puede revertir
-                  desde el inbox o Supabase.
+                  desde el inbox cuando quieras.
                 </>
               ) : (
                 <>¿Desbloquear a {selected.guest.name || selected.guestPhone}?</>
@@ -5057,7 +5055,7 @@ function GuestPanelContent({
           </button>
         </div>
 
-        <p className="ibx-mono pb-2 text-center text-[10px]" style={{ color: "var(--ink-3)" }}>FerrarIA · Supabase + n8n</p>
+        <p className="ibx-mono pb-2 text-center text-[10px]" style={{ color: "var(--ink-3)" }}>FerrarIA · Inbox</p>
       </div>
     </div>
   );
