@@ -3,13 +3,22 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 /**
  * Credenciales del cliente servidor, validadas al CARGAR el módulo.
  *
- * La service role no tiene fallback a la anon key. Con la RLS cerrada
- * (`conversations`, `Wubby_Whatsapp`, `hotel_users` y `hotels` solo exponen
- * política de SELECT para `authenticated`, cero políticas de escritura) la anon
- * key no puede escribir: cada UPDATE/INSERT afectaría 0 filas sin devolver
+ * La service role no tiene fallback a la anon key. La RLS NO tiene políticas de
+ * escritura para `authenticated`: todo INSERT/UPDATE pasa por route handlers con
+ * service role. Con la anon key cada escritura afectaría 0 filas sin devolver
  * error, así que `PATCH /api/inbox` respondería 404 "Conversación no
  * encontrada" y la bandeja aparentaría funcionar mientras nada se guarda. Un
  * despliegue sin la variable debe no arrancar, no degradarse en silencio.
+ *
+ * Lectura con `authenticated` (lo que alcanzan el navegador y Realtime):
+ * - `conversations` y `Wubby_Whatsapp`: SELECT filtrado por
+ *   `hotel_id in (select user_guest_data_hotel_ids())`. Esa función excluye las
+ *   membresías con rol `operativo` — mantenimiento y housekeeping no pueden leer
+ *   datos de huéspedes; `super_admin` conserva acceso a todos los hoteles.
+ * - `hotels`: SELECT filtrado por `id in (select user_hotel_ids())`.
+ * - `hotel_users`: SELECT solo de la propia fila (`user_id = auth.uid()`).
+ * - `service_tickets`: SELECT/UPDATE por hotel vía `hotel_users`; el INSERT es
+ *   exclusivo del engine con service role.
  *
  * La anon key sigue siendo legítima donde el control de acceso ES la RLS y la
  * autoriza el JWT del usuario: `lib/supabase/client.ts` (navegador),
