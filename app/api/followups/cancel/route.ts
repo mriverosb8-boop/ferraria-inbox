@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
+import { requireCapability } from "@/lib/auth/require-capability";
 import {
   resolveActiveHotelId,
-  resolveAllowedHotelIds,
   resolveAvailableHotels,
 } from "@/lib/inbox-tenant";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
@@ -43,7 +43,9 @@ export async function POST(request: Request) {
     const requestedHotelId = new URL(request.url).searchParams.get("hotelId")?.trim() ?? "";
 
     const supabase = getSupabaseServerClient();
-    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const gate = await requireCapability(supabase, auth.user, "verConversacionesHuespedes");
+    if (gate.response) return gate.response;
+    const allowedHotelIds = gate.allowedHotelIds;
     const availableHotels = await resolveAvailableHotels(supabase, allowedHotelIds);
     const { activeHotelId, forbidden } = resolveActiveHotelId(
       requestedHotelId,

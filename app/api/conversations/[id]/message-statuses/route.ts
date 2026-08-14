@@ -60,7 +60,9 @@ export async function GET(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "conversationId es obligatorio" }, { status: 400 });
     }
 
-    const tenant = await requireActiveHotel(request, auth.user);
+    const tenant = await requireActiveHotel(request, auth.user, {
+      capability: "verConversacionesHuespedes",
+    });
     if (tenant.response) return tenant.response;
 
     const ownership = await assertConversationInHotel(

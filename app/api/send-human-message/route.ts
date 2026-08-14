@@ -91,6 +91,7 @@ export async function POST(request: Request) {
     // 1) el hotelId del cliente debe pertenecer al usuario;
     const tenant = await requireActiveHotel(request, auth.user, {
       requestedHotelId: body.hotelId ?? undefined,
+      capability: "enviarMensajes",
     });
     if (tenant.response) return tenant.response;
 

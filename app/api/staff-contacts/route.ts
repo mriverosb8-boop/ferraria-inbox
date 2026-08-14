@@ -31,7 +31,9 @@ export async function GET(request: Request) {
     const auth = await requireSessionUser();
     if (auth.response) return auth.response;
 
-    const tenant = await requireActiveHotel(request, auth.user);
+    const tenant = await requireActiveHotel(request, auth.user, {
+      capability: "verConversacionesHuespedes",
+    });
     if (tenant.response) return tenant.response;
     if (!tenant.activeHotelId) {
       return NextResponse.json({ contacts: [], activeHotelId: null });
@@ -73,7 +75,10 @@ export async function POST(request: Request) {
     const requestedHotelId =
       (typeof body.activeHotelId === "string" ? body.activeHotelId : body.hotelId)?.trim() ?? "";
 
-    const tenant = await requireActiveHotel(request, auth.user, { requestedHotelId });
+    const tenant = await requireActiveHotel(request, auth.user, {
+      requestedHotelId,
+      capability: "verConversacionesHuespedes",
+    });
     if (tenant.response) return tenant.response;
     if (!tenant.activeHotelId) {
       return NextResponse.json({ error: "hotelId es obligatorio" }, { status: 400 });

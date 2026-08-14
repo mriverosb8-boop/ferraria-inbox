@@ -182,7 +182,10 @@ export async function POST(request: Request) {
     // GATE de tenancy ANTES de cualquier efecto (storage/engine):
     // 1) el hotelId del formData debe pertenecer al usuario;
     // 2) la conversación debe ser suya, y SU hotel es el autoritativo para enviar.
-    const tenant = await requireActiveHotel(request, auth.user, { requestedHotelId: hotelIdRaw });
+    const tenant = await requireActiveHotel(request, auth.user, {
+      requestedHotelId: hotelIdRaw,
+      capability: "enviarMensajes",
+    });
     if (tenant.response) return tenant.response;
     const ownership = await assertConversationInHotel(
       tenant.supabase,

@@ -8,7 +8,6 @@ import {
 import { buildReactivateAiFields } from "@/lib/inbox-patch";
 import {
   resolveActiveHotelId,
-  resolveAllowedHotelIds,
   resolveAvailableHotels,
   type AvailableHotel,
 } from "@/lib/inbox-tenant";
@@ -20,6 +19,7 @@ import {
   type InboxPatchAction,
 } from "@/lib/conversation-schema";
 import { requireSessionUser } from "@/lib/auth/require-user";
+import { requireCapability } from "@/lib/auth/require-capability";
 import { assertConversationInHotel } from "@/lib/auth/require-hotel";
 import { STAFF_CONTACTS_TABLE, normalizeStaffPhone } from "@/lib/staff-contacts";
 import type { Conversation } from "@/lib/inbox-types";
@@ -214,7 +214,9 @@ export async function GET(request: Request) {
     if (auth.response) return auth.response;
 
     const supabase = getSupabaseServerClient();
-    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const gate = await requireCapability(supabase, auth.user, "verConversacionesHuespedes");
+    if (gate.response) return gate.response;
+    const allowedHotelIds = gate.allowedHotelIds;
     const searchParams = new URL(request.url).searchParams;
     const requestedHotelId = searchParams.get("hotelId")?.trim() ?? "";
     const searchTerm = searchParams.get("q")?.trim() ?? "";
@@ -610,7 +612,9 @@ export async function PATCH(request: Request) {
 
     // Ownership obligatorio para TODAS las acciones: deriva el hotel de la
     // conversación y valida que pertenezca a un hotel permitido del usuario.
-    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const gate = await requireCapability(supabase, auth.user, "verConversacionesHuespedes");
+    if (gate.response) return gate.response;
+    const allowedHotelIds = gate.allowedHotelIds;
     const ownership = await assertConversationInHotel(supabase, conversationId, allowedHotelIds);
     if (ownership.response) return ownership.response;
 

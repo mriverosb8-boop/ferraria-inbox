@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { requireSessionUser } from "@/lib/auth/require-user";
+import { requireCapability } from "@/lib/auth/require-capability";
 import {
   resolveActiveHotelId,
-  resolveAllowedHotelIds,
   resolveAvailableHotels,
   type AvailableHotel,
 } from "@/lib/inbox-tenant";
@@ -59,7 +59,15 @@ type ReservasTenantContext =
 
 async function resolveReservasTenant(request: Request, user: User): Promise<ReservasTenantContext> {
   const supabase = getSupabaseServerClient();
-  const allowedHotelIds = await resolveAllowedHotelIds(supabase, user);
+
+  // Reservas trabaja sobre conversaciones y cotizaciones de huéspedes: un
+  // `operativo` no entra acá. `forbidden` ya existe y el GET lo traduce a 403.
+  const gate = await requireCapability(supabase, user, "verReservas");
+  if (gate.response) {
+    return { kind: "forbidden" };
+  }
+  const allowedHotelIds = gate.allowedHotelIds;
+
   const requestedHotelId = new URL(request.url).searchParams.get("hotelId")?.trim() ?? "";
   const availableHotels = await resolveAvailableHotels(supabase, allowedHotelIds);
   const { activeHotelId, forbidden } = resolveActiveHotelId(
@@ -201,7 +209,9 @@ export async function PATCH(request: Request) {
     }
 
     const supabase = getSupabaseServerClient();
-    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const gate = await requireCapability(supabase, auth.user, "verReservas");
+    if (gate.response) return gate.response;
+    const allowedHotelIds = gate.allowedHotelIds;
 
     const { data: reservaRow, error: fetchError } = await supabase
       .from(RESERVAS_TABLE)

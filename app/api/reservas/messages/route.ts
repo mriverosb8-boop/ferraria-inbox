@@ -38,7 +38,9 @@ export async function GET(request: Request) {
     // El tenant NO se confía del cliente (el frontend no envía hotelId): en modo
     // conversación se deriva de la propia fila; en el fallback por teléfono se
     // acota a los hoteles permitidos del usuario.
-    const tenant = await requireActiveHotel(request, auth.user);
+    const tenant = await requireActiveHotel(request, auth.user, {
+      capability: "verReservas",
+    });
     if (tenant.response) return tenant.response;
     const { supabase, allowedHotelIds } = tenant;
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
+import { requireCapability } from "@/lib/auth/require-capability";
 import { assertConversationInHotel } from "@/lib/auth/require-hotel";
-import { resolveAllowedHotelIds } from "@/lib/inbox-tenant";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +39,9 @@ export async function POST(request: Request) {
     // Ownership antes de disparar la generación de IA (evita generar resúmenes
     // de conversaciones de otros hoteles / abuso de recurso).
     const supabase = getSupabaseServerClient();
-    const allowedHotelIds = await resolveAllowedHotelIds(supabase, auth.user);
+    const gate = await requireCapability(supabase, auth.user, "verConversacionesHuespedes");
+    if (gate.response) return gate.response;
+    const allowedHotelIds = gate.allowedHotelIds;
     const ownership = await assertConversationInHotel(supabase, conversation_id, allowedHotelIds);
     if (ownership.response) return ownership.response;
 

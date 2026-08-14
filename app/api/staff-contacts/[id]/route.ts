@@ -54,7 +54,10 @@ export async function PATCH(request: Request, context: RouteContext) {
     const requestedHotelId =
       (typeof body.activeHotelId === "string" ? body.activeHotelId : body.hotelId)?.trim() ?? "";
 
-    const tenant = await requireActiveHotel(request, auth.user, { requestedHotelId });
+    const tenant = await requireActiveHotel(request, auth.user, {
+      requestedHotelId,
+      capability: "verConversacionesHuespedes",
+    });
     if (tenant.response) return tenant.response;
     if (!tenant.activeHotelId) {
       return NextResponse.json({ error: "hotelId es obligatorio" }, { status: 400 });
