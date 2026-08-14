@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useReservasCount } from "@/app/reservas/hooks/useReservasCount";
+import { useCapabilities } from "@/hooks/useCapabilities";
 
 /** Vista client-side de la página de conversaciones. NO son rutas. */
 export type InboxView = "guests" | "staff";
@@ -68,6 +69,20 @@ export function InboxHeaderTabs({
   const pathname = usePathname();
   const reservasCount = useReservasCount(hotelId);
   const isReservas = pathname?.startsWith("/reservas");
+  const capabilities = useCapabilities();
+
+  /**
+   * Gate por rol. `capabilities` es `null` mientras carga: en ese caso se pinta
+   * todo, como siempre, para no parpadear las pestañas en cada navegación. Un
+   * `operativo` ni llega acá — el middleware lo manda a Solicitudes antes — así
+   * que esto es la segunda barrera, no la primera.
+   *
+   * OJO: la pestaña Solicitudes NO se agrega en esta tanda. La página real llega
+   * en C2; mostrar hoy una pestaña que lleva a un placeholder sería ruido para
+   * recepción, que está trabajando con huéspedes en vivo.
+   */
+  const puedeVerHuespedes = capabilities?.verConversacionesHuespedes !== false;
+  const puedeVerReservas = capabilities?.verReservas !== false;
 
   const hasPendingReservas = reservasCount > 0;
 
@@ -81,7 +96,7 @@ export function InboxHeaderTabs({
     onInboxViewChange?.(view);
   };
 
-  const staffTabVisible = canSwitchView && showStaffTab;
+  const staffTabVisible = canSwitchView && showStaffTab && puedeVerHuespedes;
   const staffActive = staffTabVisible && inboxView === "staff";
   const guestsActive = !isReservas && !staffActive;
   const hasStaffUnread = staffTabVisible && staffUnreadCount > 0;
@@ -123,20 +138,21 @@ export function InboxHeaderTabs({
       <nav
         className={`hidden shrink-0 items-center gap-0.5 rounded-[10px] p-[3px] sm:flex ${onRed ? "bg-white/15" : "bg-[var(--panel-2)]"}`}
       >
-        {canSwitchView ? (
-          <button
-            type="button"
-            onClick={() => selectView("guests")}
-            className={`${base} ${guestsActive ? active : inactive}`}
-            aria-current={guestsActive ? "page" : undefined}
-          >
-            Huéspedes
-          </button>
-        ) : (
-          <Link href="/" className={`${base} ${guestsActive ? active : inactive}`}>
-            Huéspedes
-          </Link>
-        )}
+        {puedeVerHuespedes &&
+          (canSwitchView ? (
+            <button
+              type="button"
+              onClick={() => selectView("guests")}
+              className={`${base} ${guestsActive ? active : inactive}`}
+              aria-current={guestsActive ? "page" : undefined}
+            >
+              Huéspedes
+            </button>
+          ) : (
+            <Link href="/" className={`${base} ${guestsActive ? active : inactive}`}>
+              Huéspedes
+            </Link>
+          ))}
 
         {staffTabVisible && (
           <button
@@ -163,16 +179,18 @@ export function InboxHeaderTabs({
           </button>
         )}
 
-        <Link href="/reservas" className={`${base} ${reservasTabClasses}`}>
-          {hasPendingReservas && (
-            <span
-              className={`mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${onRed ? "bg-white" : "bg-[var(--red)]"}`}
-              aria-hidden
-            />
-          )}
-          Reservas
-          <span className={badgeClasses}>{reservasCount}</span>
-        </Link>
+        {puedeVerReservas && (
+          <Link href="/reservas" className={`${base} ${reservasTabClasses}`}>
+            {hasPendingReservas && (
+              <span
+                className={`mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${onRed ? "bg-white" : "bg-[var(--red)]"}`}
+                aria-hidden
+              />
+            )}
+            Reservas
+            <span className={badgeClasses}>{reservasCount}</span>
+          </Link>
+        )}
       </nav>
 
       {/* Móvil: el tab Staff es su propio pill, al lado del de Reservas. Sin él
@@ -197,16 +215,18 @@ export function InboxHeaderTabs({
         </button>
       )}
 
-      {isReservas ? (
-        <Link href="/" className={mobilePill} aria-label="Ver conversaciones" title="Conversaciones">
-          <IconChatBubble className="h-[18px] w-[18px]" />
-        </Link>
-      ) : (
-        <Link href="/reservas" className={mobilePill} aria-label="Ver reservas" title="Reservas">
-          <IconCalendar className="h-[18px] w-[18px]" />
-          {hasPendingReservas && <span className={mobileBadgeClasses}>{reservasCount}</span>}
-        </Link>
-      )}
+      {isReservas
+        ? puedeVerHuespedes && (
+            <Link href="/" className={mobilePill} aria-label="Ver conversaciones" title="Conversaciones">
+              <IconChatBubble className="h-[18px] w-[18px]" />
+            </Link>
+          )
+        : puedeVerReservas && (
+            <Link href="/reservas" className={mobilePill} aria-label="Ver reservas" title="Reservas">
+              <IconCalendar className="h-[18px] w-[18px]" />
+              {hasPendingReservas && <span className={mobileBadgeClasses}>{reservasCount}</span>}
+            </Link>
+          )}
     </>
   );
 }
