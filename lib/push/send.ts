@@ -1,5 +1,6 @@
 import webpush, { WebPushError } from "web-push";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { resolvePushAudience, type PushMemberRow } from "@/lib/push/audience";
 
 const SUBSCRIPTIONS_TABLE = "push_subscriptions";
 const HOTEL_USERS_TABLE = "hotel_users";
@@ -12,7 +13,7 @@ const HOTEL_USERS_TABLE = "hotel_users";
  * `handoff` es el default de retrocompatibilidad: un emisor viejo que no manda
  * `type`, o un valor desconocido, se trata como escalamiento — el caso urgente.
  */
-export const PUSH_TYPES = ["handoff", "staff", "reservation"] as const;
+export const PUSH_TYPES = ["handoff", "staff", "reservation", "ticket"] as const;
 export type PushNotificationType = (typeof PUSH_TYPES)[number];
 export const DEFAULT_PUSH_TYPE: PushNotificationType = "handoff";
 
@@ -30,6 +31,13 @@ export type PushPayload = {
   conversation_id: string;
   hotel_id: string;
   type: PushNotificationType;
+  /**
+   * Solo en `type: "ticket"`. Campos ADITIVOS: un service worker viejo los
+   * ignora, cae al default `handoff` y abre la conversación. Degrada feo pero no
+   * rompe, y para un operativo el middleware lo rebota a Solicitudes igual.
+   */
+  ticket_id?: string;
+  categoria?: string;
 };
 
 export type SendResult = {
@@ -56,30 +64,43 @@ function configureVapid(): void {
   vapidConfigured = true;
 }
 
+function toMemberRows(rows: readonly Record<string, unknown>[]): PushMemberRow[] {
+  return rows
+    .map((row) => ({
+      userId: row.user_id != null ? String(row.user_id) : "",
+      role: row.role != null ? String(row.role) : null,
+      area: row.area != null ? String(row.area) : null,
+    }))
+    .filter((row) => row.userId);
+}
+
 /**
  * Usuarios que deben recibir el push para un hotel: miembros de ese hotel en
- * `hotel_users` MÁS todos los `super_admin` (acceso a todos los hoteles).
+ * `hotel_users` MÁS todos los `super_admin` (acceso a todos los hoteles), ya
+ * filtrados por rol y área según el tipo de evento (ver `resolvePushAudience`).
  * ROUTING POR user_id — el hotel_id de push_subscriptions es metadato, no llave.
  */
 async function resolveHotelRecipientUserIds(
   supabase: ReturnType<typeof getSupabaseServerClient>,
-  hotelId: string
+  hotelId: string,
+  payload: PushPayload
 ): Promise<string[]> {
   const [members, admins] = await Promise.all([
-    supabase.from(HOTEL_USERS_TABLE).select("user_id").eq("hotel_id", hotelId),
-    supabase.from(HOTEL_USERS_TABLE).select("user_id").eq("role", "super_admin"),
+    supabase.from(HOTEL_USERS_TABLE).select("user_id, role, area").eq("hotel_id", hotelId),
+    supabase.from(HOTEL_USERS_TABLE).select("user_id, role, area").eq("role", "super_admin"),
   ]);
   if (members.error) throw new Error(members.error.message);
   if (admins.error) throw new Error(admins.error.message);
 
-  const ids = new Set<string>();
-  for (const row of [...(members.data ?? []), ...(admins.data ?? [])]) {
-    if (row.user_id != null) ids.add(String(row.user_id));
-  }
-  return [...ids];
+  return resolvePushAudience({
+    hotelMembers: toMemberRows(members.data ?? []),
+    superAdmins: toMemberRows(admins.data ?? []),
+    type: payload.type,
+    categoria: payload.categoria ?? null,
+  });
 }
 
-/** Envía el payload de handoff a todas las suscripciones de los usuarios del hotel. */
+/** Envía el payload a las suscripciones de los usuarios que corresponden. */
 export async function sendPushToHotel(
   hotelId: string,
   payload: PushPayload
@@ -87,7 +108,7 @@ export async function sendPushToHotel(
   configureVapid();
   const supabase = getSupabaseServerClient();
 
-  const userIds = await resolveHotelRecipientUserIds(supabase, hotelId);
+  const userIds = await resolveHotelRecipientUserIds(supabase, hotelId, payload);
   if (userIds.length === 0) {
     return { recipients: 0, subscriptions: 0, sent: 0, failed: 0, cleaned: 0 };
   }

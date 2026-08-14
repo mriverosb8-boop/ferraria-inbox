@@ -6,11 +6,20 @@
  *     "body":            string,   // cuerpo de la notificación
  *     "conversation_id": string,   // conversación a abrir/enfocar al hacer click
  *     "hotel_id":        string,   // hotel dueño de la conversación
- *     "type":            string    // "handoff" | "staff" | "reservation" (OPCIONAL)
+ *     "type":            string,   // "handoff" | "staff" | "reservation" | "ticket" (OPCIONAL)
+ *     "ticket_id":       string,   // SOLO type "ticket" (OPCIONAL)
+ *     "categoria":       string    // SOLO type "ticket" (OPCIONAL)
  *   }
  *
  * El deep-link usa el parámetro ya soportado por el inbox: /?conversationId=<conversation_id>
+ * Excepto "ticket", que lleva a /solicitudes — quien lo recibe puede ser
+ * personal de mantenimiento, que no tiene acceso a la conversación del huésped.
  */
+
+/* Debe coincidir con SOLICITUDES_PATH de lib/routes.ts. Este archivo es JS plano
+ * sin build step, así que no puede importarlo: si esa constante cambia, hay que
+ * cambiarla acá a mano. */
+const RUTA_SOLICITUDES = "/solicitudes";
 
 /* Presentación por tipo de evento. El tipo SOLO afecta cómo se ve la
  * notificación; nunca a quién le llega ni a dónde lleva el click.
@@ -39,6 +48,13 @@ const PRESENTACION = {
     prefijoTitulo: "✅ ",
     tagPrefijo: "reserva-conv",
   },
+  // Solicitud de servicio. Reusa el ícono base: no hay arte propio todavía y un
+  // 404 de ícono deja la notificación sin imagen en Android.
+  ticket: {
+    icon: "/icons/icon-192.png",
+    prefijoTitulo: "🛎️ ",
+    tagPrefijo: "ticket",
+  },
 };
 
 const TIPO_POR_DEFECTO = "handoff";
@@ -65,6 +81,7 @@ self.addEventListener("push", (event) => {
   const body = typeof payload.body === "string" ? payload.body : "";
   const conversationId = payload.conversation_id ?? null;
   const hotelId = payload.hotel_id ?? null;
+  const ticketId = payload.ticket_id ?? null;
 
   // Tipo desconocido o ausente → escalamiento, el comportamiento de siempre.
   const tipo = Object.prototype.hasOwnProperty.call(PRESENTACION, payload.type)
@@ -81,8 +98,22 @@ self.addEventListener("push", (event) => {
     // Colapsa notificaciones de la misma conversación en una sola, PERO solo
     // dentro del mismo tipo: una reserva confirmada no debe tapar un
     // escalamiento sin leer de esa misma conversación.
-    tag: conversationId ? `${estilo.tagPrefijo}-${conversationId}` : undefined,
-    data: { conversation_id: conversationId, hotel_id: hotelId, type: tipo },
+    // Los tickets colapsan por ticket_id, no por conversación: dos solicitudes
+    // distintas del mismo huésped son dos cosas que alguien tiene que atender.
+    tag:
+      tipo === "ticket"
+        ? ticketId
+          ? `${estilo.tagPrefijo}-${ticketId}`
+          : undefined
+        : conversationId
+          ? `${estilo.tagPrefijo}-${conversationId}`
+          : undefined,
+    data: {
+      conversation_id: conversationId,
+      hotel_id: hotelId,
+      type: tipo,
+      ticket_id: ticketId,
+    },
   };
 
   event.waitUntil(
@@ -95,9 +126,19 @@ self.addEventListener("notificationclick", (event) => {
 
   const data = event.notification.data || {};
   const conversationId = data.conversation_id;
-  const targetPath = conversationId
-    ? `/?conversationId=${encodeURIComponent(conversationId)}`
-    : "/";
+
+  // Un ticket NUNCA lleva a la conversación: quien lo recibe puede ser personal
+  // de mantenimiento, que no tiene permitido leer mensajes de huéspedes.
+  let targetPath;
+  if (data.type === "ticket") {
+    targetPath = data.ticket_id
+      ? `${RUTA_SOLICITUDES}?ticketId=${encodeURIComponent(data.ticket_id)}`
+      : RUTA_SOLICITUDES;
+  } else {
+    targetPath = conversationId
+      ? `/?conversationId=${encodeURIComponent(conversationId)}`
+      : "/";
+  }
   const targetUrl = new URL(targetPath, self.location.origin).href;
 
   event.waitUntil(

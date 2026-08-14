@@ -14,6 +14,9 @@ type NotifyBody = {
   title?: string;
   body?: string;
   type?: string;
+  /** Solo para `type: "ticket"`. Opcionales: si faltan, el área cae en "otro". */
+  ticket_id?: string;
+  categoria?: string;
 };
 
 /**
@@ -25,6 +28,7 @@ const DEFAULT_BODY: Record<PushNotificationType, string> = {
   handoff: "Un huésped requiere atención humana.",
   staff: "Mensaje del personal.",
   reservation: "Se confirmó una reserva nueva.",
+  ticket: "Hay una solicitud de servicio nueva.",
 };
 
 /** Compara el secreto en tiempo constante (evita fuga por timing). */
@@ -67,6 +71,12 @@ export async function POST(request: Request) {
   const messageBody =
     typeof body.body === "string" && body.body.trim() ? body.body.trim() : DEFAULT_BODY[type];
 
+  // Campos aditivos del ticket. `conversation_id` sigue siendo obligatorio para
+  // todos los tipos: un service_ticket siempre nace de una conversación, así que
+  // el contrato con los emisores actuales no cambia.
+  const ticketId = typeof body.ticket_id === "string" ? body.ticket_id.trim() : "";
+  const categoria = typeof body.categoria === "string" ? body.categoria.trim() : "";
+
   try {
     const result = await sendPushToHotel(hotelId, {
       title,
@@ -74,6 +84,8 @@ export async function POST(request: Request) {
       conversation_id: conversationId,
       hotel_id: hotelId,
       type,
+      ...(type === "ticket" && ticketId ? { ticket_id: ticketId } : {}),
+      ...(type === "ticket" && categoria ? { categoria } : {}),
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
