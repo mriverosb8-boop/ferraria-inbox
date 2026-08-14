@@ -8,6 +8,8 @@ import {
   type AvailableHotel,
 } from "@/lib/inbox-tenant";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { requireCapability } from "@/lib/auth/require-capability";
+import type { Capability } from "@/lib/permissions";
 import { WUBBY_TABLE } from "@/lib/wubby-schema";
 
 /**
@@ -33,10 +35,28 @@ export type ActiveHotelResult = {
 export async function requireActiveHotel(
   request: Request,
   user: User,
-  options?: { requestedHotelId?: string }
+  options?: { requestedHotelId?: string; capability?: Capability }
 ): Promise<ActiveHotelResult> {
   const supabase = getSupabaseServerClient();
-  const allowedHotelIds = await resolveAllowedHotelIds(supabase, user);
+
+  // Con `capability`, el gate de rol y el recorte de hoteles se resuelven en la
+  // misma pasada: sin ella el comportamiento queda idéntico al de antes.
+  let allowedHotelIds: string[];
+  if (options?.capability) {
+    const gate = await requireCapability(supabase, user, options.capability);
+    if (gate.response) {
+      return {
+        response: gate.response,
+        supabase,
+        allowedHotelIds: [],
+        availableHotels: [],
+        activeHotelId: null,
+      };
+    }
+    allowedHotelIds = gate.allowedHotelIds;
+  } else {
+    allowedHotelIds = await resolveAllowedHotelIds(supabase, user);
+  }
 
   const requestedHotelId = (
     options?.requestedHotelId ??
