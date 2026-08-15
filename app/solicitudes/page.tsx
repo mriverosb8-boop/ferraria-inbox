@@ -1,18 +1,28 @@
+import { Suspense } from "react";
+import { SolicitudesScreen } from "./components/SolicitudesScreen";
+
 /**
- * Placeholder de Solicitudes (tickets de servicio).
+ * Pestaña Solicitudes: los tickets de servicio (`service_tickets`) que crea el
+ * agente cuando un huésped pide algo por WhatsApp.
  *
- * Existe SOLO para que el redirect del middleware tenga a dónde llegar: un
- * `operativo` entra al inbox y cae acá, y sin esta página vería un 404. La
- * pantalla real (lista de `service_tickets`, filtros por área y estado) llega en
- * la Tanda C2 y reemplaza este archivo entero.
+ * Es la única vista del rol `operativo` (mantenimiento, housekeeping), que no
+ * puede ver conversaciones de huéspedes. El recorte por área y por hotel lo hace
+ * el endpoint, no esta pantalla.
+ *
+ * El `Suspense` es obligatorio: `SolicitudesScreen` lee `?ticketId=` con
+ * `useSearchParams` para el deep-link del push, y sin límite de suspensión eso
+ * arrastra toda la ruta a render en cliente.
  */
 export default function SolicitudesPage() {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center gap-3 p-8 text-center">
-      <h1 className="grotesk text-2xl font-bold text-[var(--ink)]">Solicitudes</h1>
-      <p className="max-w-sm text-[15px] text-[var(--ink-2)]">
-        Acá vas a ver las solicitudes de servicio de tu área. Estamos terminando esta pantalla.
-      </p>
-    </main>
+    <Suspense
+      fallback={
+        <main className="flex min-h-dvh items-center justify-center p-8 text-center">
+          <p className="text-[15px] text-[var(--ink-2)]">Cargando solicitudes...</p>
+        </main>
+      }
+    >
+      <SolicitudesScreen />
+    </Suspense>
   );
 }

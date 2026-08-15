@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useReservasCount } from "@/app/reservas/hooks/useReservasCount";
+import { useSolicitudesCount } from "@/app/solicitudes/hooks/useSolicitudesCount";
 import { useCapabilities } from "@/hooks/useCapabilities";
+import { RESERVAS_PATH, SOLICITUDES_PATH } from "@/lib/routes";
 
 /** Vista client-side de la página de conversaciones. NO son rutas. */
 export type InboxView = "guests" | "staff";
@@ -47,6 +49,17 @@ function IconChatBubble({ className }: { className?: string }) {
   );
 }
 
+/** Solicitudes de servicio: una tablilla con un chulo. */
+function IconClipboard({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className={className} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 3.75h6a.75.75 0 01.75.75v.75a.75.75 0 01-.75.75H9a.75.75 0 01-.75-.75V4.5A.75.75 0 019 3.75z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 5.25h1.125c.621 0 1.125.504 1.125 1.125v12.75c0 .621-.504 1.125-1.125 1.125H6.375A1.125 1.125 0 015.25 19.125V6.375c0-.621.504-1.125 1.125-1.125H7.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 13.5l1.875 1.875L15 11.25" />
+    </svg>
+  );
+}
+
 /** Personal del hotel (dos siluetas). Mismo trazo que el de la bandeja. */
 function IconStaff({ className }: { className?: string }) {
   return (
@@ -68,7 +81,9 @@ export function InboxHeaderTabs({
 }: InboxHeaderTabsProps) {
   const pathname = usePathname();
   const reservasCount = useReservasCount(hotelId);
-  const isReservas = pathname?.startsWith("/reservas");
+  const solicitudesCount = useSolicitudesCount(hotelId);
+  const isReservas = pathname?.startsWith(RESERVAS_PATH);
+  const isSolicitudes = pathname?.startsWith(SOLICITUDES_PATH);
   const capabilities = useCapabilities();
 
   /**
@@ -76,29 +91,27 @@ export function InboxHeaderTabs({
    * todo, como siempre, para no parpadear las pestañas en cada navegación. Un
    * `operativo` ni llega acá — el middleware lo manda a Solicitudes antes — así
    * que esto es la segunda barrera, no la primera.
-   *
-   * OJO: la pestaña Solicitudes NO se agrega en esta tanda. La página real llega
-   * en C2; mostrar hoy una pestaña que lleva a un placeholder sería ruido para
-   * recepción, que está trabajando con huéspedes en vivo.
    */
   const puedeVerHuespedes = capabilities?.verConversacionesHuespedes !== false;
   const puedeVerReservas = capabilities?.verReservas !== false;
+  const puedeVerSolicitudes = capabilities?.verSolicitudes !== false;
 
   const hasPendingReservas = reservasCount > 0;
+  const hasPendingSolicitudes = solicitudesCount > 0;
 
   /**
    * Solo la página de conversaciones puede cambiar de vista sin navegar. Desde
    * /reservas el tab Staff no se pinta: llevaría a "/" y caería en Huéspedes,
    * que es exactamente lo contrario de lo que promete el tab.
    */
-  const canSwitchView = !isReservas && typeof onInboxViewChange === "function";
+  const canSwitchView = !isReservas && !isSolicitudes && typeof onInboxViewChange === "function";
   const selectView = (view: InboxView) => {
     onInboxViewChange?.(view);
   };
 
   const staffTabVisible = canSwitchView && showStaffTab && puedeVerHuespedes;
   const staffActive = staffTabVisible && inboxView === "staff";
-  const guestsActive = !isReservas && !staffActive;
+  const guestsActive = !isReservas && !isSolicitudes && !staffActive;
   const hasStaffUnread = staffTabVisible && staffUnreadCount > 0;
   const staffUnreadLabel = staffUnreadCount > 99 ? "99+" : String(staffUnreadCount);
 
@@ -112,6 +125,7 @@ export function InboxHeaderTabs({
     : "bg-transparent text-[var(--ink-2)] hover:bg-[var(--panel)]/60";
 
   const reservasTabClasses = isReservas ? active : inactive;
+  const solicitudesTabClasses = isSolicitudes ? active : inactive;
 
   const badgeClasses = hasPendingReservas
     ? `ibx-mono ml-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold animate-pulse ${onRed ? "bg-white text-[var(--red-deep)]" : "bg-[var(--red)] text-white"}`
@@ -121,6 +135,11 @@ export function InboxHeaderTabs({
   // sin no leídas el tab Staff no lleva badge en vez de llevar un "0" apagado:
   // el cero permanente entrena a ignorarlo y este contador sí exige mirar.
   const staffBadgeClasses = `ibx-mono ml-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold animate-pulse ${onRed ? "bg-white text-[var(--red-deep)]" : "bg-[var(--red)] text-white"}`;
+
+  // Solicitudes usa el mismo criterio que Staff y no el de Reservas: sin nada
+  // pendiente no lleva badge, en vez de un "0" fijo. Este contador marca trabajo
+  // que alguien tiene que ir a hacer, y un cero permanente entrena a ignorarlo.
+  const solicitudesBadgeClasses = staffBadgeClasses;
 
   // Pill compacto solo-móvil (las pestañas de texto se ocultan bajo sm).
   const mobilePill = `grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[9px] px-2.5 py-[7px] text-[13px] font-semibold transition sm:hidden ${
@@ -180,7 +199,7 @@ export function InboxHeaderTabs({
         )}
 
         {puedeVerReservas && (
-          <Link href="/reservas" className={`${base} ${reservasTabClasses}`}>
+          <Link href={RESERVAS_PATH} className={`${base} ${reservasTabClasses}`}>
             {hasPendingReservas && (
               <span
                 className={`mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${onRed ? "bg-white" : "bg-[var(--red)]"}`}
@@ -189,6 +208,26 @@ export function InboxHeaderTabs({
             )}
             Reservas
             <span className={badgeClasses}>{reservasCount}</span>
+          </Link>
+        )}
+
+        {puedeVerSolicitudes && (
+          <Link href={SOLICITUDES_PATH} className={`${base} ${solicitudesTabClasses}`}>
+            {hasPendingSolicitudes && (
+              <span
+                className={`mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${onRed ? "bg-white" : "bg-[var(--red)]"}`}
+                aria-hidden
+              />
+            )}
+            Solicitudes
+            {hasPendingSolicitudes && (
+              <span
+                className={solicitudesBadgeClasses}
+                aria-label={`${solicitudesCount} solicitudes sin resolver`}
+              >
+                {solicitudesCount > 99 ? "99+" : solicitudesCount}
+              </span>
+            )}
           </Link>
         )}
       </nav>
@@ -215,18 +254,37 @@ export function InboxHeaderTabs({
         </button>
       )}
 
-      {isReservas
+      {isReservas || isSolicitudes
         ? puedeVerHuespedes && (
             <Link href="/" className={mobilePill} aria-label="Ver conversaciones" title="Conversaciones">
               <IconChatBubble className="h-[18px] w-[18px]" />
             </Link>
           )
         : puedeVerReservas && (
-            <Link href="/reservas" className={mobilePill} aria-label="Ver reservas" title="Reservas">
+            <Link href={RESERVAS_PATH} className={mobilePill} aria-label="Ver reservas" title="Reservas">
               <IconCalendar className="h-[18px] w-[18px]" />
               {hasPendingReservas && <span className={mobileBadgeClasses}>{reservasCount}</span>}
             </Link>
           )}
+
+      {/* En móvil el pill de Solicitudes solo aparece si NO estás ya ahí: en la
+          propia pantalla sería un botón que no lleva a ningún lado, y el espacio
+          del header en un teléfono no alcanza para regalarlo. */}
+      {!isSolicitudes && puedeVerSolicitudes && (
+        <Link
+          href={SOLICITUDES_PATH}
+          className={mobilePill}
+          aria-label="Ver solicitudes"
+          title="Solicitudes"
+        >
+          <IconClipboard className="h-[18px] w-[18px]" />
+          {hasPendingSolicitudes && (
+            <span className={mobileBadgeClasses}>
+              {solicitudesCount > 99 ? "99+" : solicitudesCount}
+            </span>
+          )}
+        </Link>
+      )}
     </>
   );
 }
