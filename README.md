@@ -256,3 +256,12 @@ Múltiplos usados: 2, 4, 6, 7, 8, 9, 10, 12, 13, 14, 16, 18, 20, 22, 24, 26, 40.
 - El código `.jsx` usa `React.createElement` (no JSX) por el entorno de previsualización; reescríbelo como JSX o como componentes de tu framework. La estructura, estilos y tokens son lo que importa.
 - Reusar componentes existentes de tu inbox donde los haya, aplicándoles estos tokens, en vez de duplicar.
 - Mantener literalmente: "Conectado" (sin "Realtime:"), y NO mostrar microtextos redundantes tipo "Estado IA/prioridad" o "Recepción IA + agente humano".
+
+---
+
+## Sobre este repo
+
+Este es el **inbox PWA del personal de los hoteles FerrarIA**: la app que usan recepción y los equipos operativos para ver en vivo las conversaciones de WhatsApp que atiende el agente de IA.
+Desde acá el staff toma control humano de un chat, responde con mensajes o plantillas, y gestiona solicitudes y reservas de los huéspedes.
+Es una PWA instalable en celular (manifest, service worker y notificaciones push), construida con Next.js App Router + TypeScript sobre Supabase, con actualización en tiempo real vía Supabase Realtime.
+Hay hoteles en producción atendiendo huéspedes reales: cualquier cambio acá se ve en segundos del lado del huésped.
