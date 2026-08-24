@@ -129,3 +129,150 @@ De arriba hacia abajo:
 3. **Sección HUÉSPED** — labels en monospace uppercase: **Canal**, **Hotel**, **Última actividad**.
 4. **Sección RESUMEN** — estado vacío con el texto **"Sin resumen aún."** y el botón **"✦ Generar resumen"**.
 5. **Colapsable "Datos técnicos"** — cerrado por defecto.
+
+---
+
+## 5. Staff
+
+Conversaciones internas del hotel. Acá la IA no participa: todo lo que se envía lo escribe una persona.
+
+### 5.1 Header de la lista
+
+- Título **"Staff"**.
+- Subtítulo: **"Conversaciones con el personal del hotel. La IA no interviene acá."**
+
+### 5.2 Item de la lista
+
+- Formato **"Nombre · Cargo"** — el nombre de la persona y su cargo separados por un punto medio.
+
+### 5.3 Header del chat
+
+De izquierda a derecha:
+
+- **Nombre** de la persona.
+- **Badge STAFF** al lado del nombre.
+- Botón **"✓ Completado"**.
+- Menú **"…"** con las acciones secundarias.
+
+### 5.4 Burbujas
+
+- **Humano (nosotros):** burbuja **roja** con texto blanco.
+- **Staff (la otra persona):** burbuja **blanca**.
+- **PDFs:** no se pintan como burbuja de texto sino como un **chip**: **"📄 nombre.pdf · Documento PDF"**.
+
+### 5.5 Panel derecho
+
+De arriba hacia abajo:
+
+1. **Aviso** de que la IA no interviene en estas conversaciones.
+2. **Sección CONTACTO** — datos de la persona.
+3. **Sección ARCHIVOS RECIENTES** — los PDFs de la conversación, cada uno con un botón **"Abrir"**.
+4. **Link rojo "Bloquear contacto"** al final.
+
+---
+
+## 6. Reservas
+
+Reservas capturadas por WhatsApp Flows que todavía hay que pasar al PMS.
+
+### 6.1 Header de la lista
+
+- Título **"Reservas"**.
+- Subtítulo: **"Capturadas por WhatsApp Flows, listas para subir al PMS."**
+
+### 6.2 Filtros y búsqueda
+
+- **Tabs:** **Pendientes** (en rojo cuando está activo) / **Procesadas**.
+- **Búsqueda por teléfono.**
+- **Dropdown de hotel** para cambiar de propiedad.
+
+### 6.3 Card de la lista
+
+Cada reserva muestra:
+
+- **Nombre** del titular.
+- **COT-XXXX** en monospace.
+- **"hace N h"** — cuánto pasó desde que se capturó.
+- **Entrada / salida.**
+- **Habitación.**
+- **Total.**
+- **Seleccionada:** la card se marca con **borde rojo**.
+
+### 6.4 Detalle de la reserva
+
+**Cuatro stat cards** arriba, con el label en monospace uppercase:
+
+- **ENTRADA**
+- **SALIDA**
+- **HABITACIÓN**
+- **TOTAL**
+
+Debajo, dos cards:
+
+1. **DATOS DEL TITULAR.**
+2. **COTIZACIÓN** — desglose línea por línea:
+   - Noches
+   - Adultos · niños
+   - Desayuno · mascotas
+   - Subtotal
+   - IVA 19%
+   - Total
+
+   Todos los **valores van en monospace y alineados a la derecha**, para que las cifras se lean en columna.
+
+### 6.5 Acciones
+
+- **"✓ Completar"** — botón rojo, la acción principal.
+- **"Copiar datos"** — para pegarlos en el PMS.
+- **"Volver a pendientes"**.
+- **"Rechazar"** — en rojo.
+
+### 6.6 Panel derecho
+
+- **Chat de WhatsApp de solo lectura** — la conversación donde se capturó la reserva, sin composer.
+- Abajo, botón de **ancho completo "Abrir en Huéspedes"**.
+
+---
+
+## 7. Tickets
+
+### 7.1 Header
+
+- Título **"Tickets de servicio"**.
+- Subtítulo: **"Solicitudes de los huéspedes detectadas por la IA — mantenimiento, room service, housekeeping."**
+
+### 7.2 Filtros
+
+**Chips:** **Abiertas**, **En curso**, **Resueltas**, **Todas**.
+
+### 7.3 Grid
+
+Los tickets van en un **grid de 2 columnas**. Cada card muestra:
+
+- **Icono del tipo** de solicitud (mantenimiento, room service, housekeeping).
+- **"Nombre · hace N días"**.
+- **Chip de habitación:** **"Hab. NNN"**, o **"Sin habitación"** cuando no se conoce.
+- **Badge de estado:**
+  - **Abierta** → rojo.
+  - **En curso** → ámbar.
+  - **Resuelta** → verde.
+- **Descripción** de la solicitud.
+
+### 7.4 Acciones por estado
+
+- **Ticket abierto:** **"Tomar"**, **"✓ Resolver"** (rojo) y **"Cancelar"**.
+- **Ticket resuelto:** **"Reabrir"**.
+- **Siempre, en cualquier estado:** **"Ver conversación"**.
+
+---
+
+## 8. Menú de usuario
+
+Popover que se abre desde el **avatar** del sidebar, de arriba hacia abajo:
+
+1. **Email** del usuario.
+2. **"✦ Novedades"** — con badge cuando hay algo sin leer.
+3. **"Enviar feedback"**.
+4. **"Ayuda"**.
+5. **"Tema"** — con las dos opciones: **Claro** / **Oscuro**.
+6. **"Cerrar sesión"** — en rojo.
