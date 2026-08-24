@@ -1,0 +1,131 @@
+# Rediseño de la bandeja — Spec visual, Fase 1
+
+Este documento es el spec del rediseño visual de la bandeja de FerrarIA, Fase 1: principios estéticos, tokens de color y tipografía, layout de tres columnas y el detalle completo de la sección **Huéspedes** (lista, chat, composer y panel derecho).
+
+---
+
+## 1. Principios
+
+- **Estética cálida editorial.** Nada de gris corporativo. La base es crema, las superficies de contenido son cards blancas redondeadas y el sidebar es un bloque sólido rojo terracota que ancla toda la pantalla.
+- **Jerarquía por superficie, no por borde grueso.** Lo que importa se levanta con una card blanca sobre el crema; los bordes son suaves y las sombras muy sutiles.
+- **La IA siempre se llama "agente" o "FerrarIA".** Nunca "bot", en ningún texto visible, label, placeholder ni aria-label. La marca se escribe exactamente **FerrarIA**.
+- **Dos familias tipográficas con roles claros:**
+  - **Metadata y números en monospace** — horas, teléfonos, contadores, labels de sección, IDs.
+  - **Contenido en sans grotesk** — nombres, mensajes, títulos, copy de interfaz.
+  - Se cargan con `next/font`: **Inter** para el sans y **JetBrains Mono** para el monospace.
+
+---
+
+## 2. Tokens
+
+### 2.1 Superficies y bordes
+
+| Token | Valor | Uso |
+| --- | --- | --- |
+| `--bg-app` | `#F2EEE6` | Fondo crema de toda la app |
+| `--bg-card` | `#FFFFFF` | Cards, items seleccionados, superficies de contenido |
+| `--border-soft` | `#E8E2D8` | Borde suave por defecto de cards y separadores |
+
+### 2.2 Rojo terracota
+
+| Token | Valor | Uso |
+| --- | --- | --- |
+| `--sidebar` | `#C7402D` | Fondo del sidebar |
+| `--accent` | `#C7402D` | Botones primarios, badges de atención, burbuja humana, borde del item seleccionado |
+
+- **Hover sobre el rojo:** overlay blanco al 10% encima del terracota. No se oscurece ni se cambia el tono.
+
+### 2.3 Burbujas de conversación
+
+| Token | Valor | Uso |
+| --- | --- | --- |
+| `--bubble-ai` | `#FBF3DC` (borde `#EFE4C8`) | Mensajes del agente |
+| `--bubble-guest` | `#FFFFFF` | Mensajes del huésped |
+
+### 2.4 Estado y texto
+
+| Token | Valor | Uso |
+| --- | --- | --- |
+| `--success-bg` | `#DFF2E4` | Fondo de estados en verde |
+| `--success-text` | `#2E7D4F` | Texto sobre `--success-bg`, punto "En línea", toggle de IA activa |
+| `--text-primary` | `#1F1D1A` | Texto principal, chip activo "Todas" |
+| `--text-secondary` | `#8A857C` | Previews, metadata, labels secundarios |
+
+### 2.5 Radios y sombras
+
+- **Cards:** 16px
+- **Chips:** 10px
+- **Burbujas:** 14px
+- **Sombras:** muy sutiles. Sirven para despegar la card del crema, no para dibujar profundidad.
+
+---
+
+## 3. Layout
+
+Tres columnas más un panel contextual, de izquierda a derecha:
+
+1. **Sidebar rojo fijo, ~90px.**
+   - Arriba: logo **✦** dentro de un card blanco.
+   - Nav vertical, cada entrada con **icono + label + badge**: **Huéspedes**, **Staff**, **Reservas**, **Tickets**.
+   - Abajo: campana de notificaciones con badge, indicador **● En línea** en verde, y avatar del usuario con sus iniciales.
+   - Es fijo: no hace scroll con el contenido.
+2. **Lista de conversaciones, ~360px.**
+3. **Área principal** — el chat, ocupa el espacio restante.
+4. **Panel derecho contextual, ~340px** — colapsable.
+
+---
+
+## 4. Huéspedes
+
+### 4.1 Header de la lista
+
+- Título **"Huéspedes"** con el contador al lado: **392/469** (leídas sobre total).
+- Botón de **refresh**.
+- Botón primario rojo **"Nueva"**.
+
+### 4.2 Filtros y búsqueda
+
+- Campo de **búsqueda** debajo del header.
+- **Chips de filtro:**
+  - **Todas** — cuando está activo se pinta en negro (`--text-primary`).
+  - **Sin leer**
+  - **Atención** — en rojo.
+  - **Hechas**
+- **Dropdown de hotel** para cambiar de propiedad.
+
+### 4.3 Item de la lista
+
+Cada conversación muestra:
+
+- **Avatar** del huésped.
+- **Nombre** en bold.
+- **Hora** en monospace.
+- **Preview** del último mensaje, con un prefijo que indica el estado:
+  - **● rojo** → necesita atención.
+  - **✦** → respondió la IA.
+  - **✓** → conversación hecha.
+- **Seleccionado:** el item se convierte en una card blanca con borde rojo.
+
+### 4.4 Chat
+
+- **Pill de fecha** centrada para separar los días.
+- **Burbuja del agente:** fondo `--bubble-ai` con borde `#EFE4C8`, alineada a la **derecha**, con el label **"✦ FerrarIA"**.
+- **Burbuja del huésped:** blanca, alineada a la **izquierda**.
+- **Burbuja de respuesta humana:** roja con texto blanco, con el label **"👤 Tú · agente"**.
+- **Eventos de sistema:** centrados, en gris, con **✓**.
+
+### 4.5 Composer
+
+- Campo redondeado con el placeholder **"Escribe para responder como humano…"**.
+- **Botón de enviar rojo** y botón de **adjuntar**.
+- Justo encima del composer, el aviso: **"✦ La IA está respondiendo · si escribes, tomas el control"**.
+
+### 4.6 Panel derecho
+
+De arriba hacia abajo:
+
+1. **Card de contacto** — nombre, teléfono en monospace y una **X** para cerrar el panel.
+2. **Card "IA activa"** — toggle en verde más el texto **"FerrarIA responde automáticamente · última respuesta hace N min"**.
+3. **Sección HUÉSPED** — labels en monospace uppercase: **Canal**, **Hotel**, **Última actividad**.
+4. **Sección RESUMEN** — estado vacío con el texto **"Sin resumen aún."** y el botón **"✦ Generar resumen"**.
+5. **Colapsable "Datos técnicos"** — cerrado por defecto.
