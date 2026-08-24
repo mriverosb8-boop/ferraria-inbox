@@ -2,6 +2,7 @@
 
 import type { ClipboardEvent, SVGProps } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { avatarFlatColors, initials, splitLeadingEmoji } from "@/lib/avatar";
 import {
   applyConversationRowPatch,
@@ -46,14 +47,14 @@ import { useMessageDeliveryReceipts } from "@/hooks/useMessageDeliveryReceipts";
 import { BrandHeaderMark } from "./BrandHeaderMark";
 import { FollowupTimer } from "./FollowupTimer";
 import { InboxListSkeleton, InboxLoadingSkeleton, InboxThreadSkeleton } from "./InboxLoadingSkeleton";
-import { InboxHeaderTabs, type InboxView } from "./InboxHeaderTabs";
+import { AppShell } from "./AppShell";
+import { VISTA_PARAM, VISTA_STAFF, type InboxView } from "./AppSidebar";
 import { LogoutButton } from "./LogoutButton";
 import { Spinner } from "./Spinner";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { StartConversationModal } from "./StartConversationModal";
 import { FeedbackModal } from "./FeedbackModal";
-import { ChangelogButton } from "./ChangelogModal";
 import { ThemeToggle } from "./ThemeToggle";
 import { HeaderMobileMenu, HEADER_MENU_ROW_CLASS } from "./HeaderMobileMenu";
 import { WhatsappText, stripWhatsappMarkup } from "./WhatsappText";
@@ -1955,16 +1956,42 @@ export default function InboxApp() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [staffContactsOpen, setStaffContactsOpen] = useState(false);
   /**
-   * Vista de la bandeja: "Huéspedes" (la de siempre) o "Staff". Es estado
-   * client-side, NO una ruta: el tab vive en el header de arriba junto a
-   * Reservas y su contador tiene que estar siempre a la vista, cosa que una
-   * sección colapsable al pie de la lista no lograba.
-   *
-   * Consecuencia asumida: recargar la página vuelve a Huéspedes. Es el arranque
-   * correcto igual —el trabajo del día son los huéspedes— y evita meter una
-   * ruta nueva que duplicaría toda la pantalla de conversaciones.
+   * Vista de la bandeja: "Huéspedes" (la de siempre) o "Staff". Sigue siendo un
+   * cambio de lista en la misma pantalla y NO una ruta —una ruta nueva
+   * duplicaría toda la bandeja—, pero se refleja en `?vista=staff` para que el
+   * sidebar pueda llevar a Staff desde Reservas o Tickets, donde la bandeja ni
+   * siquiera está montada.
    */
-  const [inboxView, setInboxView] = useState<InboxView>("guests");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const vistaParam = searchParams.get(VISTA_PARAM);
+  const [inboxView, setInboxView] = useState<InboxView>(
+    vistaParam === VISTA_STAFF ? "staff" : "guests"
+  );
+
+  // La URL manda: si cambia (sidebar desde otra pantalla, atrás del navegador,
+  // link pegado), la vista la sigue.
+  useEffect(() => {
+    const desired: InboxView = vistaParam === VISTA_STAFF ? "staff" : "guests";
+    setInboxView((prev) => (prev === desired ? prev : desired));
+  }, [vistaParam]);
+
+  /**
+   * Cambio de vista desde adentro (el sidebar con la bandeja ya montada). Se
+   * usa `replace` y no `push` para no llenar el historial: alternar Huéspedes y
+   * Staff no es navegar, y el botón de atrás tiene que sacarte de la bandeja.
+   */
+  const changeInboxView = useCallback(
+    (view: InboxView) => {
+      setInboxView(view);
+      const params = new URLSearchParams(searchParams.toString());
+      if (view === "staff") params.set(VISTA_PARAM, VISTA_STAFF);
+      else params.delete(VISTA_PARAM);
+      const qs = params.toString();
+      router.replace(qs ? `/?${qs}` : "/", { scroll: false });
+    },
+    [router, searchParams]
+  );
   const [moderationDialogAction, setModerationDialogAction] = useState<"block" | "unblock" | null>(
     null
   );
@@ -3292,8 +3319,16 @@ export default function InboxApp() {
   }
 
   return (
+    <AppShell
+      hotelId={conversationHotelId}
+      inboxView={activeInboxView}
+      onInboxViewChange={changeInboxView}
+      showStaff={engineEnabled}
+      staffUnreadCount={staffUnreadConversations}
+      hideMobileNav={mobileTab === "chat"}
+    >
     <div
-      className="ibx flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-x-hidden supports-[height:100dvh]:min-h-[100dvh]"
+      className="ibx flex h-full max-h-full min-h-0 w-full max-w-full flex-col overflow-x-hidden"
       style={{ background: "var(--bg)", color: "var(--ink)" }}
     >
       {urgentHandoffBannerVisible && (
@@ -3345,14 +3380,6 @@ export default function InboxApp() {
             Ferrar<span style={{ color: "rgba(255,255,255,.82)" }}>IA</span>
           </span>
         </div>
-        <InboxHeaderTabs
-          hotelId={conversationHotelId}
-          onRed
-          inboxView={activeInboxView}
-          onInboxViewChange={setInboxView}
-          showStaffTab={engineEnabled}
-          staffUnreadCount={staffUnreadConversations}
-        />
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <span
             className="grotesk inline-flex items-center gap-1.5 truncate"
@@ -3384,7 +3411,8 @@ export default function InboxApp() {
                   : "Esperando"}
             </span>
           </span>
-          <ChangelogButton onRed />
+          {/* La campana de novedades vive ahora en el sidebar: dos instancias
+              abrirían dos veces el mismo modal. */}
           <div className="hidden items-center gap-2 sm:flex">
             <button
               type="button"
@@ -4542,6 +4570,7 @@ export default function InboxApp() {
         onClose={() => setStaffContactsOpen(false)}
       />
     </div>
+    </AppShell>
   );
 }
 

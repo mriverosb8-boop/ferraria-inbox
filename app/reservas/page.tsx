@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandHeaderMark } from "@/app/components/BrandHeaderMark";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { normalizePhoneDigits } from "@/lib/chat-utils";
-import { InboxHeaderTabs } from "@/app/components/InboxHeaderTabs";
+import { AppShell } from "@/app/components/AppShell";
 import { LogoutButton } from "@/app/components/LogoutButton";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { HeaderMobileMenu } from "@/app/components/HeaderMobileMenu";
@@ -136,7 +136,8 @@ export default function ReservasPage() {
   };
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--ink)]">
+    <AppShell hotelId={scopedHotelId}>
+    <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--ink)]">
       <div className="fixed right-4 top-4 z-[600] flex max-w-[min(100vw-2rem,24rem)] flex-col gap-2">
         {toasts.map((toast) => (
           <div
@@ -171,7 +172,6 @@ export default function ReservasPage() {
             </h1>
             <p className="hidden truncate text-[11px] leading-tight text-white/80 sm:block">Recepción · IA + agente humano</p>
           </div>
-          <InboxHeaderTabs hotelId={scopedHotelId} onRed />
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <div className="hidden items-center gap-1 sm:flex">
@@ -283,7 +283,7 @@ export default function ReservasPage() {
         <div
           className={`${
             selectedReserva
-              ? "fixed inset-0 z-[100] bg-[var(--bg)] p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+              ? "fixed inset-0 z-[100] bg-[var(--bg)] p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[calc(62px+env(safe-area-inset-bottom,0px))] lg:pb-3"
               : "hidden"
           } lg:static lg:z-auto lg:block lg:min-h-0 lg:bg-transparent lg:p-0`}
         >
@@ -299,5 +299,6 @@ export default function ReservasPage() {
         onConfirm={(reason) => void handleReject(reason)}
       />
     </div>
+    </AppShell>
   );
 }
