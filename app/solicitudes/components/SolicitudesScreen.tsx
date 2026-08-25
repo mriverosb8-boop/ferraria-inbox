@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/app/components/AppShell";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import {
+  ESTADO_LABEL,
   FILTRO_LABEL,
-  SOLICITUDES_FILTROS,
+  estadoDe,
   type ServiceTicket,
   type SolicitudesFiltro,
   type TicketEstado,
@@ -17,19 +18,45 @@ import { TicketCard } from "./TicketCard";
 
 type Toast = { id: number; tipo: "ok" | "error"; mensaje: string };
 
-const VACIO: Readonly<Record<SolicitudesFiltro, { titulo: string; detalle: string }>> = {
+/**
+ * Chips de la pantalla (docs/REDESIGN.md §7.2): Abiertas, En curso, Resueltas,
+ * Todas.
+ *
+ * No son los mismos que los filtros del endpoint. "Abiertas" del servidor trae
+ * abiertas Y en curso juntas (una solicitud tomada sigue pendiente), así que los
+ * dos primeros chips piden ese mismo filtro y se separan acá, en pantalla, por
+ * estado. Es un recorte de UI: no toca el hook ni el endpoint.
+ *
+ * Las canceladas ya no tienen chip propio — el spec define estos cuatro — pero
+ * siguen visibles dentro de "Todas", que es donde se consulta el historial.
+ */
+type Chip = "abiertas" | "en_curso" | "resueltas" | "todas";
+
+const CHIPS: readonly {
+  id: Chip;
+  label: string;
+  filtro: SolicitudesFiltro;
+  soloEstado: TicketEstado | null;
+}[] = [
+  { id: "abiertas", label: FILTRO_LABEL.abiertas, filtro: "abiertas", soloEstado: "abierto" },
+  { id: "en_curso", label: ESTADO_LABEL.en_curso, filtro: "abiertas", soloEstado: "en_curso" },
+  { id: "resueltas", label: FILTRO_LABEL.resueltas, filtro: "resueltas", soloEstado: null },
+  { id: "todas", label: FILTRO_LABEL.todas, filtro: "todas", soloEstado: null },
+];
+
+const VACIO: Readonly<Record<Chip, { titulo: string; detalle: string }>> = {
   abiertas: {
     titulo: "No hay solicitudes abiertas",
     detalle:
       "Acá van apareciendo los pedidos que los huéspedes hacen por WhatsApp: toallas, aire acondicionado, room service. La lista se actualiza sola.",
   },
+  en_curso: {
+    titulo: "No hay solicitudes en curso",
+    detalle: "Acá quedan las que alguien ya tomó y todavía no marca como resueltas.",
+  },
   resueltas: {
     titulo: "Todavía no hay solicitudes resueltas",
     detalle: "Cuando marques una como resuelta, la vas a encontrar acá.",
-  },
-  canceladas: {
-    titulo: "No hay solicitudes canceladas",
-    detalle: "Acá quedan las que se decidió no atender.",
   },
   todas: {
     titulo: "Todavía no hay solicitudes",
@@ -42,7 +69,7 @@ export function SolicitudesScreen() {
   const searchParams = useSearchParams();
   const ticketIdBuscado = searchParams.get("ticketId")?.trim() ?? "";
 
-  const [filtro, setFiltro] = useState<SolicitudesFiltro>("abiertas");
+  const [chip, setChip] = useState<Chip>("abiertas");
   const [activeHotelId, setActiveHotelId] = useState<string | null>(() => readStoredActiveHotelId());
   const [cancelando, setCancelando] = useState<ServiceTicket | null>(null);
   const [ocupadoId, setOcupadoId] = useState<string | null>(null);
@@ -54,6 +81,8 @@ export function SolicitudesScreen() {
     window.setTimeout(() => setToasts((previos) => previos.filter((t) => t.id !== id)), 3500);
   }, []);
 
+  const chipActivo = CHIPS.find((c) => c.id === chip) ?? CHIPS[0];
+
   const {
     solicitudes,
     estado,
@@ -61,9 +90,15 @@ export function SolicitudesScreen() {
     availableHotels,
     resolvedActiveHotelId,
     cambiarEstado,
-  } = useSolicitudes({ activeHotelId, filtro });
+  } = useSolicitudes({ activeHotelId, filtro: chipActivo.filtro });
 
   const scopedHotelId = activeHotelId ?? resolvedActiveHotelId;
+
+  const visibles = useMemo(() => {
+    const soloEstado = chipActivo.soloEstado;
+    if (!soloEstado) return solicitudes;
+    return solicitudes.filter((ticket) => estadoDe(ticket) === soloEstado);
+  }, [solicitudes, chipActivo.soloEstado]);
 
   useEffect(() => {
     if (resolvedActiveHotelId && activeHotelId === null) {
@@ -75,8 +110,8 @@ export function SolicitudesScreen() {
   /**
    * Deep-link del push (`/solicitudes?ticketId=…`).
    *
-   * Si la solicitud no está en la lista visible puede ser que ya la resolvieron,
-   * así que se pasa UNA sola vez al filtro "Todas" antes de darla por perdida.
+   * Si la solicitud no está en la lista visible puede ser que ya la resolvieran,
+   * así que se pasa UNA sola vez al chip "Todas" antes de darla por perdida.
    * Si tampoco está ahí (es de otro hotel, o no existe), no pasa nada: la
    * pantalla se comporta como una lista normal en vez de mostrar un error por
    * algo que el usuario no puede arreglar.
@@ -86,11 +121,11 @@ export function SolicitudesScreen() {
 
   useEffect(() => {
     if (!ticketIdBuscado || estado !== "lista") return;
-    const encontrada = solicitudes.some((t) => t.id === ticketIdBuscado);
+    const encontrada = visibles.some((t) => t.id === ticketIdBuscado);
 
-    if (!encontrada && !yaBusqueEnTodas.current && filtro !== "todas") {
+    if (!encontrada && !yaBusqueEnTodas.current && chip !== "todas") {
       yaBusqueEnTodas.current = true;
-      setFiltro("todas");
+      setChip("todas");
       return;
     }
     if (!encontrada || yaHiceScroll.current) return;
@@ -98,7 +133,7 @@ export function SolicitudesScreen() {
     yaHiceScroll.current = true;
     const nodo = document.getElementById(`solicitud-${ticketIdBuscado}`);
     nodo?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [ticketIdBuscado, estado, solicitudes, filtro]);
+  }, [ticketIdBuscado, estado, visibles, chip]);
 
   const aplicarCambio = async (ticket: ServiceTicket, nuevoEstado: TicketEstado) => {
     setOcupadoId(ticket.id);
@@ -115,7 +150,7 @@ export function SolicitudesScreen() {
     }
   };
 
-  const vacio = VACIO[filtro];
+  const vacio = VACIO[chip];
 
   return (
     <AppShell hotelId={scopedHotelId}>
@@ -125,10 +160,10 @@ export function SolicitudesScreen() {
           <div
             key={toast.id}
             role={toast.tipo === "error" ? "alert" : "status"}
-            className={`rounded-xl border px-4 py-3 text-[13px] font-semibold shadow-lg ${
+            className={`rounded-[var(--radius-chip)] border px-4 py-3 text-[13px] font-semibold shadow-lg ${
               toast.tipo === "error"
                 ? "border-[var(--accent)] bg-[var(--red-soft)] text-[var(--accent)]"
-                : "border-emerald-300 bg-emerald-50 text-emerald-950"
+                : "border-[var(--success-text)]/40 bg-[var(--success-bg)] text-[var(--success-text)]"
             }`}
           >
             {toast.mensaje}
@@ -145,104 +180,119 @@ export function SolicitudesScreen() {
         </div>
       )}
 
-      <main className="min-h-0 flex-1 overflow-y-auto scrollbar-app p-4 lg:p-5">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+      <main className="min-h-0 flex-1 overflow-y-auto scrollbar-app p-4 lg:p-6">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
           {/* Encabezado de la pantalla (docs/REDESIGN.md §7.1). Reemplaza a la
               barra roja superior: el logo y los controles de cuenta ya viven en
               el sidebar. */}
-          <div>
-            <h1 className="grotesk text-[19px] font-bold tracking-tight text-[var(--text-primary)]">
-              Tickets de servicio
-            </h1>
-            <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-              Solicitudes de los huéspedes detectadas por la IA — mantenimiento, room service, housekeeping.
-            </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="grotesk text-[19px] font-bold tracking-tight text-[var(--text-primary)]">
+                Tickets de servicio
+              </h1>
+              <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+                Solicitudes de los huéspedes detectadas por la IA — mantenimiento, room service,
+                housekeeping.
+              </p>
+            </div>
+
+            {availableHotels.length >= 2 && (
+              <div className="relative w-full sm:w-auto">
+                <span
+                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px]"
+                  aria-hidden
+                >
+                  🏨
+                </span>
+                <select
+                  id="solicitudes-hotel"
+                  aria-label="Hotel activo"
+                  value={scopedHotelId ?? ""}
+                  onChange={(event) => {
+                    setActiveHotelId(event.target.value);
+                    writeStoredActiveHotelId(event.target.value);
+                  }}
+                  className="w-full cursor-pointer appearance-none rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] py-2.5 pl-10 pr-10 text-[13.5px] font-semibold text-[var(--text-primary)] shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 sm:w-[240px]"
+                  style={{
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238a857c'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: "no-repeat",
+                    backgroundPosition: "right 0.75rem center",
+                    backgroundSize: "1rem",
+                  }}
+                >
+                  {availableHotels.map((hotel) => (
+                    <option key={hotel.id} value={hotel.id}>
+                      {hotel.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
-          {availableHotels.length >= 2 && (
-            <div className="rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] p-4 shadow-sm">
-              <label
-                htmlFor="solicitudes-hotel"
-                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--text-secondary)]"
-              >
-                Hotel activo
-              </label>
-              <select
-                id="solicitudes-hotel"
-                value={scopedHotelId ?? ""}
-                onChange={(event) => {
-                  setActiveHotelId(event.target.value);
-                  writeStoredActiveHotelId(event.target.value);
-                }}
-                className="w-full cursor-pointer rounded-xl border border-[var(--border-soft)] bg-[var(--bg-app)] px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
-              >
-                {availableHotels.map((hotel) => (
-                  <option key={hotel.id} value={hotel.id}>
-                    {hotel.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           <nav className="flex flex-wrap gap-2" aria-label="Filtrar solicitudes">
-            {SOLICITUDES_FILTROS.map((opcion) => {
-              const activo = opcion === filtro;
+            {CHIPS.map((opcion) => {
+              const activo = opcion.id === chip;
               return (
                 <button
-                  key={opcion}
+                  key={opcion.id}
                   type="button"
-                  onClick={() => setFiltro(opcion)}
+                  onClick={() => setChip(opcion.id)}
                   aria-current={activo ? "page" : undefined}
-                  className={`grotesk min-h-[46px] rounded-[var(--radius-chip)] px-5 py-3 text-[15px] font-semibold transition ${
+                  className={`grotesk min-h-[44px] rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold transition ${
                     activo
-                      ? "bg-[var(--accent)] text-white shadow-sm hover:bg-[var(--accent-hover)]"
-                      : "bg-[var(--bg-card)] text-[var(--text-secondary)] ring-1 ring-[var(--border-soft)] hover:bg-[var(--bg-app)]"
+                      ? "bg-[var(--text-primary)] text-[var(--bg-card)] shadow-sm"
+                      : "border border-[var(--border-soft)] bg-[var(--bg-card)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   }`}
                 >
-                  {FILTRO_LABEL[opcion]}
+                  {opcion.label}
                 </button>
               );
             })}
           </nav>
 
           {estado === "cargando" && (
-            <p className="py-12 text-center text-[15px] text-[var(--text-secondary)]">
+            <p className="py-12 text-center text-[14px] text-[var(--text-secondary)]">
               Cargando solicitudes...
             </p>
           )}
 
           {estado === "sin-acceso" && (
             <div className="rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] p-8 text-center shadow-sm">
-              <p className="grotesk text-[17px] font-bold text-[var(--text-primary)]">
+              <p className="grotesk text-[16px] font-bold text-[var(--text-primary)]">
                 Tu usuario todavía no tiene acceso a las solicitudes
               </p>
-              <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-[var(--text-secondary)]">
+              <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-[var(--text-secondary)]">
                 Pedile a un administrador que revise tu perfil y el hotel al que estás asignado.
               </p>
             </div>
           )}
 
-          {estado === "lista" && solicitudes.length === 0 && (
+          {estado === "lista" && visibles.length === 0 && (
             <div className="rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] p-8 text-center shadow-sm">
-              <p className="grotesk text-[17px] font-bold text-[var(--text-primary)]">{vacio.titulo}</p>
-              <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-[var(--text-secondary)]">
+              <p className="grotesk text-[16px] font-bold text-[var(--text-primary)]">{vacio.titulo}</p>
+              <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-[var(--text-secondary)]">
                 {vacio.detalle}
               </p>
             </div>
           )}
 
-          {estado === "lista" &&
-            solicitudes.map((ticket) => (
-              <TicketCard
-                key={ticket.id}
-                ticket={ticket}
-                resaltado={Boolean(ticketIdBuscado) && ticket.id === ticketIdBuscado}
-                ocupado={ocupadoId === ticket.id}
-                onCambiarEstado={(item, nuevoEstado) => void aplicarCambio(item, nuevoEstado)}
-                onPedirCancelacion={setCancelando}
-              />
-            ))}
+          {/* Grid de dos columnas (§7.3). En móvil y en tablet angosta baja a una
+              sola: dos cards de 380px no caben sin partir los botones. */}
+          {estado === "lista" && visibles.length > 0 && (
+            <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2">
+              {visibles.map((ticket) => (
+                <TicketCard
+                  key={ticket.id}
+                  ticket={ticket}
+                  resaltado={Boolean(ticketIdBuscado) && ticket.id === ticketIdBuscado}
+                  ocupado={ocupadoId === ticket.id}
+                  onCambiarEstado={(item, nuevoEstado) => void aplicarCambio(item, nuevoEstado)}
+                  onPedirCancelacion={setCancelando}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </main>
 

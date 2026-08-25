@@ -17,8 +17,8 @@ export default function SolicitudesPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-dvh items-center justify-center p-8 text-center">
-          <p className="text-[15px] text-[var(--ink-2)]">Cargando solicitudes...</p>
+        <main className="flex min-h-dvh items-center justify-center bg-[var(--bg-app)] p-8 text-center">
+          <p className="text-[14px] text-[var(--text-secondary)]">Cargando solicitudes...</p>
         </main>
       }
     >
