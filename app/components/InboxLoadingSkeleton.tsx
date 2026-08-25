@@ -20,7 +20,7 @@ export function InboxListSkeleton() {
         className="flex items-center justify-center gap-2 px-4 py-4"
         style={{ borderBottom: "1px solid var(--line)", background: "color-mix(in srgb, var(--panel) 50%, transparent)" }}
       >
-        <Spinner className="h-4 w-4 animate-spin" style={{ color: "var(--red)" }} />
+        <Spinner className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
         <p className="text-sm font-medium">Cargando conversaciones…</p>
       </div>
 
@@ -89,8 +89,8 @@ export function InboxLoadingSkeleton() {
         <div
           className="flex items-center gap-3 px-5 py-4"
           style={{
-            background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
-            boxShadow: "0 1px 8px rgba(196,43,32,.25)",
+            background: "var(--accent)",
+            boxShadow: "0 1px 8px color-mix(in srgb, var(--accent) 25%, transparent)",
           }}
         >
           <BrandHeaderMark size="sm" />

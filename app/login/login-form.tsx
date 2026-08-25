@@ -68,14 +68,14 @@ export function LoginForm() {
   return (
     <form
       onSubmit={(e) => void handleSubmit(e)}
-      className="w-full max-w-[380px] overflow-hidden rounded-2xl border shadow-[0_18px_50px_-20px_rgba(196,43,32,0.35)]"
+      className="w-full max-w-[380px] overflow-hidden rounded-2xl border shadow-[0_18px_50px_-20px_color-mix(in_srgb,var(--accent)_35%,transparent)]"
       style={{ borderColor: "var(--line)", background: "var(--panel)" }}
     >
       <div
         className="flex items-center gap-3 px-6 py-5"
         style={{
-          background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
-          boxShadow: "0 1px 8px rgba(196,43,32,.25)",
+          background: "var(--accent)",
+          boxShadow: "0 1px 8px color-mix(in srgb, var(--accent) 25%, transparent)",
         }}
       >
         <BrandHeaderMark size="sm" />
@@ -100,7 +100,7 @@ export function LoginForm() {
         {error && (
           <div
             className="rounded-lg px-3 py-2 text-[13px]"
-            style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+            style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
           >
             {error}
           </div>
@@ -118,7 +118,7 @@ export function LoginForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none transition focus:ring-2 focus:ring-[var(--red)]/25"
+              className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none transition focus:ring-2 focus:ring-[var(--accent)]/25"
               style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
               placeholder="tu@email.com"
             />
@@ -134,7 +134,7 @@ export function LoginForm() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none transition focus:ring-2 focus:ring-[var(--red)]/25"
+              className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none transition focus:ring-2 focus:ring-[var(--accent)]/25"
               style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
               placeholder="••••••••"
             />
@@ -146,8 +146,8 @@ export function LoginForm() {
           disabled={loading}
           className="grotesk flex w-full items-center justify-center rounded-xl py-2.5 text-[14px] font-semibold text-white shadow-md transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           style={{
-            background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 100%)",
-            boxShadow: "0 6px 16px -6px rgba(196,43,32,.5)",
+            background: "linear-gradient(100deg, var(--accent) 0%, var(--accent) 100%)",
+            boxShadow: "0 6px 16px -6px color-mix(in srgb, var(--accent) 50%, transparent)",
           }}
         >
           {loading ? "Entrando…" : "Entrar"}

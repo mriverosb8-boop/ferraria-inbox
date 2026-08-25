@@ -45,9 +45,9 @@ export function ReservaCard({
 
   return (
     <article
-      className={`rounded-2xl bg-[var(--panel)] p-4 shadow-sm ring-1 ring-black/[0.03] transition ${
+      className={`rounded-[16px] bg-[var(--panel)] p-4 shadow-sm ring-1 ring-black/[0.03] transition ${
         selected
-          ? "border-2 border-[var(--red)]"
+          ? "border-2 border-[var(--accent)]"
           : "border border-[var(--line)]"
       }`}
     >
@@ -119,7 +119,7 @@ export function ReservaCard({
       </div>
 
       {reserva.status === "rechazada" && reserva.rejection_reason ? (
-        <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-900">
+        <p className="mt-3 rounded-xl border border-[var(--accent)] bg-[var(--red-soft)] px-3 py-2 text-[13px] text-[var(--accent)]">
           <span className="font-semibold">Motivo de rechazo:</span> {reserva.rejection_reason}
         </p>
       ) : null}
@@ -145,7 +145,7 @@ export function ReservaCard({
         <button
           type="button"
           onClick={() => onViewChat(reserva)}
-          className="rounded-xl border border-[var(--red)] bg-[var(--panel)] px-3 py-2 text-[12px] font-semibold text-[var(--ink)] transition hover:bg-[var(--panel-3)]"
+          className="rounded-xl border border-[var(--accent)] bg-[var(--panel)] px-3 py-2 text-[12px] font-semibold text-[var(--ink)] transition hover:bg-[var(--panel-3)]"
         >
           Ver chat
         </button>
@@ -163,7 +163,7 @@ export function ReservaCard({
             type="button"
             onClick={() => onReject(reserva)}
             disabled={actionDisabled}
-            className="rounded-xl px-3 py-2 text-[12px] font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl px-3 py-2 text-[12px] font-semibold text-[var(--accent)] transition hover:bg-[var(--red-soft)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Rechazar
           </button>

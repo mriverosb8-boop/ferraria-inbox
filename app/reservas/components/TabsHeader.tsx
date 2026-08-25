@@ -6,11 +6,14 @@ type Props = {
   activeTab: ReservasTab;
   pendingCount: number;
   processedCount: number;
-  hotelName: string | null;
   onChange: (tab: ReservasTab) => void;
 };
 
-export function TabsHeader({ activeTab, pendingCount, processedCount, hotelName, onChange }: Props) {
+/**
+ * Encabezado de Reservas (docs/REDESIGN.md §6.1). Es el título de la pantalla:
+ * acá vive el nombre de la sección desde que se eliminó la barra roja superior.
+ */
+export function TabsHeader({ activeTab, pendingCount, processedCount, onChange }: Props) {
   const tabs: { id: ReservasTab; label: string; count: number }[] = [
     { id: "pendientes", label: "Pendientes", count: pendingCount },
     { id: "procesadas", label: "Procesadas", count: processedCount },
@@ -19,11 +22,9 @@ export function TabsHeader({ activeTab, pendingCount, processedCount, hotelName,
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
       <div>
-        <h2 className="text-[13px] font-semibold uppercase tracking-wider text-[var(--ink-2)]">
-          Reservas por subir al PMS
-        </h2>
-        <p className="mt-0.5 text-[12px] text-[var(--ink-3)]">
-          {hotelName ? `${hotelName} · WhatsApp Flows` : "WhatsApp Flows"}
+        <h1 className="grotesk text-[19px] font-bold tracking-tight text-[var(--ink)]">Reservas</h1>
+        <p className="mt-0.5 text-[12.5px] text-[var(--ink-2)]">
+          Capturadas por WhatsApp Flows, listas para subir al PMS.
         </p>
       </div>
       <div className="flex gap-1.5 rounded-xl border border-[var(--line)] bg-[var(--panel-2)] p-1">
@@ -34,14 +35,14 @@ export function TabsHeader({ activeTab, pendingCount, processedCount, hotelName,
               key={tab.id}
               type="button"
               onClick={() => onChange(tab.id)}
-              className={`rounded-lg px-3 py-1.5 text-[12px] font-semibold transition ${
+              className={`rounded-[10px] px-3 py-1.5 text-[12px] font-semibold transition ${
                 active
-                  ? "border border-[var(--red)]/50 bg-[var(--panel)] text-[var(--ink)] shadow-sm ring-1 ring-[var(--red)]/20"
+                  ? "border border-transparent bg-[var(--accent)] text-white shadow-sm"
                   : "border border-transparent text-[var(--ink-2)] hover:bg-[var(--panel)]/70"
               }`}
             >
               {tab.label}
-              <span className={`ml-1.5 font-mono text-[11px] ${active ? "text-[var(--ink-2)]" : "text-[var(--ink-3)]"}`}>
+              <span className={`ml-1.5 font-mono text-[11px] ${active ? "text-white/80" : "text-[var(--ink-3)]"}`}>
                 {tab.count}
               </span>
             </button>

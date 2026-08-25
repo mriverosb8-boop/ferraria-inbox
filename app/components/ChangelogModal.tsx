@@ -45,9 +45,9 @@ const TIPO_BADGE: Record<ChangelogTipo, { label: string; border: string; bg: str
   },
   mejora: {
     label: "Mejora",
-    border: "var(--red)",
+    border: "var(--accent)",
     bg: "var(--red-soft)",
-    color: "var(--red-deep)",
+    color: "var(--accent)",
   },
   arreglo: {
     label: "Arreglo",
@@ -172,7 +172,7 @@ export function ChangelogPanel({ open, onClose }: { open: boolean; onClose: () =
       >
         <div
           className="flex items-start justify-between gap-3 px-5 py-4"
-          style={{ background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)" }}
+          style={{ background: "var(--accent)" }}
         >
           <div>
             <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/80">

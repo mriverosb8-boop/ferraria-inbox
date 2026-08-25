@@ -140,7 +140,7 @@ export function HelpModal({ open, onClose }: HelpModalProps) {
             <h3 className="text-[15px] font-semibold text-[#1f1f1c]">Cerrar una conversación: dos botones distintos</h3>
 
             <p className="mt-2 font-semibold text-[#1f1f1c]">
-              Asunto resuelto <span className="font-normal text-rose-700">(rojo)</span>
+              Asunto resuelto <span className="font-normal text-[var(--accent)]">(rojo)</span>
             </p>
             <ul className="mt-1.5 space-y-1.5">
               <li>Solo aparece cuando hubo un problema.</li>

@@ -63,7 +63,7 @@ export function ThemeToggle({
     // el que se va a poner.
     const optionBase =
       "grotesk inline-flex flex-1 items-center justify-center gap-1.5 rounded-[10px] px-2 py-1.5 text-[12.5px] font-semibold transition-colors";
-    const optionOn = { border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" };
+    const optionOn = { border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" };
     const optionOff = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" };
 
     return (

@@ -62,7 +62,7 @@ export function ConfirmarCancelacion({
             type="button"
             onClick={onConfirmar}
             disabled={enviando}
-            className="min-h-[44px] rounded-xl bg-rose-600 px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm ring-1 ring-rose-700/30 transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-[44px] rounded-xl bg-[var(--accent)] px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {enviando ? "Cancelando..." : "Sí, cancelar la solicitud"}
           </button>

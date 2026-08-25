@@ -1,13 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BrandHeaderMark } from "@/app/components/BrandHeaderMark";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { normalizePhoneDigits } from "@/lib/chat-utils";
 import { AppShell } from "@/app/components/AppShell";
-import { LogoutButton } from "@/app/components/LogoutButton";
-import { ThemeToggle } from "@/app/components/ThemeToggle";
-import { HeaderMobileMenu } from "@/app/components/HeaderMobileMenu";
 import { ChatPanel } from "./components/ChatPanel";
 import { RejectModal } from "./components/RejectModal";
 import { ReservaCard } from "./components/ReservaCard";
@@ -56,8 +52,6 @@ export default function ReservasPage() {
   });
 
   const scopedHotelId = activeHotelId ?? resolvedActiveHotelId;
-  const activeHotelName =
-    availableHotels.find((hotel) => hotel.id === scopedHotelId)?.name ?? null;
 
   useEffect(() => {
     if (resolvedActiveHotelId && activeHotelId === null) {
@@ -142,12 +136,12 @@ export default function ReservasPage() {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`rounded-xl border px-4 py-3 text-[13px] font-semibold shadow-lg ring-1 ${
+            className={`rounded-xl border px-4 py-3 text-[13px] font-semibold shadow-lg ${
               toast.type === "error"
-                ? "border-rose-300 bg-rose-50 text-rose-950 ring-rose-200"
+                ? "border-[var(--accent)] bg-[var(--red-soft)] text-[var(--accent)]"
                 : toast.type === "info"
-                  ? "border-sky-300 bg-sky-50 text-sky-950 ring-sky-200"
-                  : "border-emerald-300 bg-emerald-50 text-emerald-950 ring-emerald-200"
+                  ? "border-sky-300 bg-sky-50 text-sky-950"
+                  : "border-emerald-300 bg-emerald-50 text-emerald-950"
             }`}
             role={toast.type === "error" ? "alert" : "status"}
           >
@@ -156,37 +150,11 @@ export default function ReservasPage() {
         ))}
       </div>
 
-      <header
-        className="flex h-[52px] shrink-0 items-center px-4 lg:h-14 lg:px-6"
-        style={{
-          background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
-          borderBottom: "1px solid var(--red-deep)",
-          boxShadow: "0 1px 8px rgba(196,43,32,.25)",
-        }}
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3.5">
-          <BrandHeaderMark size="sm" />
-          <div className="min-w-0">
-            <h1 className="grotesk truncate text-[16px] font-bold tracking-tight text-white">
-              Ferrar<span style={{ color: "rgba(255,255,255,.82)" }}>IA</span>
-            </h1>
-            <p className="hidden truncate text-[11px] leading-tight text-white/80 sm:block">Recepción · IA + agente humano</p>
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <div className="hidden items-center gap-1 sm:flex">
-            <ThemeToggle />
-            <LogoutButton onRed />
-          </div>
-          <HeaderMobileMenu onRed>
-            <ThemeToggle variant="menu" />
-            <LogoutButton onRed variant="menu" />
-          </HeaderMobileMenu>
-        </div>
-      </header>
-
       {error && (
-        <div className="shrink-0 border-b border-rose-200 bg-rose-50 px-4 py-2 text-center text-[13px] text-rose-900">
+        <div
+          className="shrink-0 border-b px-4 py-2 text-center text-[13px]"
+          style={{ borderColor: "var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
+        >
           {error}
         </div>
       )}
@@ -210,7 +178,7 @@ export default function ReservasPage() {
                   writeStoredActiveHotelId(nextHotelId);
                   setSelectedReserva(null);
                 }}
-                className="w-full cursor-pointer appearance-none rounded-xl border border-[var(--line)] bg-[var(--panel)] py-2.5 pl-3.5 pr-10 text-[13px] text-[var(--ink)] shadow-sm focus:border-[var(--red)] focus:outline-none focus:ring-2 focus:ring-[var(--red)]/20"
+                className="w-full cursor-pointer appearance-none rounded-xl border border-[var(--line)] bg-[var(--panel)] py-2.5 pl-3.5 pr-10 text-[13px] text-[var(--ink)] shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                 style={{
                   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b665e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
                   backgroundRepeat: "no-repeat",
@@ -231,7 +199,6 @@ export default function ReservasPage() {
             activeTab={activeTab}
             pendingCount={pendingCount}
             processedCount={procesadas.length}
-            hotelName={activeHotelName}
             onChange={setActiveTab}
           />
 
@@ -243,7 +210,7 @@ export default function ReservasPage() {
               value={phoneQuery}
               onChange={(event) => setPhoneQuery(event.target.value)}
               placeholder="Buscar por teléfono…"
-              className="w-full rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3.5 py-2.5 text-[14px] text-[var(--ink)] shadow-sm placeholder:text-[var(--ink-3)] transition focus:border-[var(--red)] focus:bg-[var(--panel)] focus:outline-none focus:ring-2 focus:ring-[var(--red)]/20"
+              className="w-full rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3.5 py-2.5 text-[14px] text-[var(--ink)] shadow-sm placeholder:text-[var(--ink-3)] transition focus:border-[var(--accent)] focus:bg-[var(--panel)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             />
           </div>
 

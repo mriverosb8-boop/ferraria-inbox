@@ -246,7 +246,7 @@ function StatusToken({ variant }: { variant: StatusVariant }) {
     return (
       <span
         className="grotesk inline-flex items-center gap-1.5"
-        style={{ ...pill, background: "var(--red)", color: "#fff" }}
+        style={{ ...pill, background: "var(--accent)", color: "#fff" }}
       >
         <Dot size={6} color="rgba(255,255,255,.85)" />
         {variant === "pending" ? "Pendiente" : "Atención"}
@@ -298,8 +298,8 @@ function StatusToken({ variant }: { variant: StatusVariant }) {
 
 /** Glifo, palabra y color de cada estado en el prefijo del preview (spec 4.3). */
 const GUEST_STATUS_PREFIX: Record<StatusVariant, { glyph: string; label: string; color: string }> = {
-  pending: { glyph: "●", label: "Pendiente", color: "var(--red)" },
-  attention: { glyph: "●", label: "Atención", color: "var(--red)" },
+  pending: { glyph: "●", label: "Pendiente", color: "var(--accent)" },
+  attention: { glyph: "●", label: "Atención", color: "var(--accent)" },
   human: { glyph: "●", label: "Humano", color: "var(--gold)" },
   ia: { glyph: "✦", label: "IA activa", color: "var(--live)" },
   done: { glyph: "✓", label: "Hecha", color: "var(--ink-3)" },
@@ -391,8 +391,8 @@ function TriageEscalatedBadge() {
         letterSpacing: "0.04em",
         textTransform: "uppercase",
         color: "#fff",
-        background: "var(--red)",
-        boxShadow: "0 0 0 3px color-mix(in srgb, var(--red) 22%, transparent)",
+        background: "var(--accent)",
+        boxShadow: "0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent)",
       }}
       title="Lleva horas esperando algo que solo una persona resuelve y nadie la tomó"
     >
@@ -792,8 +792,8 @@ function LazyImagePlaceholder({
     <button
       type="button"
       onClick={onLoad}
-      className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 shadow-sm transition hover:border-[var(--red)] hover:bg-[var(--panel-3)]"
-      style={{ borderColor: "color-mix(in srgb, var(--red) 45%, var(--line))", background: "var(--panel-2)", color: "var(--ink-2)" }}
+      className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--panel-3)]"
+      style={{ borderColor: "color-mix(in srgb, var(--accent) 45%, var(--line))", background: "var(--panel-2)", color: "var(--ink-2)" }}
     >
       <IconImage className="h-8 w-8 opacity-70" aria-hidden />
       <span className="text-sm font-medium" style={{ color: "var(--ink)" }}>{label}</span>
@@ -818,12 +818,12 @@ function LazyMediaErrorState({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-rose-900">
+    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-[var(--accent)] bg-[var(--red-soft)] px-4 text-[var(--accent)]">
       <p className="text-center text-sm">{label}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-[12px] font-semibold text-rose-900 shadow-sm transition hover:bg-rose-100"
+        className="rounded-lg border border-[var(--accent)] bg-[var(--panel)] px-3 py-1.5 text-[12px] font-semibold text-[var(--accent)] shadow-sm transition hover:bg-[var(--panel-2)]"
       >
         Reintentar
       </button>
@@ -862,7 +862,7 @@ function Avatar({
         fontWeight: 700,
         fontSize: emoji ? Math.round(size * 0.5) : Math.round(size * 0.36),
         lineHeight: 1,
-        boxShadow: ring ? "0 0 0 2px var(--panel), 0 0 0 4px var(--red)" : "none",
+        boxShadow: ring ? "0 0 0 2px var(--panel), 0 0 0 4px var(--accent)" : "none",
       }}
     >
       {emoji ?? initials(name)}
@@ -881,8 +881,8 @@ const ACTION_TONES: Record<ActionTone, { base: string; soft: string; deep: strin
   // Marcar como completado → gris neutro (mismo color que "Resuelto").
   complete: { base: "var(--ink-2)", soft: "var(--panel-3)", deep: "var(--ink)", border: "var(--ink-3)" },
   // Crear resumen → rojo de marca.
-  summary: { base: "var(--red)", soft: "var(--red-soft)", deep: "var(--red-deep)", border: "var(--red)" },
-  neutral: { base: "var(--ink-2)", soft: "var(--panel-2)", deep: "var(--red-deep)", border: "var(--red)" },
+  summary: { base: "var(--accent)", soft: "var(--red-soft)", deep: "var(--accent)", border: "var(--accent)" },
+  neutral: { base: "var(--ink-2)", soft: "var(--panel-2)", deep: "var(--accent)", border: "var(--accent)" },
 };
 
 /** Acción con atajo del panel cockpit (Dirección D): icono + badge de atajo + etiqueta. */
@@ -1085,7 +1085,7 @@ function fileFriendlyName(mime: string | null | undefined, kind: MediaKind): str
 }
 
 const FILE_TONES: Record<"pdf" | "document" | "file", { badge: string; text: string; border: string }> = {
-  pdf: { badge: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
+  pdf: { badge: "bg-[var(--red-soft)]", text: "text-[var(--accent)]", border: "border-[var(--accent)]/30" },
   document: { badge: "bg-sky-50", text: "text-sky-700", border: "border-sky-200" },
   file: { badge: "bg-stone-100", text: "text-stone-600", border: "border-stone-300" },
 };
@@ -1156,7 +1156,7 @@ function PrivateWhatsAppFile({
           <button
             type="button"
             onClick={() => void requestLoad()}
-            className="shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-900 shadow-sm transition hover:bg-rose-100"
+            className="shrink-0 rounded-lg border border-[var(--accent)] bg-[var(--red-soft)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--accent)] shadow-sm transition hover:bg-[var(--panel-2)]"
           >
             Reintentar
           </button>
@@ -1534,7 +1534,7 @@ function MessageBubble({
         border: "1px solid var(--line)",
         borderRadius: "4px 14px 14px 14px",
         boxShadow: "var(--shadow-sm)",
-        ...(isHandoffCause ? { boxShadow: "inset 3px 0 0 0 var(--red)" } : null),
+        ...(isHandoffCause ? { boxShadow: "inset 3px 0 0 0 var(--accent)" } : null),
       }
     : isAi
       ? {
@@ -1542,12 +1542,13 @@ function MessageBubble({
           color: "var(--ink)",
           border: "1px solid var(--bubble-ai-border)",
           borderRadius: "14px 14px 4px 14px",
-          ...(isHandoffCause ? { boxShadow: "inset -3px 0 0 0 var(--red)" } : null),
+          ...(isHandoffCause ? { boxShadow: "inset -3px 0 0 0 var(--accent)" } : null),
         }
       : {
-          background: "var(--red)",
+          // Burbuja de respuesta humana: terracota del spec (§2.2).
+          background: "var(--accent)",
           color: "#fff",
-          border: "1px solid var(--red)",
+          border: "1px solid var(--accent)",
           borderRadius: "14px 14px 4px 14px",
         };
   const onRed = isAgent;
@@ -1583,7 +1584,7 @@ function MessageBubble({
               width: 30,
               height: 30,
               borderRadius: 10,
-              background: isAi ? "var(--bubble-ai)" : "var(--red)",
+              background: isAi ? "var(--bubble-ai)" : "var(--accent)",
               border: isAi ? "1px solid var(--bubble-ai-border)" : "none",
             }}
           >
@@ -1642,13 +1643,13 @@ function MessageBubble({
           {isHandoffCause && (
             <p
               className="mb-0.5 flex max-w-full items-center gap-1 self-stretch text-[10px] font-semibold leading-tight"
-              style={{ color: onRed ? "#fff" : "var(--red)" }}
+              style={{ color: onRed ? "#fff" : "var(--accent)" }}
             >
               <span
                 className="inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5"
                 style={{
                   background: onRed ? "rgba(255,255,255,.18)" : "var(--red-soft)",
-                  border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--red)",
+                  border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--accent)",
                 }}
               >
                 <span aria-hidden>⚠️</span>
@@ -1763,8 +1764,8 @@ function MessageBubble({
                     // Sobre la burbuja roja del agente el rojo no contrasta:
                     // ahí el chip va en blanco, igual que el badge de handoff.
                     background: onRed ? "rgba(255,255,255,.18)" : "var(--red-soft)",
-                    border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--red)",
-                    color: onRed ? "#fff" : "var(--red)",
+                    border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--accent)",
+                    color: onRed ? "#fff" : "var(--accent)",
                   }}
                   title={describeDeliveryFailure(failedReceipt)}
                 >
@@ -1815,7 +1816,7 @@ function MessageBubble({
               className="mt-0.5 max-w-full break-words text-[10.5px] font-medium"
               style={{
                 lineHeight: 1.35,
-                color: onRed ? "rgba(255,255,255,.85)" : "var(--red)",
+                color: onRed ? "rgba(255,255,255,.85)" : "var(--accent)",
               }}
             >
               {deliveryFailureReason}
@@ -3264,7 +3265,7 @@ export default function InboxApp() {
         {showAttentionBar && (
           <span
             aria-hidden
-            style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--red)" }}
+            style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--accent)" }}
           />
         )}
         <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
@@ -3334,7 +3335,7 @@ export default function InboxApp() {
               {hasUnread && (
                 <span
                   className="ibx-mono flex h-[18px] min-w-[18px] items-center justify-center px-1"
-                  style={{ borderRadius: 999, background: "var(--red)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
+                  style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
                   aria-label={`${c.unreadCount} mensajes sin leer`}
                   title={`${c.unreadCount} mensajes sin leer`}
                 >
@@ -3399,7 +3400,8 @@ export default function InboxApp() {
           gap: 12,
           padding: "12px 13px",
           borderRadius: 16,
-          border: `1.5px solid ${active ? "var(--red)" : "transparent"}`,
+          // Borde del item seleccionado: terracota del spec (§2.2).
+          border: `1.5px solid ${active ? "var(--accent)" : "transparent"}`,
           // Solo la seleccionada fija fondo: sin `background` inline, el hover
           // de `.d-row` sigue funcionando en las demás (el inline le gana a la
           // regla de hover, no al revés).
@@ -3444,7 +3446,7 @@ export default function InboxApp() {
             {hasUnread && (
               <span
                 className="ibx-mono flex h-[18px] min-w-[18px] shrink-0 items-center justify-center px-1"
-                style={{ borderRadius: 999, background: "var(--red)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
+                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
                 aria-label={`${c.unreadCount} mensajes sin leer`}
               >
                 {unreadLabel}
@@ -3524,7 +3526,7 @@ export default function InboxApp() {
       {urgentHandoffBannerVisible && (
         <div
           className="fixed right-4 top-4 z-[300] flex max-w-[min(100vw-2rem,20rem)] items-start gap-3 rounded-xl px-4 py-3 text-[13px] font-semibold leading-snug"
-          style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)", boxShadow: "var(--shadow-lg)" }}
+          style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)", boxShadow: "var(--shadow-lg)" }}
           role="status"
         >
           <span className="min-w-0 flex-1">🚨 Huésped requiere atención humana</span>
@@ -3532,7 +3534,7 @@ export default function InboxApp() {
             type="button"
             onClick={dismissUrgentHandoffBanner}
             className="shrink-0 rounded-lg p-1 transition hover:bg-[var(--panel)]/40"
-            style={{ color: "var(--red-deep)" }}
+            style={{ color: "var(--accent)" }}
             aria-label="Cerrar aviso"
           >
             ×
@@ -3545,7 +3547,7 @@ export default function InboxApp() {
           style={
             templateToast.type === "success"
               ? { border: "1px solid var(--live)", background: "var(--live-soft)", color: "var(--live)", boxShadow: "var(--shadow-lg)" }
-              : { border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)", boxShadow: "var(--shadow-lg)" }
+              : { border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)", boxShadow: "var(--shadow-lg)" }
           }
           role={templateToast.type === "success" ? "status" : "alert"}
         >
@@ -3555,7 +3557,7 @@ export default function InboxApp() {
       {error && (
         <div
           className="shrink-0 px-4 py-2 text-center text-[13px]"
-          style={{ borderBottom: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+          style={{ borderBottom: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
         >
           {error}
         </div>
@@ -3626,7 +3628,7 @@ export default function InboxApp() {
               )}
               <span
                 className={`ibx-mono inline-flex shrink-0 items-center gap-1.5 ${staffViewActive ? "ml-auto" : ""}`}
-                style={{ fontSize: 11.5, fontWeight: 700, color: refreshing ? "var(--red)" : "var(--ink-3)" }}
+                style={{ fontSize: 11.5, fontWeight: 700, color: refreshing ? "var(--accent)" : "var(--ink-3)" }}
                 aria-live="polite"
                 title={
                   staffViewActive
@@ -3738,7 +3740,7 @@ export default function InboxApp() {
                 <button
                   type="button"
                   onClick={() => openStartConversation()}
-                  className="grotesk inline-flex shrink-0 items-center rounded-[10px] bg-[var(--red)] px-3 py-2 text-[13px] font-bold text-white transition-colors hover:bg-[var(--red-deep)]"
+                  className="grotesk inline-flex shrink-0 items-center rounded-[10px] bg-[var(--accent)] px-3 py-2 text-[13px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
                   title="Comenzar una conversación nueva con un huésped"
                 >
                   Nueva
@@ -3761,7 +3763,7 @@ export default function InboxApp() {
                   <button
                     type="button"
                     onClick={() => openStartConversation()}
-                    className="grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[var(--red)] px-3 py-2 text-[12.5px] font-bold text-white transition-colors hover:bg-[var(--red-deep)]"
+                    className="grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[var(--accent)] px-3 py-2 text-[12.5px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
                   >
                     <IconCompose className="h-4 w-4 shrink-0" aria-hidden />
                     Comenzar conversación
@@ -3839,7 +3841,7 @@ export default function InboxApp() {
                       whiteSpace: "nowrap",
                       background: active
                         ? isAttention
-                          ? "var(--red)"
+                          ? "var(--accent)"
                           : "var(--ink)"
                         : attentionIdle
                           ? "var(--red-soft)"
@@ -3847,14 +3849,14 @@ export default function InboxApp() {
                       borderColor: active
                         ? "transparent"
                         : attentionIdle
-                          ? "color-mix(in srgb, var(--red) 35%, transparent)"
+                          ? "color-mix(in srgb, var(--accent) 35%, transparent)"
                           : "var(--line)",
                       color: active
                         ? isAttention
                           ? "#fff"
                           : "var(--panel)"
                         : attentionIdle
-                          ? "var(--red-deep)"
+                          ? "var(--accent)"
                           : "var(--ink-2)",
                     }}
                   >
@@ -3936,7 +3938,7 @@ export default function InboxApp() {
                               }}
                             >
                               <span className="truncate">{hotel.name}</span>
-                              {isSelected && <IconCheck className="h-4 w-4 shrink-0" style={{ color: "var(--red)" }} aria-hidden />}
+                              {isSelected && <IconCheck className="h-4 w-4 shrink-0" style={{ color: "var(--accent)" }} aria-hidden />}
                             </button>
                           );
                         })}
@@ -4013,7 +4015,7 @@ export default function InboxApp() {
               /* Separado de "sin resultados" a propósito: un fallo de red pintado
                  como ausencia le hace concluir al asesor que el huésped no existe. */
               <div className="flex flex-col items-center justify-center gap-2.5 px-6 py-16 text-center">
-                <p className="text-sm font-medium" style={{ color: "var(--red)" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--accent)" }}>
                   No se pudo buscar
                 </p>
                 <p className="max-w-[240px] text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
@@ -4092,7 +4094,7 @@ export default function InboxApp() {
           className="group hidden w-1 shrink-0 cursor-col-resize items-stretch lg:flex"
           title="Arrastra para ajustar el ancho"
         >
-          <span className="block h-full w-px bg-[var(--line)] transition-colors group-hover:w-1 group-hover:bg-[var(--red)]" />
+          <span className="block h-full w-px bg-[var(--line)] transition-colors group-hover:w-1 group-hover:bg-[var(--accent)]" />
         </div>
 
         <section
@@ -4139,7 +4141,7 @@ export default function InboxApp() {
                             disabled={savingName}
                             placeholder="Nombre del huésped"
                             className="grotesk min-w-0 flex-1 rounded-lg px-2 py-1 outline-none disabled:opacity-60"
-                            style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", background: "var(--panel-2)", border: "1px solid var(--red)" }}
+                            style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", background: "var(--panel-2)", border: "1px solid var(--accent)" }}
                             aria-label="Editar nombre del huésped"
                           />
                           <button
@@ -4147,7 +4149,7 @@ export default function InboxApp() {
                             onClick={() => void renameGuest()}
                             disabled={savingName}
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
-                            style={{ background: "var(--red)", color: "#fff" }}
+                            style={{ background: "var(--accent)", color: "#fff" }}
                             aria-label="Guardar nombre"
                             title="Guardar"
                           >
@@ -4170,7 +4172,7 @@ export default function InboxApp() {
                           </button>
                         </div>
                         {nameError && (
-                          <span style={{ fontSize: 11, color: "var(--red-deep)" }}>{nameError}</span>
+                          <span style={{ fontSize: 11, color: "var(--accent)" }}>{nameError}</span>
                         )}
                       </div>
                     ) : (
@@ -4204,8 +4206,8 @@ export default function InboxApp() {
                         Sin gestión de IA
                       </span>
                     ) : selected.operationalStatus === "requires_attention" ? (
-                      <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>
-                        <Dot color="var(--red)" />
+                      <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)" }}>
+                        <Dot color="var(--accent)" />
                         Requiere atención humana
                       </span>
                     ) : selected.operationalStatus === "ai_active" ? (
@@ -4326,7 +4328,7 @@ export default function InboxApp() {
                 {fileError && (
                   <p
                     className="mb-3 w-full min-w-0 max-w-full break-words rounded-lg px-3 py-2 text-[12px] [overflow-wrap:anywhere]"
-                    style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+                    style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
                   >
                     {fileError}
                   </p>
@@ -4339,7 +4341,7 @@ export default function InboxApp() {
                     {selectedFileIsPdf || !filePreviewUrl ? (
                       <div
                         className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold"
-                        style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+                        style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
                       >
                         PDF
                       </div>
@@ -4457,7 +4459,7 @@ export default function InboxApp() {
                     onClick={() => void sendMessage()}
                     disabled={(!draft.trim() && !selectedFile) || inputDisabled || sendingMedia}
                     className="d-prim flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-35"
-                    style={{ background: "var(--red)", color: "#fff", border: "none" }}
+                    style={{ background: "var(--accent)", color: "#fff", border: "none" }}
                     aria-label="Enviar"
                   >
                     {sendingMedia ? (
@@ -4540,7 +4542,7 @@ export default function InboxApp() {
           className={`group w-1 shrink-0 cursor-col-resize items-stretch ${detailsOpen ? "hidden lg:flex" : "hidden"}`}
           title="Arrastra para ajustar el ancho"
         >
-          <span className="block h-full w-px bg-[var(--line)] transition-colors group-hover:w-1 group-hover:bg-[var(--red)]" />
+          <span className="block h-full w-px bg-[var(--line)] transition-colors group-hover:w-1 group-hover:bg-[var(--accent)]" />
         </div>
 
         <aside
@@ -4635,7 +4637,7 @@ export default function InboxApp() {
                 disabled={moderationInProgress}
                 onClick={() => void applyConversationModeration(moderationDialogAction)}
                 className="d-prim grotesk rounded-lg px-3 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
-                style={{ background: "var(--red)", border: "none" }}
+                style={{ background: "var(--accent)", border: "none" }}
               >
                 {moderationInProgress
                   ? moderationDialogAction === "block"
@@ -5106,7 +5108,7 @@ function GuestPanelContent({
             disabled={actionsBusy}
             aria-busy={pendingAction === "reopen"}
             className="d-prim grotesk flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ padding: 12, borderRadius: 11, border: "none", background: "var(--red)", color: "#fff", fontSize: 14, fontWeight: 700 }}
+            style={{ padding: 12, borderRadius: 11, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 700 }}
           >
             {pendingAction === "reopen" ? (
               <>
@@ -5129,7 +5131,7 @@ function GuestPanelContent({
                 disabled={actionsBusy}
                 aria-busy={resolvingRequest}
                 className="d-prim grotesk mb-2.5 flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-                style={{ padding: 12, borderRadius: 11, border: "none", background: "var(--red)", color: "#fff", fontSize: 14, fontWeight: 700 }}
+                style={{ padding: 12, borderRadius: 11, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 700 }}
               >
                 {resolvingRequest ? (
                   <>
@@ -5182,9 +5184,9 @@ function GuestPanelContent({
               onClick={() => void createChatSummary()}
               disabled={summaryLoading}
               className="d-act grotesk ml-auto inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ padding: "5px 10px", border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--red)", borderRadius: 10, fontSize: 11.5, fontWeight: 700 }}
+              style={{ padding: "5px 10px", border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--accent)", borderRadius: 10, fontSize: 11.5, fontWeight: 700 }}
             >
-              <Spark className="h-3 w-3" style={{ color: "var(--red)" }} aria-hidden />
+              <Spark className="h-3 w-3" style={{ color: "var(--accent)" }} aria-hidden />
               Generar resumen
               <span
                 className="ibx-mono"
@@ -5201,7 +5203,7 @@ function GuestPanelContent({
               role="status"
               aria-live="polite"
             >
-              <Spinner className="h-4 w-4 shrink-0 animate-spin text-[var(--red)]" />
+              <Spinner className="h-4 w-4 shrink-0 animate-spin text-[var(--accent)]" />
               <span>
                 {summaryLoadMode === "initial"
                   ? "Cargando resumen…"
@@ -5212,7 +5214,7 @@ function GuestPanelContent({
           {!summaryLoading && summaryError && (
             <div
               className="rounded-xl px-3 py-2.5 text-[13px] leading-relaxed"
-              style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+              style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
               role="alert"
             >
               {summaryError}
@@ -5294,7 +5296,7 @@ function GuestPanelContent({
             <MonoRow
               k="Request (BD)"
               v={conversation.request ?? "—"}
-              accent={isPendingRequest ? "var(--red)" : undefined}
+              accent={isPendingRequest ? "var(--accent)" : undefined}
             />
             <MonoRow k="IA activa (BD)" v={conversation.aiActive ? "Sí" : "No"} />
             <MonoRow k="Estado (BD)" v={conversation.dbStatus ?? "—"} />
