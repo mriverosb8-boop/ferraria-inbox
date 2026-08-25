@@ -7,7 +7,8 @@
   --surface: #ffffff;
   --surface-muted: #f1ece4;
   --border: #e7dfd4;
-  --accent: #c8a97e;
+  /* Terracota del rediseño (docs/REDESIGN.md §2.2). */
+  --accent: #c7402d;
 
   /* ── Rediseño Inbox · Dirección D · tema CLARO ──────────────────────── */
   --ink: #211c18;
@@ -38,6 +39,29 @@
   --shadow-sm: 0 1px 2px rgba(40, 30, 20, 0.06);
   --shadow: 0 2px 8px rgba(40, 30, 20, 0.07), 0 1px 2px rgba(40, 30, 20, 0.05);
   --shadow-lg: 0 12px 36px rgba(40, 30, 20, 0.14), 0 2px 8px rgba(40, 30, 20, 0.06);
+
+  /* ── Rediseño Fase 1 · tokens del spec (docs/REDESIGN.md §2) · CLARO ───
+     Conviven con los de Dirección D de arriba: estos son los nombres que usa
+     el spec y a los que apuntan las utilidades de `@theme inline`. */
+  --bg-app: #f2eee6;
+  --bg-card: #ffffff;
+  --border-soft: #e8e2d8;
+  --sidebar: #c7402d;
+  --bubble-ai: #fbf3dc;
+  --bubble-ai-border: #efe4c8;
+  --bubble-guest: #ffffff;
+  --success-bg: #dff2e4;
+  --success-text: #2e7d4f;
+  --text-primary: #1f1d1a;
+  --text-secondary: #8a857c;
+  /* Radios: iguales en claro y oscuro, no se redefinen en `html.dark`. */
+  --radius-card: 16px;
+  --radius-chip: 10px;
+  --radius-bubble: 14px;
+
+  /* Alias heredado: `app/components/WhatsappText.tsx` lo usa en un style inline.
+     Ya no es Space Mono, apunta al mono nuevo. */
+  --font-space-mono: var(--font-jetbrains-mono);
 }
 
 /* ── Modo oscuro (Dirección D) ─────────────────────────────────────────
@@ -52,7 +76,7 @@ html.dark {
   --surface: #221d19;
   --surface-muted: #2a231e;
   --border: #3a322b;
-  --accent: #d6a24a;
+  --accent: #f0655a;
 
   --ink: #f2ede7;
   --ink-2: #b8ada2;
@@ -77,14 +101,56 @@ html.dark {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.5);
+
+  /* ── Rediseño Fase 1 · mismos nombres, valores oscuros ────────────────
+     Alineados con la paleta oscura de Dirección D de arriba para que el tema
+     oscuro no se rompa. Los radios no cambian: se heredan de `:root`. */
+  --bg-app: #17130f;
+  --bg-card: #221d19;
+  --border-soft: #3a322b;
+  --sidebar: #8f3325;
+  --bubble-ai: #2e2618;
+  --bubble-ai-border: #473a22;
+  --bubble-guest: #221d19;
+  --success-bg: #163021;
+  --success-text: #35b87a;
+  --text-primary: #f2ede7;
+  --text-secondary: #b8ada2;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-archivo);
-  --font-mono: var(--font-space-mono);
-  --font-grotesk: var(--font-grotesk);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  /* `.grotesk` y `font-grotesk` siguen existiendo; ahora resuelven a Inter. */
+  --font-grotesk: var(--font-inter);
+
+  /* ── Tokens del rediseño como utilidades ────────────────────────────── */
+  --color-app: var(--bg-app);
+  --color-card: var(--bg-card);
+  --color-sidebar: var(--sidebar);
+  --color-accent: var(--accent);
+  --color-bubble-ai: var(--bubble-ai);
+  --color-bubble-ai-border: var(--bubble-ai-border);
+  --color-bubble-guest: var(--bubble-guest);
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-soft: var(--border-soft);
+
+  --radius-card: 16px;
+  --radius-chip: 10px;
+  --radius-bubble: 14px;
+}
+
+/* `--success-bg` y `--success-text` son dos colores distintos, así que no caben
+   en un solo `--color-success`: van como utilidades explícitas. */
+@utility bg-success {
+  background-color: var(--success-bg);
+}
+
+@utility text-success {
+  color: var(--success-text);
 }
 
 html {
@@ -95,16 +161,18 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-archivo), system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
 }
 
-/* Tipografías del rediseño (Dirección D). */
+/* Tipografías del rediseño: Inter para el sans, JetBrains Mono para el mono
+   (docs/REDESIGN.md §1). Las clases no se renombran porque las usan decenas de
+   pantallas; solo cambia la familia a la que resuelven. */
 .grotesk {
-  font-family: var(--font-grotesk), "Space Grotesk", sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
 }
 
 .ibx-mono {
-  font-family: var(--font-space-mono), "Space Mono", ui-monospace, monospace;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
 /* Scrollbars discretos (Firefox + WebKit) — listas, chat, paneles */

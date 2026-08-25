@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { BrandHeaderMark } from "@/app/components/BrandHeaderMark";
 import { HeaderMobileMenu } from "@/app/components/HeaderMobileMenu";
-import { InboxHeaderTabs } from "@/app/components/InboxHeaderTabs";
+import { AppShell } from "@/app/components/AppShell";
 import { LogoutButton } from "@/app/components/LogoutButton";
 import { ThemeToggle } from "@/app/components/ThemeToggle";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
@@ -122,7 +122,8 @@ export function SolicitudesScreen() {
   const vacio = VACIO[filtro];
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--ink)]">
+    <AppShell hotelId={scopedHotelId}>
+    <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--ink)]">
       <div className="fixed right-4 top-4 z-[600] flex max-w-[min(100vw-2rem,24rem)] flex-col gap-2">
         {toasts.map((toast) => (
           <div
@@ -157,7 +158,6 @@ export function SolicitudesScreen() {
               Solicitudes de los huéspedes
             </p>
           </div>
-          <InboxHeaderTabs hotelId={scopedHotelId} onRed />
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <div className="hidden items-center gap-1 sm:flex">
@@ -275,5 +275,6 @@ export function SolicitudesScreen() {
         }}
       />
     </div>
+    </AppShell>
   );
 }
