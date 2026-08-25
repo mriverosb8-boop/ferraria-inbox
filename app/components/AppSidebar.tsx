@@ -7,6 +7,7 @@ import { useReservasCount } from "@/app/reservas/hooks/useReservasCount";
 import { useSolicitudesCount } from "@/app/solicitudes/hooks/useSolicitudesCount";
 import { useCapabilities } from "@/hooks/useCapabilities";
 import type { RealtimeUiStatus } from "@/hooks/useInboxRealtime";
+import { usePushNotifications, type PushStatus } from "@/hooks/usePushNotifications";
 import { initials } from "@/lib/avatar";
 import { INBOX_PATH, RESERVAS_PATH, SOLICITUDES_PATH } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/client";
@@ -114,6 +115,89 @@ function IconClipboard({ className }: { className?: string }) {
   );
 }
 
+function IconBell({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className={className} aria-hidden>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M18 8.4a6 6 0 10-12 0c0 4.2-1.5 5.4-1.5 5.4h15S18 12.6 18 8.4z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.7 17.8a2 2 0 01-3.4 0" />
+    </svg>
+  );
+}
+
+// ── Notificaciones del navegador ───────────────────────────────────────────
+/**
+ * Copy de la campana, un texto por estado del permiso del navegador.
+ *
+ * `short` es lo que va en el `aria-label` del botón, para que quien no abra el
+ * panel igual sepa cómo están las notificaciones. `detail` es texto visible
+ * dentro del panel: el motivo nunca vive en un `title`, porque en una tablet de
+ * recepción no hay hover que lo revele.
+ *
+ * `aviso: true` marca los estados en los que hay algo que decirle a la persona
+ * (activarlas, desbloquearlas, instalar la app, reintentar). Esos son los que
+ * pintan badge. Si están activadas —o si el equipo simplemente no las
+ * soporta— no hay nada que hacer y el badge no se pinta, con el mismo criterio
+ * de las entradas de navegación: un número permanente entrena a ignorarlo.
+ */
+const NOTIF_COPY: Record<
+  PushStatus,
+  { short: string; title: string; detail: string; action: string | null; aviso: boolean }
+> = {
+  subscribed: {
+    short: "activadas",
+    title: "Notificaciones activadas",
+    detail: "Te avisamos en este dispositivo cuando entre un mensaje nuevo, aunque tengás la bandeja cerrada.",
+    action: "Desactivar notificaciones",
+    aviso: false,
+  },
+  idle: {
+    short: "apagadas",
+    title: "Notificaciones apagadas",
+    detail: "Activalas y te avisamos en este dispositivo cuando entre un mensaje nuevo.",
+    action: "Activar notificaciones",
+    aviso: true,
+  },
+  subscribing: {
+    short: "activando",
+    title: "Activando…",
+    detail: "Aceptá el permiso que te está pidiendo el navegador.",
+    action: null,
+    aviso: false,
+  },
+  denied: {
+    short: "bloqueadas",
+    title: "Notificaciones bloqueadas",
+    detail: "Este navegador tiene bloqueados los avisos de la bandeja. Habilitalos en la configuración del sitio y volvé a entrar.",
+    action: null,
+    aviso: true,
+  },
+  "ios-needs-install": {
+    short: "hay que instalar la app",
+    title: "Instalá la app para recibir avisos",
+    detail: "En iPhone y iPad los avisos solo llegan con la bandeja agregada a la pantalla de inicio: tocá Compartir y después “Agregar a inicio”.",
+    action: null,
+    aviso: true,
+  },
+  unsupported: {
+    short: "no disponibles",
+    title: "Notificaciones no disponibles",
+    detail: "Este navegador no puede mostrar avisos. Abrí la bandeja desde Chrome o Safari actualizado.",
+    action: null,
+    aviso: false,
+  },
+  error: {
+    short: "no se pudieron activar",
+    title: "No se pudieron activar",
+    detail: "Algo falló al activar los avisos en este dispositivo.",
+    action: "Reintentar",
+    aviso: true,
+  },
+};
+
 // ── Conexión del navegador ─────────────────────────────────────────────────
 // Se lee con `useSyncExternalStore` para no arrancar con un `useEffect` que
 // corrija el estado después de hidratar (eso pinta "Sin conexión" por un frame
@@ -166,13 +250,30 @@ export function AppSidebar({
   const reservasCount = useReservasCount(hotelId);
   const solicitudesCount = useSolicitudesCount(hotelId);
   const online = useSyncExternalStore(subscribeOnline, readOnline, () => true);
+  // El sidebar es el único componente que viven las tres pantallas, así que el
+  // estado del permiso de notificaciones se monta acá y no en la bandeja: en
+  // Reservas y Tickets la campana tiene que decir lo mismo, y montándolo acá se
+  // monta una sola vez por página.
+  const push = usePushNotifications(hotelId ?? null);
   const [email, setEmail] = useState<string | null>(null);
   const changelog = useChangelog();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackSent, setFeedbackSent] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  // Service worker de las notificaciones. Vive acá por lo mismo que el hook: sin
+  // registro, `serviceWorker.ready` nunca resuelve y la campana reportaría
+  // "apagadas" en Reservas y Tickets aunque estén activadas.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker
+      .register("/sw.js", { updateViaCache: "none" })
+      .catch((err) => console.error("[sw] registro fallido:", err));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,6 +310,26 @@ export function AppSidebar({
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [menuOpen]);
+
+  // Mismo cierre para el panel de la campana. Va aparte del menú del avatar
+  // porque son dos popovers distintos y nunca están abiertos a la vez.
+  useEffect(() => {
+    if (!notifOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNotifOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [notifOpen]);
 
   useEffect(() => {
     if (!feedbackSent) return;
@@ -322,6 +443,12 @@ export function AppSidebar({
   };
   const live = realtimeStatus ? liveCopy[realtimeStatus] : null;
 
+  const notif = NOTIF_COPY[push.status];
+  // Badge de la campana. Es siempre 1 porque lo que se avisa es un solo asunto
+  // —cómo están las notificaciones de este dispositivo—, y desaparece apenas
+  // queda resuelto.
+  const notifAvisos = notif.aviso ? 1 : 0;
+
   const itemBase =
     "grotesk relative flex select-none flex-col items-center justify-center gap-1 rounded-[12px] px-1 py-2 text-[10.5px] font-semibold leading-none transition max-lg:min-w-0 max-lg:flex-1 lg:w-full lg:py-2.5";
   // Hover sobre el rojo: overlay blanco al 10%. No se oscurece el terracota.
@@ -396,6 +523,81 @@ export function AppSidebar({
       </nav>
 
       <div className="flex shrink-0 items-center max-lg:flex-row max-lg:gap-1 lg:w-full lg:flex-col lg:gap-2">
+        {/* Campana de notificaciones. A diferencia de los dos indicadores de
+            abajo sí se pinta en la barra inferior del teléfono: es un botón de
+            36px, no un texto, y es el único acceso al estado del permiso en
+            móvil. */}
+        <div ref={notifRef} className="flex shrink-0 items-center justify-center lg:w-full">
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              setNotifOpen((value) => !value);
+            }}
+            className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition hover:bg-white/25"
+            style={{ background: "rgba(255,255,255,.18)", color: "#fff", border: "1px solid rgba(255,255,255,.3)" }}
+            aria-haspopup="dialog"
+            aria-expanded={notifOpen}
+            aria-label={`Notificaciones: ${notif.short}`}
+          >
+            <IconBell className="h-[18px] w-[18px]" />
+            {notifAvisos > 0 && (
+              <span
+                className="ibx-mono absolute -right-1 -top-1 rounded-md px-1 py-0.5 text-[9.5px] font-semibold"
+                style={{ background: "#fff", color: "var(--sidebar)", boxShadow: "0 0 0 2px var(--sidebar)" }}
+                aria-hidden
+              >
+                {notifAvisos}
+              </span>
+            )}
+          </button>
+
+          {notifOpen && (
+            /* Fijo y no absoluto, igual que el menú del avatar: en escritorio
+               el sidebar recorta lo que se sale de sus 90px. */
+            <div
+              role="dialog"
+              aria-label="Notificaciones de este dispositivo"
+              className="fixed bottom-[calc(62px+env(safe-area-inset-bottom,0px)+0.5rem)] right-2 z-[260] w-72 overflow-hidden rounded-2xl p-3.5 lg:bottom-3 lg:left-[98px] lg:right-auto"
+              style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
+            >
+              <p className="grotesk text-[13px] font-bold" style={{ color: "var(--text-primary)" }}>
+                {notif.title}
+              </p>
+              <p className="mt-1 text-[12.5px] leading-snug" style={{ color: "var(--text-secondary)" }}>
+                {notif.detail}
+              </p>
+              {/* El motivo del fallo se lee en pantalla, no en un tooltip. */}
+              {push.error && (
+                <p className="mt-1.5 text-[12px] leading-snug" style={{ color: "var(--accent)" }}>
+                  {push.error}
+                </p>
+              )}
+              {notif.action && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (push.status === "subscribed") {
+                      void push.disable();
+                    } else {
+                      void push.enable();
+                      setNotifOpen(false);
+                    }
+                  }}
+                  className="grotesk mt-3 w-full rounded-[var(--radius-chip)] px-3 py-2 text-[13px] font-bold transition-colors"
+                  style={
+                    push.status === "subscribed"
+                      ? { border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--text-primary)" }
+                      : { background: "var(--accent)", color: "#fff" }
+                  }
+                >
+                  {notif.action}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Los dos indicadores van juntos y solo en escritorio: en la barra
             inferior de un teléfono no hay ancho para un texto que casi siempre
             dice lo mismo, y un punto suelto sin label no explica nada.
@@ -436,7 +638,10 @@ export function AppSidebar({
         <div ref={menuRef} className="flex shrink-0 items-center justify-center lg:w-full">
           <button
             type="button"
-            onClick={() => setMenuOpen((value) => !value)}
+            onClick={() => {
+              setNotifOpen(false);
+              setMenuOpen((value) => !value);
+            }}
             className="grotesk relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold uppercase transition hover:bg-white/25"
             style={{ background: "rgba(255,255,255,.18)", color: "#fff", border: "1px solid rgba(255,255,255,.3)" }}
             aria-haspopup="menu"

@@ -52,7 +52,6 @@ import { AppShell } from "./AppShell";
 import { VISTA_PARAM, VISTA_STAFF, type InboxView } from "./AppSidebar";
 import { Spinner } from "./Spinner";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { StartConversationModal } from "./StartConversationModal";
 import { WhatsappText, stripWhatsappMarkup } from "./WhatsappText";
 import { StaffContactsModal } from "./StaffContactsModal";
@@ -445,14 +444,6 @@ function IconBlock(props: SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} {...props}>
       <circle cx="12" cy="12" r="9" />
       <path strokeLinecap="round" d="M5.6 5.6l12.8 12.8" />
-    </svg>
-  );
-}
-
-function IconMore(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
-      <path d="M12 8.25a1.5 1.5 0 110-3 1.5 1.5 0 010 3zM12 13.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zM12 18.75a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
     </svg>
   );
 }
@@ -1886,7 +1877,6 @@ export default function InboxApp() {
   }, [rawConversations, engineEnabled]);
 
   const conversationHotelId = activeHotelId ?? resolvedActiveHotelId;
-  const push = usePushNotifications(conversationHotelId);
 
   const cancelFollowup = useCallback(
     async (conversationId: string, quoteRequestId: string, stage: string) => {
@@ -2001,7 +1991,6 @@ export default function InboxApp() {
   const [pendingAction, setPendingAction] = useState<null | "human" | "ai" | "complete" | "reopen">(
     null
   );
-  const [globalActionsOpen, setGlobalActionsOpen] = useState(false);
   const [hotelSelectOpen, setHotelSelectOpen] = useState(false);
   const [startConversationOpen, setStartConversationOpen] = useState(false);
   /**
@@ -2062,7 +2051,6 @@ export default function InboxApp() {
     message: string;
   } | null>(null);
   const scrollEndRef = useRef<HTMLDivElement>(null);
-  const globalActionsRef = useRef<HTMLDivElement>(null);
   const hotelSelectRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -2130,14 +2118,6 @@ export default function InboxApp() {
     if (conversationId) setRequestedConversationId(conversationId);
   }, []);
 
-  // Registra el service worker para push notifications (Batch 4).
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-    navigator.serviceWorker
-      .register("/sw.js", { updateViaCache: "none" })
-      .catch((err) => console.error("[sw] registro fallido:", err));
-  }, []);
-
   // Sincroniza el hotel activo en memoria con el que resuelve el server, pero SOLO
   // cuando la selección en memoria no es válida: arranque (activeHotelId === null) o
   // un hotelId stale que el usuario actual ya no tiene permitido (auto-recuperación
@@ -2161,21 +2141,6 @@ export default function InboxApp() {
     setEditingName(false);
     setNameError(null);
   }, [selectedId]);
-
-  useEffect(() => {
-    if (!globalActionsOpen) return;
-
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (!globalActionsRef.current?.contains(target)) {
-        setGlobalActionsOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
-  }, [globalActionsOpen]);
 
   useEffect(() => {
     if (!hotelSelectOpen) return;
@@ -3672,67 +3637,9 @@ export default function InboxApp() {
                   <IconRefresh className="h-4 w-4" aria-hidden />
                 )}
               </button>
-              <div ref={globalActionsRef} className="relative shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setGlobalActionsOpen((open) => !open)}
-                  className="d-act flex h-8 w-8 items-center justify-center"
-                  style={{
-                    borderRadius: staffViewActive ? 9 : 10,
-                    border: "1px solid var(--border-soft)",
-                    background: staffViewActive ? "var(--bg-app)" : "var(--bg-card)",
-                    color: "var(--text-secondary)",
-                  }}
-                  aria-label="Abrir acciones"
-                  aria-haspopup="menu"
-                  aria-expanded={globalActionsOpen}
-                >
-                  <IconMore className="h-4 w-4" aria-hidden />
-                </button>
-                {globalActionsOpen && (
-                  <div
-                    className="absolute right-0 top-[calc(100%+0.5rem)] z-[230] w-56 overflow-hidden"
-                    style={{ borderRadius: 12, border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
-                    role="menu"
-                  >
-                    <button
-                      type="button"
-                      title={push.error ?? undefined}
-                      disabled={
-                        push.status === "subscribing" ||
-                        push.status === "denied" ||
-                        push.status === "unsupported" ||
-                        push.status === "ios-needs-install"
-                      }
-                      onClick={() => {
-                        if (push.status === "subscribed") {
-                          void push.disable();
-                        } else {
-                          void push.enable();
-                          setGlobalActionsOpen(false);
-                        }
-                      }}
-                      className="d-soft grotesk flex w-full items-center px-3.5 py-2.5 text-left disabled:opacity-60"
-                      style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}
-                      role="menuitem"
-                    >
-                      {push.status === "subscribed"
-                        ? "Desactivar notificaciones"
-                        : push.status === "subscribing"
-                          ? "Activando…"
-                          : push.status === "denied"
-                            ? "Notificaciones bloqueadas"
-                            : push.status === "ios-needs-install"
-                              ? "Instalá la app para notificaciones"
-                              : push.status === "unsupported"
-                                ? "Notificaciones no disponibles"
-                                : "Activar notificaciones"}
-                    </button>
-                    {/* "Enviar feedback" no va acá: vive en el menú del avatar
-                        del sidebar, junto a Ayuda y Novedades. */}
-                  </div>
-                )}
-              </div>
+              {/* Acá vivía el menú "…". Su única entrada era el interruptor de
+                  notificaciones, que ahora es la campana del sidebar, así que
+                  el menú quedó vacío y se fue con ella. */}
               {/* Acción principal de la sección: abrir un hilo nuevo. Vive acá,
                   al lado de la lista que va a recibirlo, y por eso el botón
                   equivalente del encabezado rojo se oculta en esta vista. */}
