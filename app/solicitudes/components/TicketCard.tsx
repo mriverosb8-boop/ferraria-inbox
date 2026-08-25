@@ -17,7 +17,7 @@ import {
  * distingue estos tonos).
  */
 const ESTADO_CLASES: Readonly<Record<TicketEstado, string>> = {
-  abierto: "bg-[var(--red)]/12 text-[var(--red-deep)] ring-1 ring-[var(--red)]/25",
+  abierto: "bg-[var(--accent)]/12 text-[var(--accent)] ring-1 ring-[var(--accent)]/25",
   en_curso: "bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/30",
   resuelto: "bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/30",
   cancelado: "bg-[var(--panel-3)] text-[var(--ink-3)] ring-1 ring-[var(--line)]",
@@ -53,14 +53,14 @@ export function TicketCard({
   return (
     <article
       id={`solicitud-${ticket.id}`}
-      className={`rounded-2xl border bg-[var(--panel)] p-4 shadow-sm transition ${
+      className={`rounded-[16px] border bg-[var(--panel)] p-4 shadow-sm transition ${
         resaltado
-          ? "border-[var(--red)] ring-2 ring-[var(--red)]/35"
+          ? "border-[var(--accent)] ring-2 ring-[var(--accent)]/35"
           : "border-[var(--line)] ring-1 ring-black/[0.03]"
       } ${cerrada ? "opacity-90" : ""}`}
     >
       {resaltado && (
-        <p className="mb-2.5 rounded-lg bg-[var(--red)]/10 px-3 py-2 text-[13px] font-semibold text-[var(--red-deep)]">
+        <p className="mb-2.5 rounded-lg bg-[var(--accent)]/10 px-3 py-2 text-[13px] font-semibold text-[var(--accent)]">
           Esta es la solicitud de la notificación que abriste.
         </p>
       )}
@@ -128,7 +128,7 @@ export function TicketCard({
       {ticket.conversation_id && (
         <Link
           href={`/?conversationId=${encodeURIComponent(ticket.conversation_id)}`}
-          className="mt-3 inline-block text-[14px] font-semibold text-[var(--red-deep)] underline underline-offset-2 hover:opacity-80"
+          className="mt-3 inline-block text-[14px] font-semibold text-[var(--accent)] underline underline-offset-2 hover:opacity-80"
         >
           Ver conversación
         </Link>

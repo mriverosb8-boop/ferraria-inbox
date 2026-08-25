@@ -1,13 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BrandHeaderMark } from "@/app/components/BrandHeaderMark";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import { normalizePhoneDigits } from "@/lib/chat-utils";
-import { InboxHeaderTabs } from "@/app/components/InboxHeaderTabs";
-import { LogoutButton } from "@/app/components/LogoutButton";
-import { ThemeToggle } from "@/app/components/ThemeToggle";
-import { HeaderMobileMenu } from "@/app/components/HeaderMobileMenu";
+import { AppShell } from "@/app/components/AppShell";
 import { ChatPanel } from "./components/ChatPanel";
 import { RejectModal } from "./components/RejectModal";
 import { ReservaCard } from "./components/ReservaCard";
@@ -56,8 +52,6 @@ export default function ReservasPage() {
   });
 
   const scopedHotelId = activeHotelId ?? resolvedActiveHotelId;
-  const activeHotelName =
-    availableHotels.find((hotel) => hotel.id === scopedHotelId)?.name ?? null;
 
   useEffect(() => {
     if (resolvedActiveHotelId && activeHotelId === null) {
@@ -136,17 +130,18 @@ export default function ReservasPage() {
   };
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--ink)]">
+    <AppShell hotelId={scopedHotelId}>
+    <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]">
       <div className="fixed right-4 top-4 z-[600] flex max-w-[min(100vw-2rem,24rem)] flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`rounded-xl border px-4 py-3 text-[13px] font-semibold shadow-lg ring-1 ${
+            className={`rounded-xl border px-4 py-3 text-[13px] font-semibold shadow-lg ${
               toast.type === "error"
-                ? "border-rose-300 bg-rose-50 text-rose-950 ring-rose-200"
+                ? "border-[var(--accent)] bg-[var(--red-soft)] text-[var(--accent)]"
                 : toast.type === "info"
-                  ? "border-sky-300 bg-sky-50 text-sky-950 ring-sky-200"
-                  : "border-emerald-300 bg-emerald-50 text-emerald-950 ring-emerald-200"
+                  ? "border-sky-300 bg-sky-50 text-sky-950"
+                  : "border-emerald-300 bg-emerald-50 text-emerald-950"
             }`}
             role={toast.type === "error" ? "alert" : "status"}
           >
@@ -155,49 +150,23 @@ export default function ReservasPage() {
         ))}
       </div>
 
-      <header
-        className="flex h-[52px] shrink-0 items-center px-4 lg:h-14 lg:px-6"
-        style={{
-          background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
-          borderBottom: "1px solid var(--red-deep)",
-          boxShadow: "0 1px 8px rgba(196,43,32,.25)",
-        }}
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3.5">
-          <BrandHeaderMark size="sm" />
-          <div className="min-w-0">
-            <h1 className="grotesk truncate text-[16px] font-bold tracking-tight text-white">
-              Ferrar<span style={{ color: "rgba(255,255,255,.82)" }}>IA</span>
-            </h1>
-            <p className="hidden truncate text-[11px] leading-tight text-white/80 sm:block">Recepción · IA + agente humano</p>
-          </div>
-          <InboxHeaderTabs hotelId={scopedHotelId} onRed />
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <div className="hidden items-center gap-1 sm:flex">
-            <ThemeToggle />
-            <LogoutButton onRed />
-          </div>
-          <HeaderMobileMenu onRed>
-            <ThemeToggle variant="menu" />
-            <LogoutButton onRed variant="menu" />
-          </HeaderMobileMenu>
-        </div>
-      </header>
-
       {error && (
-        <div className="shrink-0 border-b border-rose-200 bg-rose-50 px-4 py-2 text-center text-[13px] text-rose-900">
+        <div
+          className="shrink-0 border-b px-4 py-2 text-center text-[13px]"
+          style={{ borderColor: "var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
+        >
           {error}
         </div>
       )}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden lg:p-5">
-        <section className="flex min-h-0 flex-col rounded-2xl border border-[var(--line)] bg-[var(--panel-2)] shadow-sm ring-1 ring-black/[0.03] lg:overflow-hidden">
+        {/* Contenedor principal como card blanca sobre el crema (spec §2.1 y §2.5). */}
+        <section className="flex min-h-0 flex-col rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] shadow-sm lg:overflow-hidden">
           {availableHotels.length >= 2 && (
-            <div className="shrink-0 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
+            <div className="shrink-0 border-b border-[var(--border-soft)] px-4 py-3">
               <label
                 htmlFor="reservas-active-hotel"
-                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--ink-2)]"
+                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--text-secondary)]"
               >
                 Hotel activo
               </label>
@@ -210,7 +179,7 @@ export default function ReservasPage() {
                   writeStoredActiveHotelId(nextHotelId);
                   setSelectedReserva(null);
                 }}
-                className="w-full cursor-pointer appearance-none rounded-xl border border-[var(--line)] bg-[var(--panel)] py-2.5 pl-3.5 pr-10 text-[13px] text-[var(--ink)] shadow-sm focus:border-[var(--red)] focus:outline-none focus:ring-2 focus:ring-[var(--red)]/20"
+                className="w-full cursor-pointer appearance-none rounded-xl border border-[var(--border-soft)] bg-[var(--bg-card)] py-2.5 pl-3.5 pr-10 text-[13px] text-[var(--text-primary)] shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                 style={{
                   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b665e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
                   backgroundRepeat: "no-repeat",
@@ -231,11 +200,10 @@ export default function ReservasPage() {
             activeTab={activeTab}
             pendingCount={pendingCount}
             processedCount={procesadas.length}
-            hotelName={activeHotelName}
             onChange={setActiveTab}
           />
 
-          <div className="shrink-0 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
+          <div className="shrink-0 border-b border-[var(--border-soft)] px-4 py-3">
             <input
               type="search"
               inputMode="tel"
@@ -243,16 +211,16 @@ export default function ReservasPage() {
               value={phoneQuery}
               onChange={(event) => setPhoneQuery(event.target.value)}
               placeholder="Buscar por teléfono…"
-              className="w-full rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3.5 py-2.5 text-[14px] text-[var(--ink)] shadow-sm placeholder:text-[var(--ink-3)] transition focus:border-[var(--red)] focus:bg-[var(--panel)] focus:outline-none focus:ring-2 focus:ring-[var(--red)]/20"
+              className="w-full rounded-xl border border-[var(--border-soft)] bg-[var(--bg-app)] px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] shadow-sm placeholder:text-[var(--text-secondary)] transition focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             />
           </div>
 
           <div className="p-4 scrollbar-app lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {loading ? (
-              <p className="py-12 text-center text-sm text-[var(--ink-2)]">Cargando reservas...</p>
+              <p className="py-12 text-center text-sm text-[var(--text-secondary)]">Cargando reservas...</p>
             ) : filteredReservas.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="text-sm font-medium text-[var(--ink-2)]">
+                <p className="text-sm font-medium text-[var(--text-primary)]">
                   {phoneQueryDigits && visibleReservas.length > 0 ? noPhoneMatchMessage : emptyMessage}
                 </p>
               </div>
@@ -283,7 +251,7 @@ export default function ReservasPage() {
         <div
           className={`${
             selectedReserva
-              ? "fixed inset-0 z-[100] bg-[var(--bg)] p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+              ? "fixed inset-0 z-[100] bg-[var(--bg-app)] p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[calc(62px+env(safe-area-inset-bottom,0px))] lg:pb-3"
               : "hidden"
           } lg:static lg:z-auto lg:block lg:min-h-0 lg:bg-transparent lg:p-0`}
         >
@@ -299,5 +267,6 @@ export default function ReservasPage() {
         onConfirm={(reason) => void handleReject(reason)}
       />
     </div>
+    </AppShell>
   );
 }

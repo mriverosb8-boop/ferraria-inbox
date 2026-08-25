@@ -91,7 +91,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
       >
         <div
           className="px-5 py-4"
-          style={{ background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)" }}
+          style={{ background: "var(--accent)" }}
         >
           <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80">FerrarIA</p>
           <h2 id="feedback-title" className="grotesk mt-1 text-lg font-bold tracking-tight text-white">
@@ -118,7 +118,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
                     className="grotesk flex-1 rounded-xl px-3 py-2 text-[13px] font-semibold transition"
                     style={
                       active
-                        ? { border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }
+                        ? { border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }
                         : { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }
                     }
                     aria-pressed={active}
@@ -171,7 +171,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
               }}
               maxLength={MESSAGE_MAX_LENGTH}
               placeholder="Escribe aquí tu comentario…"
-              className="min-h-28 w-full resize-none rounded-xl px-3.5 py-3 text-[14px] shadow-sm outline-none transition focus:ring-2 focus:ring-[var(--red)]/25"
+              className="min-h-28 w-full resize-none rounded-xl px-3.5 py-3 text-[14px] shadow-sm outline-none transition focus:ring-2 focus:ring-[var(--accent)]/25"
               style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
               disabled={submitting}
             />
@@ -183,7 +183,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
           {error && (
             <p
               className="rounded-lg px-3 py-2 text-[12px]"
-              style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+              style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
             >
               {error}
             </p>
@@ -205,8 +205,8 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
               aria-busy={submitting}
               className="grotesk rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white shadow-md transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
               style={{
-                background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 100%)",
-                boxShadow: "0 6px 16px -6px rgba(196,43,32,.5)",
+                background: "linear-gradient(100deg, var(--accent) 0%, var(--accent) 100%)",
+                boxShadow: "0 6px 16px -6px color-mix(in srgb, var(--accent) 50%, transparent)",
               }}
             >
               {submitting ? "Enviando…" : "Enviar feedback"}

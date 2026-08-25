@@ -23,7 +23,7 @@ const inputStyle = {
 };
 
 const inputClass =
-  "w-full rounded-xl px-3.5 py-2.5 text-base shadow-sm outline-none transition focus:ring-2 focus:ring-[var(--red)]/25 lg:text-[14px]";
+  "w-full rounded-xl px-3.5 py-2.5 text-base shadow-sm outline-none transition focus:ring-2 focus:ring-[var(--accent)]/25 lg:text-[14px]";
 
 export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContactsModalProps) {
   const [contacts, setContacts] = useState<StaffContact[]>([]);
@@ -235,7 +235,7 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
         <div
           className="shrink-0 px-5 py-4"
           style={{
-            background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
+            background: "var(--accent)",
           }}
         >
           <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80">
@@ -344,9 +344,9 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
               <p
                 className="rounded-lg px-3 py-2 text-[12px]"
                 style={{
-                  border: "1px solid var(--red)",
+                  border: "1px solid var(--accent)",
                   background: "var(--red-soft)",
-                  color: "var(--red-deep)",
+                  color: "var(--accent)",
                 }}
               >
                 {formError}
@@ -360,8 +360,8 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
                 aria-busy={submitting}
                 className="grotesk rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white shadow-md transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
                 style={{
-                  background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 100%)",
-                  boxShadow: "0 6px 16px -6px rgba(196,43,32,.5)",
+                  background: "linear-gradient(100deg, var(--accent) 0%, var(--accent) 100%)",
+                  boxShadow: "0 6px 16px -6px color-mix(in srgb, var(--accent) 50%, transparent)",
                 }}
               >
                 {submitting ? "Guardando..." : "Agregar contacto"}
@@ -381,9 +381,9 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
               <p
                 className="mt-2 rounded-lg px-3 py-2 text-[12px]"
                 style={{
-                  border: "1px solid var(--red)",
+                  border: "1px solid var(--accent)",
                   background: "var(--red-soft)",
-                  color: "var(--red-deep)",
+                  color: "var(--accent)",
                 }}
               >
                 {rowError}
@@ -398,9 +398,9 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
               <p
                 className="mt-3 rounded-xl px-3.5 py-3 text-[13px]"
                 style={{
-                  border: "1px solid var(--red)",
+                  border: "1px solid var(--accent)",
                   background: "var(--red-soft)",
-                  color: "var(--red-deep)",
+                  color: "var(--accent)",
                 }}
               >
                 {loadError}
@@ -467,7 +467,7 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
                               className="grotesk rounded-xl px-3 py-2 text-[12.5px] font-semibold text-white shadow-sm transition hover:brightness-95 disabled:opacity-60"
                               style={{
                                 background:
-                                  "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 100%)",
+                                  "linear-gradient(100deg, var(--accent) 0%, var(--accent) 100%)",
                               }}
                             >
                               {busy ? "Guardando..." : "Guardar"}
@@ -527,7 +527,7 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
                               style={{
                                 border: "1px solid var(--line)",
                                 background: "var(--panel)",
-                                color: contact.isActive ? "var(--red-deep)" : "var(--ink-2)",
+                                color: contact.isActive ? "var(--accent)" : "var(--ink-2)",
                               }}
                             >
                               {busy ? "…" : contact.isActive ? "Desactivar" : "Activar"}

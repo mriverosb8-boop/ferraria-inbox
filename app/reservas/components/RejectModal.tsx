@@ -31,7 +31,7 @@ export function RejectModal({ reserva, submitting, onClose, onConfirm }: Props) 
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           placeholder="Ej: No hay disponibilidad para esas fechas"
-          className="mt-4 min-h-28 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5 text-sm text-[var(--ink)] outline-none transition placeholder:text-[var(--ink-3)] focus:border-[var(--red)] focus:bg-[var(--panel)] focus:ring-2 focus:ring-[var(--red)]/20"
+          className="mt-4 min-h-28 w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5 text-sm text-[var(--ink)] outline-none transition placeholder:text-[var(--ink-3)] focus:border-[var(--accent)] focus:bg-[var(--panel)] focus:ring-2 focus:ring-[var(--accent)]/20"
         />
         <div className="mt-4 flex justify-end gap-2">
           <button
@@ -46,7 +46,7 @@ export function RejectModal({ reserva, submitting, onClose, onConfirm }: Props) 
             type="button"
             onClick={() => onConfirm(reason.trim())}
             disabled={!canSubmit}
-            className="rounded-xl bg-rose-600 px-4 py-2 text-[13px] font-semibold text-white shadow-sm ring-1 ring-rose-700/30 transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-[var(--accent)] px-4 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {submitting ? "Rechazando..." : "Rechazar reserva"}
           </button>

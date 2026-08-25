@@ -2,12 +2,14 @@
 
 import type { ClipboardEvent, SVGProps } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { avatarFlatColors, initials, splitLeadingEmoji } from "@/lib/avatar";
 import {
   applyConversationRowPatch,
   formatMessageDetailTime,
   formatMessageDisplayTime,
   getConversationDisplayActivityMs,
+  getMessageDisplayDate,
   isMediaWithoutFile,
   isWaLidIdentifier,
   messageNeedsHumanAlert,
@@ -37,27 +39,21 @@ import {
 import { resolveDeliveryTick } from "@/lib/delivery-status";
 import { STAFF_CONTACT_TEMPLATE_NAME } from "@/lib/staff-contacts";
 import { sendWhatsappTemplate } from "@/lib/send-whatsapp-template";
+import { tiempoTranscurrido } from "@/lib/service-tickets";
 import { normalizeColombianWhatsappNumber } from "@/lib/whatsapp-templates";
 import { useConversations } from "@/hooks/useConversations";
 import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
 import { useInboxSearch } from "@/hooks/useInboxSearch";
 import { useMessageDeliveryReceipts } from "@/hooks/useMessageDeliveryReceipts";
-import { BrandHeaderMark } from "./BrandHeaderMark";
 import { FollowupTimer } from "./FollowupTimer";
 import { InboxListSkeleton, InboxLoadingSkeleton, InboxThreadSkeleton } from "./InboxLoadingSkeleton";
-import { InboxHeaderTabs, type InboxView } from "./InboxHeaderTabs";
-import { LogoutButton } from "./LogoutButton";
+import { AppShell } from "./AppShell";
+import { VISTA_PARAM, VISTA_STAFF, type InboxView } from "./AppSidebar";
 import { Spinner } from "./Spinner";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
-import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { StartConversationModal } from "./StartConversationModal";
-import { FeedbackModal } from "./FeedbackModal";
-import { ChangelogButton } from "./ChangelogModal";
-import { ThemeToggle } from "./ThemeToggle";
-import { HeaderMobileMenu, HEADER_MENU_ROW_CLASS } from "./HeaderMobileMenu";
 import { WhatsappText, stripWhatsappMarkup } from "./WhatsappText";
-import { HelpModal } from "./HelpModal";
 import { StaffContactsModal } from "./StaffContactsModal";
 
 type StatusFilter = "all" | "unread" | "ai_active" | "requires_attention" | "closed";
@@ -249,7 +245,7 @@ function StatusToken({ variant }: { variant: StatusVariant }) {
     return (
       <span
         className="grotesk inline-flex items-center gap-1.5"
-        style={{ ...pill, background: "var(--red)", color: "#fff" }}
+        style={{ ...pill, background: "var(--accent)", color: "#fff" }}
       >
         <Dot size={6} color="rgba(255,255,255,.85)" />
         {variant === "pending" ? "Pendiente" : "Atención"}
@@ -291,10 +287,45 @@ function StatusToken({ variant }: { variant: StatusVariant }) {
   return (
     <span
       className="inline-flex items-center gap-1.5"
-      style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-3)", letterSpacing: "0.01em" }}
+      style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-secondary)", letterSpacing: "0.01em" }}
     >
-      <Dot color="var(--ink-3)" />
+      <Dot color="var(--text-secondary)" />
       Resuelto
+    </span>
+  );
+}
+
+/** Glifo, palabra y color de cada estado en el prefijo del preview (spec 4.3). */
+const GUEST_STATUS_PREFIX: Record<StatusVariant, { glyph: string; label: string; color: string }> = {
+  pending: { glyph: "●", label: "Pendiente", color: "var(--accent)" },
+  attention: { glyph: "●", label: "Atención", color: "var(--accent)" },
+  human: { glyph: "●", label: "Humano", color: "var(--gold)" },
+  ia: { glyph: "✦", label: "IA activa", color: "var(--live)" },
+  done: { glyph: "✓", label: "Hecha", color: "var(--text-secondary)" },
+};
+
+/**
+ * Prefijo de estado de la fila de Huéspedes: va pegado al preview del último
+ * mensaje, en la misma línea, y reemplaza a la pastilla `StatusToken` que antes
+ * ocupaba un renglón entero de la fila.
+ *
+ * Lleva la palabra al lado del glifo a propósito. El spec del rediseño pide el
+ * símbolo (● / ✦ / ✓), pero recepción trabaja en tablets sin hover: un glifo
+ * suelto dejaría el estado escondido detrás de un `title` que nadie puede abrir
+ * con el dedo. El símbolo sirve para escanear la lista de un vistazo; la palabra
+ * es la que lo hace legible sin aprenderse la leyenda.
+ */
+function GuestStatusPrefix({ variant }: { variant: StatusVariant }) {
+  const { glyph, label, color } = GUEST_STATUS_PREFIX[variant];
+  return (
+    <span
+      className="grotesk inline-flex shrink-0 items-center gap-1"
+      style={{ fontSize: 11.5, fontWeight: 700, color, letterSpacing: "0.01em" }}
+    >
+      <span aria-hidden style={{ fontSize: variant === "ia" || variant === "done" ? 11 : 8, lineHeight: 1 }}>
+        {glyph}
+      </span>
+      {label}
     </span>
   );
 }
@@ -317,8 +348,8 @@ function AutoReactivatedBadge() {
         borderRadius: 999,
         fontSize: 10.5,
         fontWeight: 700,
-        color: "var(--ink-2)",
-        background: "var(--line-2)",
+        color: "var(--text-secondary)",
+        background: "var(--border-soft)",
       }}
       title="Nadie atendió a tiempo: el engine devolvió la IA automáticamente"
     >
@@ -359,8 +390,8 @@ function TriageEscalatedBadge() {
         letterSpacing: "0.04em",
         textTransform: "uppercase",
         color: "#fff",
-        background: "var(--red)",
-        boxShadow: "0 0 0 3px color-mix(in srgb, var(--red) 22%, transparent)",
+        background: "var(--accent)",
+        boxShadow: "0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent)",
       }}
       title="Lleva horas esperando algo que solo una persona resuelve y nadie la tomó"
     >
@@ -374,16 +405,6 @@ function IconSearch(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-    </svg>
-  );
-}
-
-function IconHelp(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
-      <circle cx="12" cy="12" r="9" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 9a2.5 2.5 0 014.6 1.3c0 1.7-2.6 2-2.6 3.7" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 17h.01" />
     </svg>
   );
 }
@@ -423,14 +444,6 @@ function IconBlock(props: SVGProps<SVGSVGElement>) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} {...props}>
       <circle cx="12" cy="12" r="9" />
       <path strokeLinecap="round" d="M5.6 5.6l12.8 12.8" />
-    </svg>
-  );
-}
-
-function IconMore(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
-      <path d="M12 8.25a1.5 1.5 0 110-3 1.5 1.5 0 010 3zM12 13.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zM12 18.75a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" />
     </svg>
   );
 }
@@ -546,14 +559,6 @@ function IconClose(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function IconBuilding(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
-    </svg>
-  );
-}
-
 function IconGlobe(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
@@ -615,14 +620,6 @@ function IconPhone(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-function IconSparkles(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" {...props}>
-      <path fillRule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.813 3.37a3.75 3.75 0 002.576 2.576l3.38.813a.75.75 0 010 1.442l-3.38.813a3.75 3.75 0 00-2.576 2.576l-.813 3.37a.75.75 0 01-1.442 0l-.813-3.37a3.75 3.75 0 00-2.576-2.576l-3.38-.813a.75.75 0 010-1.442l3.38-.813a3.75 3.75 0 002.576-2.576l.813-3.37a.75.75 0 01.544-.721zm-4.5 12a.75.75 0 01.721.544l.415 1.725a1.5 1.5 0 001.031 1.031l1.725.415a.75.75 0 010 1.442l-1.725.415a1.5 1.5 0 00-1.031 1.031l-.415 1.725a.75.75 0 01-1.442 0l-.415-1.725a1.5 1.5 0 00-1.031-1.031l-1.725-.415a.75.75 0 010-1.442l1.725-.415a1.5 1.5 0 001.031-1.031l.415-1.725a.75.75 0 01.544-.721z" clipRule="evenodd" />
-    </svg>
-  );
-}
-
 function IconUserCircle(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
@@ -635,19 +632,6 @@ function IconPencil(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 8.25L15.75 4.5" />
-    </svg>
-  );
-}
-
-/** Icono para "Reactivar IA": robot con antena (distinto de las estrellas de resumen). */
-function IconRobot(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25" />
-      <circle cx="12" cy="2.25" r="0.9" fill="currentColor" stroke="none" />
-      <rect x="4.5" y="6.75" width="15" height="11.25" rx="3" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h.008M15 12h.008M9.75 15.75h4.5" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 11.25v3M21.75 11.25v3" />
     </svg>
   );
 }
@@ -799,18 +783,18 @@ function LazyImagePlaceholder({
     <button
       type="button"
       onClick={onLoad}
-      className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 shadow-sm transition hover:border-[var(--red)] hover:bg-[var(--panel-3)]"
-      style={{ borderColor: "color-mix(in srgb, var(--red) 45%, var(--line))", background: "var(--panel-2)", color: "var(--ink-2)" }}
+      className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--border-soft)]"
+      style={{ borderColor: "color-mix(in srgb, var(--accent) 45%, var(--border-soft))", background: "var(--bg-app)", color: "var(--text-secondary)" }}
     >
       <IconImage className="h-8 w-8 opacity-70" aria-hidden />
-      <span className="text-sm font-medium" style={{ color: "var(--ink)" }}>{label}</span>
+      <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</span>
     </button>
   );
 }
 
 function LazyMediaLoadingState({ label }: { label: string }) {
   return (
-    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl px-4" style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }}>
+    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl px-4" style={{ border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--text-secondary)" }}>
       <Spinner className="h-6 w-6 animate-spin opacity-70" />
       <span className="text-sm">{label}</span>
     </div>
@@ -825,12 +809,12 @@ function LazyMediaErrorState({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 text-rose-900">
+    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-[var(--accent)] bg-[var(--red-soft)] px-4 text-[var(--accent)]">
       <p className="text-center text-sm">{label}</p>
       <button
         type="button"
         onClick={onRetry}
-        className="rounded-lg border border-rose-300 bg-white px-3 py-1.5 text-[12px] font-semibold text-rose-900 shadow-sm transition hover:bg-rose-100"
+        className="rounded-lg border border-[var(--accent)] bg-[var(--bg-card)] px-3 py-1.5 text-[12px] font-semibold text-[var(--accent)] shadow-sm transition hover:bg-[var(--bg-app)]"
       >
         Reintentar
       </button>
@@ -869,7 +853,7 @@ function Avatar({
         fontWeight: 700,
         fontSize: emoji ? Math.round(size * 0.5) : Math.round(size * 0.36),
         lineHeight: 1,
-        boxShadow: ring ? "0 0 0 2px var(--panel), 0 0 0 4px var(--red)" : "none",
+        boxShadow: ring ? "0 0 0 2px var(--bg-card), 0 0 0 4px var(--accent)" : "none",
       }}
     >
       {emoji ?? initials(name)}
@@ -877,7 +861,6 @@ function Avatar({
   );
 }
 
-/** Chip de acción rápida del pie del hilo (Dirección D). `primary` = rojo sólido. */
 /** Tono de color por acción para distinguir cada botón (Dirección D). */
 type ActionTone = "human" | "ai" | "complete" | "summary" | "neutral";
 
@@ -887,76 +870,11 @@ const ACTION_TONES: Record<ActionTone, { base: string; soft: string; deep: strin
   // Reactivar IA → verde (mismo color que el estado "IA activa").
   ai: { base: "var(--live)", soft: "var(--live-soft)", deep: "#17784b", border: "var(--live)" },
   // Marcar como completado → gris neutro (mismo color que "Resuelto").
-  complete: { base: "var(--ink-2)", soft: "var(--panel-3)", deep: "var(--ink)", border: "var(--ink-3)" },
+  complete: { base: "var(--text-secondary)", soft: "var(--border-soft)", deep: "var(--text-primary)", border: "var(--text-secondary)" },
   // Crear resumen → rojo de marca.
-  summary: { base: "var(--red)", soft: "var(--red-soft)", deep: "var(--red-deep)", border: "var(--red)" },
-  neutral: { base: "var(--ink-2)", soft: "var(--panel-2)", deep: "var(--red-deep)", border: "var(--red)" },
+  summary: { base: "var(--accent)", soft: "var(--red-soft)", deep: "var(--accent)", border: "var(--accent)" },
+  neutral: { base: "var(--text-secondary)", soft: "var(--bg-app)", deep: "var(--accent)", border: "var(--accent)" },
 };
-
-function ActionChip({
-  icon: Ic,
-  label,
-  primary = false,
-  busy = false,
-  onClick,
-  disabled = false,
-  tone = "neutral",
-}: {
-  icon: (props: SVGProps<SVGSVGElement>) => React.JSX.Element;
-  label: string;
-  primary?: boolean;
-  busy?: boolean;
-  onClick?: () => void;
-  disabled?: boolean;
-  tone?: ActionTone;
-}) {
-  const [hover, setHover] = useState(false);
-  const t = ACTION_TONES[tone];
-  const iconColor = primary ? "#fff" : hover ? t.deep : t.base;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled || busy}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="grotesk inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
-      style={
-        primary
-          ? {
-              padding: "8px 13px",
-              border: "none",
-              borderRadius: 999,
-              background: hover ? "var(--red-deep)" : "var(--red)",
-              color: "#fff",
-              fontSize: 12,
-              fontWeight: 700,
-              boxShadow: "var(--shadow)",
-              transition: "background .12s, transform .1s",
-              transform: hover ? "translateY(-1px)" : "none",
-            }
-          : {
-              padding: "8px 12px",
-              border: `1px solid ${hover ? t.border : `color-mix(in srgb, ${t.base} 30%, var(--line))`}`,
-              borderRadius: 999,
-              background: hover ? t.soft : "var(--panel)",
-              color: hover ? t.deep : "var(--ink)",
-              fontSize: 12,
-              fontWeight: 600,
-              transition: "background .12s, border-color .12s, color .12s, transform .1s",
-              transform: hover ? "translateY(-1px)" : "none",
-            }
-      }
-    >
-      {busy ? (
-        <Spinner className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Ic className="h-3.5 w-3.5 shrink-0" style={{ color: iconColor }} aria-hidden />
-      )}
-      {label}
-    </button>
-  );
-}
 
 /** Acción con atajo del panel cockpit (Dirección D): icono + badge de atajo + etiqueta. */
 function CmdAction({
@@ -991,9 +909,9 @@ function CmdAction({
       style={{
         padding: "12px 13px",
         borderRadius: 11,
-        border: `1px solid ${hover ? t.border : `color-mix(in srgb, ${t.base} 25%, var(--line))`}`,
-        background: hover ? t.soft : "var(--panel-2)",
-        color: hover ? t.deep : "var(--ink)",
+        border: `1px solid ${hover ? t.border : `color-mix(in srgb, ${t.base} 25%, var(--border-soft))`}`,
+        background: hover ? t.soft : "var(--bg-app)",
+        color: hover ? t.deep : "var(--text-primary)",
         transition: "background .12s, border-color .12s, color .12s",
       }}
     >
@@ -1007,8 +925,8 @@ function CmdAction({
           className="ibx-mono"
           style={{
             fontSize: 10,
-            color: "var(--ink-3)",
-            border: "1px solid var(--line)",
+            color: "var(--text-secondary)",
+            border: "1px solid var(--border-soft)",
             borderRadius: 5,
             padding: "1px 5px",
           }}
@@ -1158,7 +1076,7 @@ function fileFriendlyName(mime: string | null | undefined, kind: MediaKind): str
 }
 
 const FILE_TONES: Record<"pdf" | "document" | "file", { badge: string; text: string; border: string }> = {
-  pdf: { badge: "bg-rose-50", text: "text-rose-700", border: "border-rose-200" },
+  pdf: { badge: "bg-[var(--red-soft)]", text: "text-[var(--accent)]", border: "border-[var(--accent)]/30" },
   document: { badge: "bg-sky-50", text: "text-sky-700", border: "border-sky-200" },
   file: { badge: "bg-stone-100", text: "text-stone-600", border: "border-stone-300" },
 };
@@ -1194,16 +1112,16 @@ function PrivateWhatsAppFile({
 
   return (
     <div className="flex max-w-full flex-col gap-2">
-      <div className="flex max-w-full items-center gap-3 rounded-xl border border-[#e7dfd4] bg-white/70 p-2.5 shadow-sm ring-1 ring-black/[0.03]">
+      <div className="flex max-w-full items-center gap-3 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] p-2.5 shadow-sm">
         <div
           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border text-[10px] font-bold ${tone.badge} ${tone.text} ${tone.border}`}
         >
           {badge}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-[#1f1f1c]">{title}</p>
+          <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{title}</p>
           {rawFilename ? (
-            <p className="mt-0.5 text-[11px] text-[#6b665e]">{friendly}</p>
+            <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{friendly}</p>
           ) : null}
         </div>
         {phase === "loaded" && signedUrl ? (
@@ -1211,7 +1129,7 @@ function PrivateWhatsAppFile({
             href={signedUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="shrink-0 rounded-lg border border-[#c5d4e0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#1f1f1c] shadow-sm transition hover:bg-[#f1ece4]"
+            className="shrink-0 rounded-lg border border-[var(--border-soft)] bg-[var(--bg-card)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-primary)] shadow-sm transition hover:bg-[var(--bg-app)]"
           >
             {openLabel}
           </a>
@@ -1219,17 +1137,17 @@ function PrivateWhatsAppFile({
           <button
             type="button"
             onClick={() => void requestLoad()}
-            className="shrink-0 rounded-lg border border-[#c5d4e0] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#1f1f1c] shadow-sm transition hover:bg-[#f1ece4]"
+            className="shrink-0 rounded-lg border border-[var(--border-soft)] bg-[var(--bg-card)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--text-primary)] shadow-sm transition hover:bg-[var(--bg-app)]"
           >
             Cargar archivo
           </button>
         ) : phase === "loading" ? (
-          <span className="shrink-0 text-[11px] text-[#6b665e]">Cargando...</span>
+          <span className="shrink-0 text-[11px] text-[var(--text-secondary)]">Cargando...</span>
         ) : (
           <button
             type="button"
             onClick={() => void requestLoad()}
-            className="shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-900 shadow-sm transition hover:bg-rose-100"
+            className="shrink-0 rounded-lg border border-[var(--accent)] bg-[var(--red-soft)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--accent)] shadow-sm transition hover:bg-[var(--bg-app)]"
           >
             Reintentar
           </button>
@@ -1258,20 +1176,20 @@ function UnavailableMediaCard({ message }: { message: Message }) {
     <div className="flex max-w-full flex-col gap-2">
       <div
         className="flex max-w-full items-center gap-3 rounded-xl p-2.5"
-        style={{ border: "1px dashed var(--line)", background: "var(--panel-2)" }}
+        style={{ border: "1px dashed var(--border-soft)", background: "var(--bg-app)" }}
       >
         <div
           className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
-          style={{ background: "var(--panel-3)", color: "var(--ink-3)" }}
+          style={{ background: "var(--border-soft)", color: "var(--text-secondary)" }}
         >
           <IconPaperclip className="h-5 w-5" aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold" style={{ color: "var(--ink-2)" }}>
+          <p className="text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>
             Archivo no disponible (no se pudo procesar)
           </p>
           {filename ? (
-            <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--ink-3)" }}>
+            <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--text-secondary)" }}>
               {filename}
             </p>
           ) : null}
@@ -1432,6 +1350,117 @@ function describeDeliveryFailure(failure: MessageDeliveryReceipt): string {
   return reason ? `No entregado — ${reason}` : "No entregado";
 }
 
+/**
+ * Día calendario del mensaje en hora Colombia, en formato `AAAA-MM-DD`.
+ *
+ * La zona va fija a propósito, igual que en `lib/chat-utils`: si se dejara la
+ * del navegador, el mismo mensaje cambiaría de día para quien abra la bandeja
+ * desde fuera del país y las píldoras de fecha partirían el hilo por donde no
+ * es. `""` significa "sin fecha utilizable": esos mensajes no abren día nuevo.
+ */
+function messageDayKey(m: Message): string {
+  const date = getMessageDisplayDate(m as unknown as Record<string, unknown>);
+  const ms = date.getTime();
+  if (Number.isNaN(ms) || ms === 0) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+/** Texto de la píldora: "Hoy", "Ayer" o la fecha larga en español. */
+function formatDayPillLabel(m: Message): string {
+  const date = getMessageDisplayDate(m as unknown as Record<string, unknown>);
+  const key = messageDayKey(m);
+  if (!key) return "";
+
+  const now = new Date();
+  const todayKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  if (key === todayKey) return "Hoy";
+
+  const yesterdayKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: COLOMBIA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+  if (key === yesterdayKey) return "Ayer";
+
+  const sameYear = key.slice(0, 4) === todayKey.slice(0, 4);
+  return new Intl.DateTimeFormat("es-CO", {
+    timeZone: COLOMBIA_TIME_ZONE,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    ...(sameYear ? null : { year: "numeric" }),
+  }).format(date);
+}
+
+/**
+ * Hora del mensaje para la burbuja, solo `HH:mm`. El día ya lo dice la píldora
+ * de arriba, así que repetirlo en cada burbuja era ruido. Si la fila no trae
+ * fecha utilizable se cae a lo que venga en `sentAt`, igual que antes.
+ */
+function formatBubbleClock(m: Message): string {
+  const date = getMessageDisplayDate(m as unknown as Record<string, unknown>);
+  const ms = date.getTime();
+  if (Number.isNaN(ms) || ms === 0) {
+    return formatMessageDisplayTime(m as unknown as Record<string, unknown>) || m.sentAt;
+  }
+  return new Intl.DateTimeFormat("es-CO", {
+    timeZone: COLOMBIA_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+/** Píldora de fecha centrada que separa los días del hilo (spec 4.4). */
+function DayPill({ label }: { label: string }) {
+  return (
+    <div className="flex w-full justify-center py-1.5">
+      <span
+        className="ibx-mono inline-flex items-center rounded-full px-3 py-1"
+        style={{
+          background: "var(--bg-card)",
+          border: "1px solid var(--border-soft)",
+          color: "var(--text-secondary)",
+          fontSize: 10.5,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Evento de sistema del hilo: centrado y en gris, sin avatar ni burbuja, para
+ * que no se confunda con algo que dijo una persona o el agente (spec 4.4).
+ */
+function SystemEvent({ label }: { label: string }) {
+  return (
+    <div className="flex w-full justify-center px-3 py-1.5">
+      <span
+        className="inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1 text-center text-[11.5px] leading-snug"
+        style={{ background: "var(--bg-card)", border: "1px solid var(--border-soft)", color: "var(--text-secondary)" }}
+      >
+        <IconCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="min-w-0 break-words [overflow-wrap:anywhere]">{label}</span>
+      </span>
+    </div>
+  );
+}
+
 function MessageBubble({
   m,
   guestName,
@@ -1475,7 +1504,7 @@ function MessageBubble({
     isUser && typeof m.format === "string" && m.format.trim().toLowerCase() === "audio";
   const hasMediaSource = Boolean(m.mediaUrl || m.mediaStoragePath);
   const mediaKind = resolveMediaKind(m.mediaMimeType);
-  const timeLabel = formatMessageDisplayTime(m as unknown as Record<string, unknown>) || m.sentAt;
+  const timeLabel = formatBubbleClock(m);
   const isOutboundHotel = !isUser;
   const deliveryStatus = m.status ?? "confirmed";
   // El optimista de un PDF recién adjuntado tiene filename y mime pero todavía
@@ -1483,29 +1512,38 @@ function MessageBubble({
   // disponible" durante el envío. Solo se juzga lo ya confirmado en DB.
   const missingFile = deliveryStatus !== "pending" && isMediaWithoutFile(m);
 
-  // Estética Dirección D: agente = rojo sólido; IA = rojo suave con borde + destello; huésped = panel.
+  /*
+    Spec 4.4 y 2.3/2.5: huésped = card blanca a la izquierda, agente (IA) =
+    crema amarillento con su borde a la derecha, respuesta humana = roja sólida
+    con texto blanco. Radio 14 en todas, con la esquina del lado del avatar
+    achicada para que se lea de un vistazo de qué lado viene el mensaje.
+  */
   const bubbleStyle: React.CSSProperties = isUser
     ? {
-        background: "var(--panel-2)",
-        color: "var(--ink)",
-        borderRadius: "5px 16px 16px 16px",
-        ...(isHandoffCause ? { boxShadow: "inset 3px 0 0 0 var(--red)" } : null),
+        background: "var(--bubble-guest)",
+        color: "var(--text-primary)",
+        border: "1px solid var(--border-soft)",
+        borderRadius: "4px var(--radius-bubble) var(--radius-bubble) var(--radius-bubble)",
+        boxShadow: "var(--shadow-sm)",
+        ...(isHandoffCause ? { boxShadow: "inset 3px 0 0 0 var(--accent)" } : null),
       }
     : isAi
       ? {
-          background: "var(--gold-soft)",
-          color: "var(--ink)",
-          border: "1.5px solid color-mix(in srgb, var(--gold) 40%, transparent)",
-          borderRadius: "16px 16px 5px 16px",
-          ...(isHandoffCause ? { boxShadow: "inset -3px 0 0 0 var(--red)" } : null),
+          background: "var(--bubble-ai)",
+          color: "var(--text-primary)",
+          border: "1px solid var(--bubble-ai-border)",
+          borderRadius: "var(--radius-bubble) var(--radius-bubble) 4px var(--radius-bubble)",
+          ...(isHandoffCause ? { boxShadow: "inset -3px 0 0 0 var(--accent)" } : null),
         }
       : {
-          background: "var(--red)",
+          // Burbuja de respuesta humana: terracota del spec (§2.2).
+          background: "var(--accent)",
           color: "#fff",
-          borderRadius: "16px 16px 5px 16px",
+          border: "1px solid var(--accent)",
+          borderRadius: "var(--radius-bubble) var(--radius-bubble) 4px var(--radius-bubble)",
         };
   const onRed = isAgent;
-  const metaColor = onRed ? "rgba(255,255,255,.8)" : "var(--ink-3)";
+  const metaColor = onRed ? "rgba(255,255,255,.8)" : "var(--text-secondary)";
 
   // Qué tick va al lado de la hora. El acuse de Meta manda; sin acuse queda en
   // ✓ ("salió"), nunca en ✓✓. Ver `resolveDeliveryTick`.
@@ -1536,9 +1574,9 @@ function MessageBubble({
             style={{
               width: 30,
               height: 30,
-              borderRadius: 10,
-              background: isAi ? "var(--gold-soft)" : "var(--red)",
-              border: isAi ? "1.5px solid var(--gold)" : "none",
+              borderRadius: "var(--radius-chip)",
+              background: isAi ? "var(--bubble-ai)" : "var(--accent)",
+              border: isAi ? "1px solid var(--bubble-ai-border)" : "none",
             }}
           >
             {isAi ? (
@@ -1552,18 +1590,26 @@ function MessageBubble({
       <div
         className={`flex min-w-0 flex-col ${isUser ? "items-start" : "items-end"} max-w-[min(92%,26rem)] sm:max-w-[min(86%,34rem)] lg:max-w-[min(82%,46rem)]`}
       >
+        {/* Quién habla, en texto y no solo por el color de la burbuja: recepción
+            trabaja en tablets y el color no siempre alcanza para distinguir una
+            respuesta del agente de una que escribió una persona. */}
         {!isUser && (
           <span
-            className="grotesk"
+            className="grotesk inline-flex items-center gap-1"
             style={{
               fontSize: 10,
               fontWeight: 700,
               letterSpacing: "0.02em",
-              color: isAi ? "var(--gold)" : "var(--ink-2)",
+              color: isAi ? "var(--gold)" : "var(--text-secondary)",
               margin: "0 5px 3px",
             }}
           >
-            {isAi ? "FerrarIA · IA" : "Tú · agente"}
+            {isAi ? (
+              <Spark className="h-2.5 w-2.5 shrink-0" aria-hidden />
+            ) : (
+              <IconUserCircle className="h-3 w-3 shrink-0" aria-hidden />
+            )}
+            {isAi ? "FerrarIA" : "Tú · agente"}
           </span>
         )}
         <div
@@ -1577,8 +1623,8 @@ function MessageBubble({
               className="absolute -bottom-3 z-10 inline-flex items-center rounded-full px-1.5 py-0.5 text-[13px] leading-none shadow-sm"
               style={{
                 ...(isUser ? { right: 10 } : { left: 10 }),
-                background: "var(--panel)",
-                border: "1px solid var(--line)",
+                background: "var(--bg-card)",
+                border: "1px solid var(--border-soft)",
               }}
               title="Reacción"
             >
@@ -1588,13 +1634,13 @@ function MessageBubble({
           {isHandoffCause && (
             <p
               className="mb-0.5 flex max-w-full items-center gap-1 self-stretch text-[10px] font-semibold leading-tight"
-              style={{ color: onRed ? "#fff" : "var(--red)" }}
+              style={{ color: onRed ? "#fff" : "var(--accent)" }}
             >
               <span
                 className="inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5"
                 style={{
                   background: onRed ? "rgba(255,255,255,.18)" : "var(--red-soft)",
-                  border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--red)",
+                  border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--accent)",
                 }}
               >
                 <span aria-hidden>⚠️</span>
@@ -1603,10 +1649,10 @@ function MessageBubble({
             </p>
           )}
           {isTranscribedVoice && (
-            <p className="mb-0.5 flex max-w-full items-center gap-1 self-stretch text-[10px] font-medium leading-tight" style={{ color: "var(--ink-2)" }}>
+            <p className="mb-0.5 flex max-w-full items-center gap-1 self-stretch text-[10px] font-medium leading-tight" style={{ color: "var(--text-secondary)" }}>
               <span
                 className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5"
-                style={{ background: "var(--panel)", border: "1px solid var(--line)" }}
+                style={{ background: "var(--bg-card)", border: "1px solid var(--border-soft)" }}
               >
                 <IconMic className="h-2.5 w-2.5 shrink-0 opacity-85" aria-hidden />
                 <span>Mensaje de voz transcrito</span>
@@ -1660,9 +1706,9 @@ function MessageBubble({
                 aria-controls={`translated-${m.id}`}
                 className="inline-flex w-fit max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium leading-tight transition-opacity hover:opacity-80"
                 style={{
-                  background: onRed ? "rgba(255,255,255,.18)" : "var(--panel)",
-                  border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--line)",
-                  color: onRed ? "#fff" : "var(--ink-2)",
+                  background: onRed ? "rgba(255,255,255,.18)" : "var(--bg-card)",
+                  border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--border-soft)",
+                  color: onRed ? "#fff" : "var(--text-secondary)",
                 }}
                 title="Al huésped le llegó esta respuesta en su idioma"
               >
@@ -1674,13 +1720,13 @@ function MessageBubble({
                   id={`translated-${m.id}`}
                   className="max-w-full rounded-lg px-2 py-1.5"
                   style={{
-                    background: onRed ? "rgba(255,255,255,.14)" : "var(--panel)",
-                    border: onRed ? "1px solid rgba(255,255,255,.28)" : "1px solid var(--line)",
+                    background: onRed ? "rgba(255,255,255,.14)" : "var(--bg-card)",
+                    border: onRed ? "1px solid rgba(255,255,255,.28)" : "1px solid var(--border-soft)",
                   }}
                 >
                   <p
                     className="grotesk mb-0.5 text-[9.5px] font-bold uppercase leading-tight"
-                    style={{ letterSpacing: "0.04em", color: onRed ? "rgba(255,255,255,.85)" : "var(--ink-3)" }}
+                    style={{ letterSpacing: "0.04em", color: onRed ? "rgba(255,255,255,.85)" : "var(--text-secondary)" }}
                   >
                     Texto enviado al huésped
                   </p>
@@ -1709,8 +1755,8 @@ function MessageBubble({
                     // Sobre la burbuja roja del agente el rojo no contrasta:
                     // ahí el chip va en blanco, igual que el badge de handoff.
                     background: onRed ? "rgba(255,255,255,.18)" : "var(--red-soft)",
-                    border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--red)",
-                    color: onRed ? "#fff" : "var(--red)",
+                    border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--accent)",
+                    color: onRed ? "#fff" : "var(--accent)",
                   }}
                   title={describeDeliveryFailure(failedReceipt)}
                 >
@@ -1741,7 +1787,7 @@ function MessageBubble({
                 />
               ))}
             {isAi && m.aiMeta && (
-              <span className="ibx-mono max-w-full break-words text-[10px] tabular-nums" style={{ color: "var(--ink-3)" }}>
+              <span className="ibx-mono max-w-full break-words text-[10px] tabular-nums" style={{ color: "var(--text-secondary)" }}>
                 {m.aiMeta.latencyMs} ms · {m.aiMeta.tokens} tok
               </span>
             )}
@@ -1761,7 +1807,7 @@ function MessageBubble({
               className="mt-0.5 max-w-full break-words text-[10.5px] font-medium"
               style={{
                 lineHeight: 1.35,
-                color: onRed ? "rgba(255,255,255,.85)" : "var(--red)",
+                color: onRed ? "rgba(255,255,255,.85)" : "var(--accent)",
               }}
             >
               {deliveryFailureReason}
@@ -1798,7 +1844,6 @@ export default function InboxApp() {
     urgentHandoffBannerVisible,
     dismissUrgentHandoffBanner,
     realtimeUiStatus,
-    realtimeErrorDetail,
     availableHotels,
     activeHotelId: resolvedActiveHotelId,
     engineEnabled,
@@ -1832,7 +1877,6 @@ export default function InboxApp() {
   }, [rawConversations, engineEnabled]);
 
   const conversationHotelId = activeHotelId ?? resolvedActiveHotelId;
-  const push = usePushNotifications(conversationHotelId);
 
   const cancelFollowup = useCallback(
     async (conversationId: string, quoteRequestId: string, stage: string) => {
@@ -1931,6 +1975,12 @@ export default function InboxApp() {
     }
   }, [refetch, refreshing]);
   const [guestOpen, setGuestOpen] = useState(false);
+  /**
+   * Panel derecho en escritorio. La X de la ficha lo pliega para dejarle todo el
+   * ancho al hilo; el botón "Ficha" de la cabecera del chat lo vuelve a abrir.
+   * En pantallas angostas el panel ya vive en el cajón (`guestOpen`).
+   */
+  const [detailsOpen, setDetailsOpen] = useState(true);
   const [sendWarning, setSendWarning] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
@@ -1941,7 +1991,6 @@ export default function InboxApp() {
   const [pendingAction, setPendingAction] = useState<null | "human" | "ai" | "complete" | "reopen">(
     null
   );
-  const [globalActionsOpen, setGlobalActionsOpen] = useState(false);
   const [hotelSelectOpen, setHotelSelectOpen] = useState(false);
   const [startConversationOpen, setStartConversationOpen] = useState(false);
   /**
@@ -1951,20 +2000,44 @@ export default function InboxApp() {
    */
   const [startConversationPhone, setStartConversationPhone] = useState("");
   const [sendingStaffTemplate, setSendingStaffTemplate] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [staffContactsOpen, setStaffContactsOpen] = useState(false);
   /**
-   * Vista de la bandeja: "Huéspedes" (la de siempre) o "Staff". Es estado
-   * client-side, NO una ruta: el tab vive en el header de arriba junto a
-   * Reservas y su contador tiene que estar siempre a la vista, cosa que una
-   * sección colapsable al pie de la lista no lograba.
-   *
-   * Consecuencia asumida: recargar la página vuelve a Huéspedes. Es el arranque
-   * correcto igual —el trabajo del día son los huéspedes— y evita meter una
-   * ruta nueva que duplicaría toda la pantalla de conversaciones.
+   * Vista de la bandeja: "Huéspedes" (la de siempre) o "Staff". Sigue siendo un
+   * cambio de lista en la misma pantalla y NO una ruta —una ruta nueva
+   * duplicaría toda la bandeja—, pero se refleja en `?vista=staff` para que el
+   * sidebar pueda llevar a Staff desde Reservas o Tickets, donde la bandeja ni
+   * siquiera está montada.
    */
-  const [inboxView, setInboxView] = useState<InboxView>("guests");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const vistaParam = searchParams.get(VISTA_PARAM);
+  const [inboxView, setInboxView] = useState<InboxView>(
+    vistaParam === VISTA_STAFF ? "staff" : "guests"
+  );
+
+  // La URL manda: si cambia (sidebar desde otra pantalla, atrás del navegador,
+  // link pegado), la vista la sigue.
+  useEffect(() => {
+    const desired: InboxView = vistaParam === VISTA_STAFF ? "staff" : "guests";
+    setInboxView((prev) => (prev === desired ? prev : desired));
+  }, [vistaParam]);
+
+  /**
+   * Cambio de vista desde adentro (el sidebar con la bandeja ya montada). Se
+   * usa `replace` y no `push` para no llenar el historial: alternar Huéspedes y
+   * Staff no es navegar, y el botón de atrás tiene que sacarte de la bandeja.
+   */
+  const changeInboxView = useCallback(
+    (view: InboxView) => {
+      setInboxView(view);
+      const params = new URLSearchParams(searchParams.toString());
+      if (view === "staff") params.set(VISTA_PARAM, VISTA_STAFF);
+      else params.delete(VISTA_PARAM);
+      const qs = params.toString();
+      router.replace(qs ? `/?${qs}` : "/", { scroll: false });
+    },
+    [router, searchParams]
+  );
   const [moderationDialogAction, setModerationDialogAction] = useState<"block" | "unblock" | null>(
     null
   );
@@ -1978,7 +2051,6 @@ export default function InboxApp() {
     message: string;
   } | null>(null);
   const scrollEndRef = useRef<HTMLDivElement>(null);
-  const globalActionsRef = useRef<HTMLDivElement>(null);
   const hotelSelectRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -2046,14 +2118,6 @@ export default function InboxApp() {
     if (conversationId) setRequestedConversationId(conversationId);
   }, []);
 
-  // Registra el service worker para push notifications (Batch 4).
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-    navigator.serviceWorker
-      .register("/sw.js", { updateViaCache: "none" })
-      .catch((err) => console.error("[sw] registro fallido:", err));
-  }, []);
-
   // Sincroniza el hotel activo en memoria con el que resuelve el server, pero SOLO
   // cuando la selección en memoria no es válida: arranque (activeHotelId === null) o
   // un hotelId stale que el usuario actual ya no tiene permitido (auto-recuperación
@@ -2077,21 +2141,6 @@ export default function InboxApp() {
     setEditingName(false);
     setNameError(null);
   }, [selectedId]);
-
-  useEffect(() => {
-    if (!globalActionsOpen) return;
-
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (!globalActionsRef.current?.contains(target)) {
-        setGlobalActionsOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
-  }, [globalActionsOpen]);
 
   useEffect(() => {
     if (!hotelSelectOpen) return;
@@ -3174,14 +3223,14 @@ export default function InboxApp() {
         style={{
           gap: 13,
           padding: "15px 20px 15px 22px",
-          borderBottom: "1px solid var(--line-2)",
+          borderBottom: "1px solid var(--border-soft)",
           boxShadow: active ? "var(--shadow-sm)" : "none",
         }}
       >
         {showAttentionBar && (
           <span
             aria-hidden
-            style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--red)" }}
+            style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--accent)" }}
           />
         )}
         <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
@@ -3193,13 +3242,13 @@ export default function InboxApp() {
                 fontWeight: 600,
                 fontSize: 14.5,
                 letterSpacing: "-0.01em",
-                color: "var(--ink)",
+                color: "var(--text-primary)",
               }}
             >
               {(emoji ? emoji + " " : "") + rest}
             </span>
             {c.blocked && <BlockedBadge className="shrink-0" />}
-            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
               {c.lastMessageAt}
             </span>
           </div>
@@ -3208,7 +3257,7 @@ export default function InboxApp() {
             style={{
               margin: "4px 0 8px",
               fontSize: 13,
-              color: hasUnread ? "var(--ink)" : "var(--ink-2)",
+              color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
               fontWeight: hasUnread ? 600 : 400,
             }}
           >
@@ -3237,7 +3286,7 @@ export default function InboxApp() {
               <TriageEscalatedBadge />
             )}
             {showProperty && (
-              <span className="truncate" style={{ fontSize: 11, color: "var(--ink-3)" }} title={propertyLabel}>
+              <span className="truncate" style={{ fontSize: 11, color: "var(--text-secondary)" }} title={propertyLabel}>
                 {propertyLabel}
               </span>
             )}
@@ -3251,7 +3300,7 @@ export default function InboxApp() {
               {hasUnread && (
                 <span
                   className="ibx-mono flex h-[18px] min-w-[18px] items-center justify-center px-1"
-                  style={{ borderRadius: 999, background: "var(--red)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
+                  style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
                   aria-label={`${c.unreadCount} mensajes sin leer`}
                   title={`${c.unreadCount} mensajes sin leer`}
                 >
@@ -3260,6 +3309,134 @@ export default function InboxApp() {
               )}
             </span>
           </div>
+        </div>
+      </button>
+    );
+  };
+
+  /**
+   * Fila de la vista Huéspedes (rediseño, spec 4.3). Está separada de
+   * `renderConversationRow` —que sigue sirviendo a Staff sin un pixel de
+   * cambio— porque el rediseño va por fases y esta es la de Huéspedes: forzar
+   * una sola fila obligaría a rediseñar Staff en la misma tanda.
+   *
+   * Qué cambia respecto de la de Staff: dos renglones en vez de tres (el estado
+   * pasa a ser el prefijo del preview), la fila seleccionada se convierte en una
+   * card blanca con borde rojo sobre el crema, y la barra roja de la izquierda
+   * desaparece porque el punto rojo del prefijo ya dice lo mismo.
+   *
+   * No se pierde ningún dato: lo que antes vivía en el tercer renglón
+   * (temporizador de seguimiento, "Volvió sola", triage, propiedad) sigue ahí,
+   * pero solo se pinta cuando existe, que es la minoría de las filas.
+   */
+  const renderGuestRow = (c: Conversation) => {
+    const active = c.id === selectedId;
+    const hasUnread = c.unreadCount > 0;
+    const unreadLabel = c.unreadCount > 99 ? "99+" : String(c.unreadCount);
+    const isPending = c.request === "pending";
+    const isHumanHandled = c.controlMode === "human" && c.operationalStatus !== "closed";
+    const statusVariant: StatusVariant = isPending
+      ? "pending"
+      : c.operationalStatus === "closed"
+        ? "done"
+        : isHumanHandled
+          ? "human"
+          : c.operationalStatus === "requires_attention"
+            ? "attention"
+            : "ia";
+    const propertyLabel = c.guest.property.split("—")[0]?.trim();
+    const showProperty =
+      propertyLabel &&
+      !["sin propiedad indicada", "true", "false"].includes(propertyLabel.toLowerCase());
+    const followupTimer = followupTimers.get(c.id);
+    const showAutoReactivated =
+      statusVariant === "ia" && c.autoReactivatedAt !== null && c.autoReactivatedAt !== undefined;
+    const showTriage = c.triageEscalatedAt !== null && c.triageEscalatedAt !== undefined;
+    const hasExtras = Boolean(followupTimer || showAutoReactivated || showTriage || showProperty);
+    const { emoji, rest } = splitLeadingEmoji(c.guest.name);
+    return (
+      <button
+        key={c.id}
+        type="button"
+        onClick={() => openChat(c.id)}
+        aria-current={active ? "true" : undefined}
+        className="d-row flex w-full text-left"
+        style={{
+          gap: 12,
+          padding: "12px 13px",
+          borderRadius: "var(--radius-card)",
+          // Borde del item seleccionado: terracota del spec (§2.2).
+          border: `1.5px solid ${active ? "var(--accent)" : "transparent"}`,
+          // Solo la seleccionada fija fondo: sin `background` inline, el hover
+          // de `.d-row` sigue funcionando en las demás (el inline le gana a la
+          // regla de hover, no al revés).
+          ...(active ? { background: "var(--bg-card)", boxShadow: "var(--shadow-sm)" } : null),
+        }}
+      >
+        <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span
+              className="grotesk truncate"
+              style={{
+                fontWeight: 700,
+                fontSize: 14.5,
+                letterSpacing: "-0.01em",
+                color: "var(--text-primary)",
+              }}
+            >
+              {(emoji ? emoji + " " : "") + rest}
+            </span>
+            {c.blocked && <BlockedBadge className="shrink-0" />}
+            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+              {c.lastMessageAt}
+            </span>
+          </div>
+          <div className="mt-1 flex items-center gap-1.5">
+            <GuestStatusPrefix variant={statusVariant} />
+            <span aria-hidden style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+              ·
+            </span>
+            <p
+              className="min-w-0 flex-1 truncate"
+              style={{
+                margin: 0,
+                fontSize: 13,
+                color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
+                fontWeight: hasUnread ? 600 : 400,
+              }}
+            >
+              {stripWhatsappMarkup(c.lastMessagePreview)}
+            </p>
+            {hasUnread && (
+              <span
+                className="ibx-mono flex h-[18px] min-w-[18px] shrink-0 items-center justify-center px-1"
+                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
+                aria-label={`${c.unreadCount} mensajes sin leer`}
+              >
+                {unreadLabel}
+              </span>
+            )}
+          </div>
+          {hasExtras && (
+            <div className="mt-2 flex items-center gap-2">
+              {showAutoReactivated && <AutoReactivatedBadge />}
+              {showTriage && <TriageEscalatedBadge />}
+              {showProperty && (
+                <span className="truncate" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                  {propertyLabel}
+                </span>
+              )}
+              {followupTimer && (
+                <span className="ml-auto flex shrink-0 items-center">
+                  <FollowupTimer
+                    quoteCreatedAt={followupTimer.quoteCreatedAt}
+                    onCancel={() => cancelFollowup(c.id, followupTimer.quoteRequestId, followupTimer.stage)}
+                  />
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </button>
     );
@@ -3292,22 +3469,37 @@ export default function InboxApp() {
   }
 
   return (
+    <AppShell
+      hotelId={conversationHotelId}
+      inboxView={activeInboxView}
+      onInboxViewChange={changeInboxView}
+      showStaff={engineEnabled}
+      staffUnreadCount={staffUnreadConversations}
+      hideMobileNav={mobileTab === "chat"}
+      realtimeStatus={realtimeUiStatus}
+    >
     <div
-      className="ibx flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-x-hidden supports-[height:100dvh]:min-h-[100dvh]"
-      style={{ background: "var(--bg)", color: "var(--ink)" }}
+      className="ibx flex h-full max-h-full min-h-0 w-full max-w-full flex-col overflow-x-hidden"
+      style={{
+        background: "var(--bg-app)",
+        color: "var(--text-primary)",
+        // Lo reservaba el encabezado rojo, que ya no está: sin esto, en la app
+        // instalada la lista arranca debajo de la barra de estado del teléfono.
+        paddingTop: "env(safe-area-inset-top, 0px)",
+      }}
     >
       {urgentHandoffBannerVisible && (
         <div
           className="fixed right-4 top-4 z-[300] flex max-w-[min(100vw-2rem,20rem)] items-start gap-3 rounded-xl px-4 py-3 text-[13px] font-semibold leading-snug"
-          style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)", boxShadow: "var(--shadow-lg)" }}
+          style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)", boxShadow: "var(--shadow-lg)" }}
           role="status"
         >
           <span className="min-w-0 flex-1">🚨 Huésped requiere atención humana</span>
           <button
             type="button"
             onClick={dismissUrgentHandoffBanner}
-            className="shrink-0 rounded-lg p-1 transition hover:bg-[var(--panel)]/40"
-            style={{ color: "var(--red-deep)" }}
+            className="shrink-0 rounded-lg p-1 transition hover:bg-[var(--bg-card)]/40"
+            style={{ color: "var(--accent)" }}
             aria-label="Cerrar aviso"
           >
             ×
@@ -3320,141 +3512,17 @@ export default function InboxApp() {
           style={
             templateToast.type === "success"
               ? { border: "1px solid var(--live)", background: "var(--live-soft)", color: "var(--live)", boxShadow: "var(--shadow-lg)" }
-              : { border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)", boxShadow: "var(--shadow-lg)" }
+              : { border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)", boxShadow: "var(--shadow-lg)" }
           }
           role={templateToast.type === "success" ? "status" : "alert"}
         >
           {templateToast.message}
         </div>
       )}
-      <header
-        className={`flex min-h-[56px] shrink-0 items-center gap-3 px-4 sm:gap-5 lg:min-h-[62px] lg:px-[22px] ${mobileTab === "chat" ? "max-lg:hidden" : ""}`}
-        style={{
-          background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
-          borderBottom: "1px solid var(--red-deep)",
-          boxShadow: "0 1px 8px rgba(196,43,32,.25)",
-          paddingTop: "env(safe-area-inset-top, 0px)",
-        }}
-      >
-        <div className="flex min-w-0 items-center gap-2.5">
-          <BrandHeaderMark size="sm" />
-          <span
-            className="grotesk hidden truncate sm:inline"
-            style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.02em", color: "#fff" }}
-          >
-            Ferrar<span style={{ color: "rgba(255,255,255,.82)" }}>IA</span>
-          </span>
-        </div>
-        <InboxHeaderTabs
-          hotelId={conversationHotelId}
-          onRed
-          inboxView={activeInboxView}
-          onInboxViewChange={setInboxView}
-          showStaffTab={engineEnabled}
-          staffUnreadCount={staffUnreadConversations}
-        />
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <span
-            className="grotesk inline-flex items-center gap-1.5 truncate"
-            style={{
-              padding: "6px 13px",
-              borderRadius: 999,
-              fontSize: 12.5,
-              fontWeight: 600,
-              background: "rgba(255,255,255,.18)",
-              color: "#fff",
-              border: "1px solid rgba(255,255,255,.28)",
-            }}
-            title={`Actualización en vivo de conversaciones y mensajes${realtimeErrorDetail ? ` · ${realtimeErrorDetail}` : ""}`}
-          >
-            <Dot
-              color={
-                realtimeUiStatus === "connected"
-                  ? "#7cf0b0"
-                  : realtimeUiStatus === "error"
-                    ? "#fff"
-                    : "#ffe08a"
-              }
-            />
-            <span className="hidden sm:inline">
-              {realtimeUiStatus === "connected"
-                ? "Conectado"
-                : realtimeUiStatus === "error"
-                  ? "Error"
-                  : "Esperando"}
-            </span>
-          </span>
-          <ChangelogButton onRed />
-          <div className="hidden items-center gap-2 sm:flex">
-            <button
-              type="button"
-              onClick={() => openStartConversation()}
-              className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
-              style={{
-                padding: "7px 12px",
-                borderRadius: 8,
-                border: "none",
-                background: "transparent",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              <IconCompose className="h-4 w-4" />
-              <span className="hidden sm:inline">Comenzar conversación</span>
-            </button>
-            {/* La gestión de contactos de staff no cuelga de acá: vive en el
-                encabezado de la vista Staff, que es donde el asesor ya está
-                mirando cuando le hace falta. */}
-            <ThemeToggle />
-            <button
-              type="button"
-              onClick={() => setHelpOpen(true)}
-              className="grotesk inline-flex items-center gap-1.5 transition-colors hover:bg-white/15"
-              style={{
-                padding: "7px 12px",
-                borderRadius: 8,
-                border: "none",
-                background: "transparent",
-                color: "#fff",
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              <IconHelp className="h-4 w-4" />
-              <span className="hidden sm:inline">Ayuda</span>
-            </button>
-            <LogoutButton onRed />
-          </div>
-          <HeaderMobileMenu onRed>
-            <button
-              type="button"
-              onClick={() => openStartConversation()}
-              className={HEADER_MENU_ROW_CLASS}
-              role="menuitem"
-            >
-              <IconCompose className="h-4 w-4 shrink-0" />
-              Comenzar conversación
-            </button>
-            <button
-              type="button"
-              onClick={() => setHelpOpen(true)}
-              className={HEADER_MENU_ROW_CLASS}
-              role="menuitem"
-            >
-              <IconHelp className="h-4 w-4 shrink-0" />
-              Ayuda
-            </button>
-            <ThemeToggle variant="menu" />
-            <LogoutButton onRed variant="menu" />
-          </HeaderMobileMenu>
-        </div>
-      </header>
-
       {error && (
         <div
           className="shrink-0 px-4 py-2 text-center text-[13px]"
-          style={{ borderBottom: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+          style={{ borderBottom: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
         >
           {error}
         </div>
@@ -3463,7 +3531,7 @@ export default function InboxApp() {
       {actionError && (
         <div
           className="shrink-0 px-4 py-2 text-center text-[13px]"
-          style={{ borderBottom: "1px solid color-mix(in srgb, var(--gold) 45%, transparent)", background: "color-mix(in srgb, var(--gold) 12%, transparent)", color: "var(--ink)" }}
+          style={{ borderBottom: "1px solid color-mix(in srgb, var(--gold) 45%, transparent)", background: "color-mix(in srgb, var(--gold) 12%, transparent)", color: "var(--text-primary)" }}
         >
           {actionError}
           <button
@@ -3482,30 +3550,56 @@ export default function InboxApp() {
             mobileTab === "list" ? "flex" : "hidden"
           } h-full w-full min-h-0 min-w-0 flex-col lg:flex lg:h-auto lg:shrink-0`}
           style={{
-            background: "var(--panel)",
-            borderRight: "1px solid var(--line)",
+            /*
+             * Huéspedes va sobre el crema de la app: es lo que hace que la
+             * conversación seleccionada se lea como una card blanca levantada
+             * del fondo. Staff sigue sobre el panel claro de siempre porque su
+             * rediseño es de otra fase y sus filas no son cards.
+             */
+            background: staffViewActive ? "var(--bg-card)" : "var(--bg-app)",
+            borderRight: "1px solid var(--border-soft)",
             ...(isDesktop ? { width: leftWidth, flex: "0 0 auto" } : null),
           }}
         >
           <div className="shrink-0 px-5 pb-3.5 pt-[18px]">
             <div className="mb-3.5 flex items-center gap-2.5">
-              <h2
-                className="grotesk"
-                style={{
-                  margin: 0,
-                  fontSize: 13,
-                  fontWeight: 700,
-                  letterSpacing: "0.13em",
-                  textTransform: "uppercase",
-                  color: "var(--ink-2)",
-                }}
-              >
-                {staffViewActive ? "Personal" : "Cola operativa"}
-              </h2>
+              {staffViewActive ? (
+                <h2
+                  className="grotesk"
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    letterSpacing: "0.13em",
+                    textTransform: "uppercase",
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  Personal
+                </h2>
+              ) : (
+                <h2
+                  className="grotesk min-w-0 truncate"
+                  style={{
+                    margin: 0,
+                    fontSize: 17,
+                    fontWeight: 700,
+                    letterSpacing: "-0.02em",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  Huéspedes
+                </h2>
+              )}
               <span
-                className="ibx-mono ml-auto inline-flex items-center gap-1.5"
-                style={{ fontSize: 11.5, fontWeight: 700, color: refreshing ? "var(--red)" : "var(--ink-3)" }}
+                className={`ibx-mono inline-flex shrink-0 items-center gap-1.5 ${staffViewActive ? "ml-auto" : ""}`}
+                style={{ fontSize: 11.5, fontWeight: 700, color: refreshing ? "var(--accent)" : "var(--text-secondary)" }}
                 aria-live="polite"
+                title={
+                  staffViewActive
+                    ? undefined
+                    : `${guestConversations.length} conversaciones en pantalla de ${queueTotal} del hotel`
+                }
               >
                 {refreshing ? (
                   <>
@@ -3525,8 +3619,15 @@ export default function InboxApp() {
                 type="button"
                 onClick={() => void handleRefresh()}
                 disabled={refreshing}
-                className="d-act flex h-8 w-8 items-center justify-center disabled:opacity-50"
-                style={{ borderRadius: 9, border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }}
+                className={`d-act flex h-8 w-8 shrink-0 items-center justify-center disabled:opacity-50 ${staffViewActive ? "" : "ml-auto"}`}
+                style={{
+                  borderRadius: staffViewActive ? 9 : 10,
+                  border: "1px solid var(--border-soft)",
+                  // Sobre el crema de Huéspedes el gris del panel no se despega
+                  // del fondo; en Staff el panel ya es claro y queda igual.
+                  background: staffViewActive ? "var(--bg-app)" : "var(--bg-card)",
+                  color: "var(--text-secondary)",
+                }}
                 aria-label="Refrescar conversaciones"
                 title="Refrescar"
               >
@@ -3536,72 +3637,22 @@ export default function InboxApp() {
                   <IconRefresh className="h-4 w-4" aria-hidden />
                 )}
               </button>
-              <div ref={globalActionsRef} className="relative">
+              {/* Acá vivía el menú "…". Su única entrada era el interruptor de
+                  notificaciones, que ahora es la campana del sidebar, así que
+                  el menú quedó vacío y se fue con ella. */}
+              {/* Acción principal de la sección: abrir un hilo nuevo. Vive acá,
+                  al lado de la lista que va a recibirlo, y por eso el botón
+                  equivalente del encabezado rojo se oculta en esta vista. */}
+              {!staffViewActive && (
                 <button
                   type="button"
-                  onClick={() => setGlobalActionsOpen((open) => !open)}
-                  className="d-act flex h-8 w-8 items-center justify-center"
-                  style={{ borderRadius: 9, border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }}
-                  aria-label="Abrir acciones"
-                  aria-haspopup="menu"
-                  aria-expanded={globalActionsOpen}
+                  onClick={() => openStartConversation()}
+                  className="grotesk inline-flex shrink-0 items-center rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-2 text-[13px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
+                  title="Comenzar una conversación nueva con un huésped"
                 >
-                  <IconMore className="h-4 w-4" aria-hidden />
+                  Nueva
                 </button>
-                {globalActionsOpen && (
-                  <div
-                    className="absolute right-0 top-[calc(100%+0.5rem)] z-[230] w-56 overflow-hidden"
-                    style={{ borderRadius: 12, border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
-                    role="menu"
-                  >
-                    <button
-                      type="button"
-                      title={push.error ?? undefined}
-                      disabled={
-                        push.status === "subscribing" ||
-                        push.status === "denied" ||
-                        push.status === "unsupported" ||
-                        push.status === "ios-needs-install"
-                      }
-                      onClick={() => {
-                        if (push.status === "subscribed") {
-                          void push.disable();
-                        } else {
-                          void push.enable();
-                          setGlobalActionsOpen(false);
-                        }
-                      }}
-                      className="d-soft grotesk flex w-full items-center px-3.5 py-2.5 text-left disabled:opacity-60"
-                      style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}
-                      role="menuitem"
-                    >
-                      {push.status === "subscribed"
-                        ? "Desactivar notificaciones"
-                        : push.status === "subscribing"
-                          ? "Activando…"
-                          : push.status === "denied"
-                            ? "Notificaciones bloqueadas"
-                            : push.status === "ios-needs-install"
-                              ? "Instalá la app para notificaciones"
-                              : push.status === "unsupported"
-                                ? "Notificaciones no disponibles"
-                                : "Activar notificaciones"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGlobalActionsOpen(false);
-                        setFeedbackOpen(true);
-                      }}
-                      className="d-soft grotesk flex w-full items-center px-3.5 py-2.5 text-left"
-                      style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}
-                      role="menuitem"
-                    >
-                      Enviar feedback
-                    </button>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
             {/* Buscador y chips son de la vista Huéspedes. En Staff no se
                 pintan por decisión explícita: son decenas de contactos, entran
@@ -3609,34 +3660,45 @@ export default function InboxApp() {
                 el personal. En su lugar va la gestión de contactos, que es la
                 única acción que esta vista necesita. */}
             {staffViewActive ? (
-              <div className="mb-3.5 flex items-center gap-2">
-                <p className="min-w-0 flex-1 text-[12.5px] leading-snug" style={{ color: "var(--ink-3)" }}>
+              <div className="mb-3.5 flex flex-col gap-2.5">
+                <p className="text-[12.5px] leading-snug" style={{ color: "var(--text-secondary)" }}>
                   Conversaciones con el personal del hotel. La IA no interviene acá.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setStaffContactsOpen(true)}
-                  className="grotesk d-act inline-flex shrink-0 items-center gap-1 px-2.5 py-1.5"
-                  style={{
-                    borderRadius: 9,
-                    border: "1px solid var(--line)",
-                    background: "var(--panel-2)",
-                    color: "var(--ink-2)",
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
-                  title="Ver y gestionar los contactos del personal"
-                >
-                  <IconStaff className="h-4 w-4 shrink-0" style={{ color: "var(--staff)" }} aria-hidden />
-                  Contactos
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* "Comenzar conversación" solo existe en Staff: en Huéspedes
+                      la misma acción es el botón rojo "Nueva" del encabezado. */}
+                  <button
+                    type="button"
+                    onClick={() => openStartConversation()}
+                    className="grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-2 text-[12.5px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
+                  >
+                    <IconCompose className="h-4 w-4 shrink-0" aria-hidden />
+                    Comenzar conversación
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStaffContactsOpen(true)}
+                    className="grotesk d-act inline-flex shrink-0 items-center gap-1 px-2.5 py-1.5"
+                    style={{
+                      borderRadius: 9,
+                      border: "1px solid var(--border-soft)",
+                      background: "var(--bg-app)",
+                      color: "var(--text-secondary)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <IconStaff className="h-4 w-4 shrink-0" style={{ color: "var(--staff)" }} aria-hidden />
+                    Contactos
+                  </button>
+                </div>
               </div>
             ) : (
               <>
             <label className="relative mb-3.5 block">
               <IconSearch
                 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2"
-                style={{ color: "var(--ink-3)" }}
+                style={{ color: "var(--text-secondary)" }}
               />
               <input
                 type="search"
@@ -3646,37 +3708,67 @@ export default function InboxApp() {
                 className="w-full outline-none"
                 style={{
                   padding: "11px 14px 11px 38px",
-                  borderRadius: 11,
-                  border: "1px solid var(--line)",
-                  background: "var(--panel-3)",
-                  color: "var(--ink)",
+                  borderRadius: 12,
+                  border: "1px solid var(--border-soft)",
+                  background: "var(--bg-card)",
+                  color: "var(--text-primary)",
                   fontSize: 13.5,
                 }}
               />
             </label>
 
-            <div className="flex flex-nowrap gap-1.5">
+            {/* `flex-wrap`: los cuatro chips con sus contadores no entran en una
+                línea con la lista en su ancho por defecto. Antes se salían del
+                panel; ahora bajan al segundo renglón y se ven todos. */}
+            <div className="flex flex-wrap gap-1.5">
               {filterTabs.map((tab) => {
                 const active = statusFilter === tab.id;
+                /*
+                 * "Atención" es el único chip con color propio: es el filtro que
+                 * manda a trabajar. Se pinta en rojo cuando está activo y en rojo
+                 * suave cuando hay algo esperando. En cero se apaga y queda como
+                 * los demás — un chip rojo permanente sin nada pendiente entrena
+                 * a ignorar el rojo justo cuando sí importa.
+                 */
+                const isAttention = tab.id === "requires_attention";
+                const attentionIdle = isAttention && !active && tab.count > 0;
                 return (
                   <button
                     key={tab.id}
                     type="button"
                     onClick={() => setStatusFilter(tab.id)}
-                    className="grotesk d-chip inline-flex items-center gap-1"
+                    aria-pressed={active}
+                    className="grotesk d-chip inline-flex items-center gap-1.5"
                     style={{
-                      padding: "4px 8px",
-                      borderRadius: 999,
-                      border: "none",
-                      fontSize: 11.5,
-                      fontWeight: 600,
+                      padding: "6px 10px",
+                      borderRadius: "var(--radius-chip)",
+                      border: "1px solid transparent",
+                      fontSize: 12,
+                      fontWeight: 700,
                       whiteSpace: "nowrap",
-                      background: active ? "var(--ink)" : "var(--panel-2)",
-                      color: active ? "var(--panel)" : "var(--ink-2)",
+                      background: active
+                        ? isAttention
+                          ? "var(--accent)"
+                          : "var(--text-primary)"
+                        : attentionIdle
+                          ? "var(--red-soft)"
+                          : "var(--bg-card)",
+                      borderColor: active
+                        ? "transparent"
+                        : attentionIdle
+                          ? "color-mix(in srgb, var(--accent) 35%, transparent)"
+                          : "var(--border-soft)",
+                      color: active
+                        ? isAttention
+                          ? "#fff"
+                          : "var(--bg-card)"
+                        : attentionIdle
+                          ? "var(--accent)"
+                          : "var(--text-secondary)",
                     }}
                   >
                     {tab.label}
-                    <span className="ibx-mono" style={{ fontSize: 10, fontWeight: 700, opacity: active ? 0.8 : 0.6 }}>
+                    <span className="ibx-mono" style={{ fontSize: 10.5, fontWeight: 700, opacity: active ? 0.85 : 0.7 }}>
                       {tab.count}
                     </span>
                   </button>
@@ -3698,10 +3790,13 @@ export default function InboxApp() {
                       className="d-act flex w-full cursor-pointer items-center gap-2.5 outline-none"
                       style={{
                         padding: "10px 13px",
-                        borderRadius: 11,
-                        border: "1px solid var(--line)",
-                        background: "var(--panel-2)",
-                        color: "var(--ink)",
+                        // En Huéspedes el panel es crema, así que el selector va
+                        // en blanco para despegarse del fondo; en Staff el panel
+                        // ya es blanco y sigue con la superficie de siempre.
+                        borderRadius: staffViewActive ? 11 : 12,
+                        border: "1px solid var(--border-soft)",
+                        background: staffViewActive ? "var(--bg-app)" : "var(--bg-card)",
+                        color: "var(--text-primary)",
                         fontSize: 13.5,
                         fontWeight: 600,
                       }}
@@ -3713,14 +3808,14 @@ export default function InboxApp() {
                       <span className="truncate">{selectedHotel?.name ?? "Seleccionar hotel"}</span>
                       <IconChevronDown
                         className={`ml-auto h-4 w-4 shrink-0 transition-transform ${hotelSelectOpen ? "rotate-180" : ""}`}
-                        style={{ color: "var(--ink-3)" }}
+                        style={{ color: "var(--text-secondary)" }}
                         aria-hidden
                       />
                     </button>
                     {hotelSelectOpen && (
                       <div
                         className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-[230] overflow-hidden"
-                        style={{ borderRadius: 12, border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
+                        style={{ borderRadius: 12, border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
                         role="listbox"
                         aria-label="Hotel activo"
                       >
@@ -3744,13 +3839,13 @@ export default function InboxApp() {
                               className="d-soft flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left"
                               style={{
                                 fontSize: 13,
-                                background: isSelected ? "var(--panel-2)" : "transparent",
+                                background: isSelected ? "var(--bg-app)" : "transparent",
                                 fontWeight: isSelected ? 600 : 400,
-                                color: "var(--ink)",
+                                color: "var(--text-primary)",
                               }}
                             >
                               <span className="truncate">{hotel.name}</span>
-                              {isSelected && <IconCheck className="h-4 w-4 shrink-0" style={{ color: "var(--red)" }} aria-hidden />}
+                              {isSelected && <IconCheck className="h-4 w-4 shrink-0" style={{ color: "var(--accent)" }} aria-hidden />}
                             </button>
                           );
                         })}
@@ -3765,11 +3860,17 @@ export default function InboxApp() {
 
           <div
             className={`ibx-scroll min-h-0 flex-1 overflow-y-auto transition-opacity duration-200 ${refreshing ? "pointer-events-none opacity-50" : "opacity-100"}`}
-            style={{ borderTop: "1px solid var(--line)" }}
+            style={{ borderTop: "1px solid var(--border-soft)" }}
             aria-busy={refreshing}
           >
             {loading ? (
-              <InboxListSkeleton />
+              /* Fondo blanco durante la carga: los bloques del skeleton están
+                 pintados con los grises del panel claro y sobre el crema de
+                 Huéspedes desaparecerían. Mientras carga no hay ninguna card
+                 que necesite el crema detrás. */
+              <div style={{ background: "var(--bg-card)" }}>
+                <InboxListSkeleton />
+              </div>
             ) : (
               <>
             {staffViewActive ? (
@@ -3779,10 +3880,10 @@ export default function InboxApp() {
               staffConversations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2.5 px-6 py-16 text-center">
                   <IconStaff className="h-7 w-7" style={{ color: "var(--staff)" }} aria-hidden />
-                  <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>
+                  <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                     Todavía no hay conversaciones con el personal
                   </p>
-                  <p className="max-w-[250px] text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                  <p className="max-w-[250px] text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                     Registra a recepción, camareras o mantenimiento como contactos y sus
                     mensajes llegan acá, sin que la IA les conteste.
                   </p>
@@ -3795,9 +3896,9 @@ export default function InboxApp() {
                     className="d-act grotesk mt-1 px-3.5 py-2"
                     style={{
                       borderRadius: 9,
-                      border: "1px solid var(--line)",
-                      background: "var(--panel-2)",
-                      color: "var(--ink)",
+                      border: "1px solid var(--border-soft)",
+                      background: "var(--bg-app)",
+                      color: "var(--text-primary)",
                       fontSize: 13,
                       fontWeight: 600,
                     }}
@@ -3812,8 +3913,8 @@ export default function InboxApp() {
               <>
             {search.status === "searching" ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-                <Spinner className="h-5 w-5 animate-spin" style={{ color: "var(--ink-3)" }} />
-                <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>
+                <Spinner className="h-5 w-5 animate-spin" style={{ color: "var(--text-secondary)" }} />
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                   Buscando «{search.term}»…
                 </p>
               </div>
@@ -3821,10 +3922,10 @@ export default function InboxApp() {
               /* Separado de "sin resultados" a propósito: un fallo de red pintado
                  como ausencia le hace concluir al asesor que el huésped no existe. */
               <div className="flex flex-col items-center justify-center gap-2.5 px-6 py-16 text-center">
-                <p className="text-sm font-medium" style={{ color: "var(--red)" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--accent)" }}>
                   No se pudo buscar
                 </p>
-                <p className="max-w-[240px] text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                <p className="max-w-[240px] text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                   {search.error ?? "Revisa la conexión e intenta de nuevo."}
                 </p>
                 <button
@@ -3833,9 +3934,9 @@ export default function InboxApp() {
                   className="d-act grotesk mt-1 px-3.5 py-2"
                   style={{
                     borderRadius: 9,
-                    border: "1px solid var(--line)",
-                    background: "var(--panel-2)",
-                    color: "var(--ink)",
+                    border: "1px solid var(--border-soft)",
+                    background: "var(--bg-app)",
+                    color: "var(--text-primary)",
                     fontSize: 13,
                     fontWeight: 600,
                   }}
@@ -3845,17 +3946,17 @@ export default function InboxApp() {
               </div>
             ) : search.status === "empty" ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-                <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                   Sin resultados para «{search.term}»
                 </p>
-                <p className="max-w-[240px] text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                <p className="max-w-[240px] text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                   Buscamos por nombre y teléfono en todo el hotel, no solo en lo cargado.
                 </p>
               </div>
             ) : guestConversations.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-                <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>No hay conversaciones</p>
-                <p className="max-w-[250px] text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>No hay conversaciones</p>
+                <p className="max-w-[250px] text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                   {/* Sin este caso, buscar a la camarera devolvía "no pasan el
                       filtro de estado" y el asesor concluía que no existe: la
                       búsqueda SÍ la encontró, pero esta vista no muestra staff. */}
@@ -3874,13 +3975,15 @@ export default function InboxApp() {
                      recorte silencioso que este lote vino a cerrar. */
                   <p
                     className="px-5 py-2.5 text-[12px] leading-relaxed"
-                    style={{ color: "var(--ink-3)", borderBottom: "1px solid var(--line)" }}
+                    style={{ color: "var(--text-secondary)", borderBottom: "1px solid var(--border-soft)" }}
                   >
                     Mostrando los resultados más recientes. Si no está el que buscás, afiná el
                     término.
                   </p>
                 )}
-                {guestConversations.map(renderConversationRow)}
+                <div className="flex flex-col gap-1 px-2.5 py-2.5">
+                  {guestConversations.map(renderGuestRow)}
+                </div>
               </>
             )}
               </>
@@ -3898,26 +4001,26 @@ export default function InboxApp() {
           className="group hidden w-1 shrink-0 cursor-col-resize items-stretch lg:flex"
           title="Arrastra para ajustar el ancho"
         >
-          <span className="block h-full w-px bg-[var(--line)] transition-colors group-hover:w-1 group-hover:bg-[var(--red)]" />
+          <span className="block h-full w-px bg-[var(--border-soft)] transition-colors group-hover:w-1 group-hover:bg-[var(--accent)]" />
         </div>
 
         <section
           className={`${
             mobileTab === "chat" ? "flex" : "hidden"
           } min-h-0 w-full min-w-0 flex-1 flex-col overflow-x-hidden lg:flex`}
-          style={{ background: "var(--bg)" }}
+          style={{ background: "var(--bg-app)" }}
         >
           {selected ? (
             <>
               <div
                 className="flex min-h-[56px] shrink-0 items-center gap-3 px-2 py-2 sm:gap-3.5 sm:px-[26px] lg:py-3.5"
-                style={{ background: "var(--panel)", borderBottom: "1px solid var(--line)" }}
+                style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border-soft)" }}
               >
                 <button
                   type="button"
                   onClick={() => setMobileTab("list")}
                   className="d-soft flex h-10 w-10 shrink-0 items-center justify-center rounded-xl lg:hidden"
-                  style={{ color: "var(--ink-3)" }}
+                  style={{ color: "var(--text-secondary)" }}
                   aria-label="Volver a conversaciones"
                 >
                   <IconBack className="h-5 w-5" />
@@ -3945,7 +4048,7 @@ export default function InboxApp() {
                             disabled={savingName}
                             placeholder="Nombre del huésped"
                             className="grotesk min-w-0 flex-1 rounded-lg px-2 py-1 outline-none disabled:opacity-60"
-                            style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", background: "var(--panel-2)", border: "1px solid var(--red)" }}
+                            style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", background: "var(--bg-app)", border: "1px solid var(--accent)" }}
                             aria-label="Editar nombre del huésped"
                           />
                           <button
@@ -3953,7 +4056,7 @@ export default function InboxApp() {
                             onClick={() => void renameGuest()}
                             disabled={savingName}
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
-                            style={{ background: "var(--red)", color: "#fff" }}
+                            style={{ background: "var(--accent)", color: "#fff" }}
                             aria-label="Guardar nombre"
                             title="Guardar"
                           >
@@ -3968,7 +4071,7 @@ export default function InboxApp() {
                             onClick={cancelEditingName}
                             disabled={savingName}
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
-                            style={{ background: "var(--panel-2)", color: "var(--ink-2)", border: "1px solid var(--line)" }}
+                            style={{ background: "var(--bg-app)", color: "var(--text-secondary)", border: "1px solid var(--border-soft)" }}
                             aria-label="Cancelar edición"
                             title="Cancelar"
                           >
@@ -3976,19 +4079,19 @@ export default function InboxApp() {
                           </button>
                         </div>
                         {nameError && (
-                          <span style={{ fontSize: 11, color: "var(--red-deep)" }}>{nameError}</span>
+                          <span style={{ fontSize: 11, color: "var(--accent)" }}>{nameError}</span>
                         )}
                       </div>
                     ) : (
                       <>
-                        <h2 className="grotesk min-w-0 flex-1 truncate" style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--ink)" }}>
+                        <h2 className="grotesk min-w-0 flex-1 truncate" style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--text-primary)" }}>
                           {selected.guest.name}
                         </h2>
                         <button
                           type="button"
                           onClick={startEditingName}
                           className="d-soft flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                          style={{ color: "var(--ink-3)" }}
+                          style={{ color: "var(--text-secondary)" }}
                           aria-label="Editar nombre del huésped"
                           title="Editar nombre"
                         >
@@ -4010,8 +4113,8 @@ export default function InboxApp() {
                         Sin gestión de IA
                       </span>
                     ) : selected.operationalStatus === "requires_attention" ? (
-                      <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--red)" }}>
-                        <Dot color="var(--red)" />
+                      <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--accent)" }}>
+                        <Dot color="var(--accent)" />
                         Requiere atención humana
                       </span>
                     ) : selected.operationalStatus === "ai_active" ? (
@@ -4020,17 +4123,17 @@ export default function InboxApp() {
                         IA activa
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-3)" }}>
-                        <Dot color="var(--ink-3)" />
+                      <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-secondary)" }}>
+                        <Dot color="var(--text-secondary)" />
                         Resuelto
                       </span>
                     )}
-                    <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                    <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
                       <IconWhatsApp className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--live)" }} aria-hidden />
                       <span className="truncate">WhatsApp</span>
                     </span>
                     {selected.blocked && selected.blockedAt && (
-                      <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                      <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                         {formatBlockedAtColombia(selected.blockedAt)}
                       </span>
                     )}
@@ -4046,7 +4149,7 @@ export default function InboxApp() {
                       setModerationDialogAction(selected.blocked ? "unblock" : "block")
                     }
                     className="d-soft grotesk inline-flex h-9 shrink-0 items-center gap-1.5 px-2.5"
-                    style={{ borderRadius: 999, border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-3)", fontSize: 11.5, fontWeight: 600 }}
+                    style={{ borderRadius: 999, border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-secondary)", fontSize: 11.5, fontWeight: 600 }}
                     title={selected.blocked ? "Desbloquear conversación" : "Bloquear conversación"}
                   >
                     <IconBlock className="h-4 w-4" />
@@ -4055,140 +4158,76 @@ export default function InboxApp() {
                 )}
                 <button
                   type="button"
-                  onClick={() => setGuestOpen(true)}
-                  className="d-soft grotesk flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 lg:hidden"
-                  style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-2)" }}
+                  onClick={() => {
+                    setGuestOpen(true);
+                    setDetailsOpen(true);
+                  }}
+                  className={`d-soft grotesk flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 ${detailsOpen ? "lg:hidden" : ""}`}
+                  style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}
                 >
                   <IconGuest className="h-4 w-4" />
                   Ficha
                 </button>
               </div>
 
-              {conversationClosed && (
-                <div
-                  className="shrink-0 px-4 py-2 text-center text-[12px]"
-                  style={{ background: "var(--panel-2)", borderBottom: "1px solid var(--line)", color: "var(--ink-2)" }}
-                >
-                  Conversación cerrada · reabre desde la ficha si necesitas seguir el hilo
-                </div>
-              )}
-
               <div
                 className="ibx-scroll min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-5 lg:px-6"
-                style={{ background: "var(--bg)" }}
+                style={{ background: "var(--bg-app)" }}
               >
                 <div className="w-full min-w-0 space-y-2.5">
-                  <p className="break-words px-0.5 text-[10px] font-medium uppercase tracking-widest [overflow-wrap:anywhere] lg:text-center" style={{ color: "var(--ink-3)" }}>
-                    Historial de la conversación
-                  </p>
                   {threadLoading ? (
                     <InboxThreadSkeleton />
                   ) : (
-                    threadBubbles.map((m) => (
-                      <MessageBubble
-                        key={m.id}
-                        m={m}
-                        guestName={selected.guest.name}
-                        guestSeed={selected.guest.id}
-                        reaction={reactionByMessageId.get(m.id)}
-                        deliveryReceipt={
-                          m.wamid ? deliveryReceipts.get(m.wamid) : undefined
-                        }
-                      />
-                    ))
+                    (() => {
+                      /*
+                        Las píldoras de fecha se intercalan acá y no dentro de
+                        `MessageBubble` porque separan DOS burbujas: la burbuja
+                        sola no sabe cuál vino antes. `lastDayKey` arranca vacío,
+                        así que la primera con fecha utilizable siempre abre día.
+                      */
+                      let lastDayKey = "";
+                      return threadBubbles.map((m) => {
+                        const dayKey = messageDayKey(m);
+                        const opensDay = Boolean(dayKey) && dayKey !== lastDayKey;
+                        if (opensDay) lastDayKey = dayKey;
+                        return (
+                          <div key={m.id} className="w-full min-w-0 space-y-2.5">
+                            {opensDay && <DayPill label={formatDayPillLabel(m)} />}
+                            <MessageBubble
+                              m={m}
+                              guestName={selected.guest.name}
+                              guestSeed={selected.guest.id}
+                              reaction={reactionByMessageId.get(m.id)}
+                              deliveryReceipt={
+                                m.wamid ? deliveryReceipts.get(m.wamid) : undefined
+                              }
+                            />
+                          </div>
+                        );
+                      });
+                    })()
+                  )}
+                  {/* Cierre de la conversación: es un hecho del hilo, no una
+                      barra de sistema pegada al encabezado, así que va al final
+                      del historial como evento centrado (spec 4.4). */}
+                  {conversationClosed && !threadLoading && (
+                    <SystemEvent label="Conversación cerrada · reábrela desde la ficha si necesitas seguir el hilo" />
                   )}
                   <div ref={scrollEndRef} className="h-px w-full shrink-0" aria-hidden />
                 </div>
               </div>
 
               <div className="relative z-20 w-full min-w-0 max-w-full shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-[26px] sm:pb-5">
-                {(() => {
-                  const isPendingRequest = selected.request === "pending";
-                  const actionsBusy = pendingAction !== null || resolvingRequest;
-
-                  /*
-                    Staff: se OCULTAN las acciones, no se deshabilitan. Un chip
-                    gris invita a insistir y a preguntar por qué no anda; una
-                    línea que explica el porqué cierra el tema. Ninguna de estas
-                    acciones (tomar control, reactivar IA, completar, reabrir,
-                    resolver asunto) significa nada en un hilo con el personal:
-                    la IA nunca entra ahí.
-
-                    Lo que NO se toca acá: el compositor de abajo y el botón
-                    "Contactar staff" de fuera de la ventana de 24 h. Y marcar
-                    leída sigue viva, porque es automática al abrir el hilo
-                    (`openChat` → `markConversationRead`) y sin ella la fila
-                    quedaría en negrita para siempre.
-                  */
-                  if (selectedIsStaff) {
-                    return (
-                      <div
-                        className="flex items-center gap-2 text-[12.5px] leading-relaxed"
-                        style={{ padding: "10px 2px", color: "var(--ink-3)" }}
-                      >
-                        <IconStaff className="h-4 w-4 shrink-0" style={{ color: "var(--staff)" }} aria-hidden />
-                        <span>Conversación de staff — la IA no interviene</span>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div className="ibx-scroll flex gap-2 overflow-x-auto" style={{ padding: "10px 2px" }}>
-                      {conversationClosed ? (
-                        <ActionChip
-                          icon={IconCheck}
-                          label="Reactivar conversación"
-                          primary
-                          busy={pendingAction === "reopen"}
-                          onClick={() => void reopenConversation()}
-                          disabled={actionsBusy}
-                        />
-                      ) : (
-                        <>
-                          {isPendingRequest && (
-                            <ActionChip
-                              icon={IconCheck}
-                              label="Asunto resuelto"
-                              primary
-                              busy={resolvingRequest}
-                              onClick={() => void resolveRequest()}
-                              disabled={actionsBusy}
-                            />
-                          )}
-                          <ActionChip
-                            icon={IconUserCircle}
-                            label="Tomar control humano"
-                            tone="human"
-                            busy={pendingAction === "human"}
-                            onClick={() => void takeHumanControl()}
-                            disabled={actionsBusy}
-                          />
-                          <ActionChip
-                            icon={IconRobot}
-                            label="Reactivar IA"
-                            tone="ai"
-                            busy={pendingAction === "ai"}
-                            onClick={() => void reactivateAi()}
-                            disabled={actionsBusy}
-                          />
-                          <ActionChip
-                            icon={IconCheck}
-                            label="Marcar como completado"
-                            tone="complete"
-                            busy={pendingAction === "complete"}
-                            onClick={() => void markCompleted()}
-                            disabled={actionsBusy}
-                          />
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
+                {/* Encima del composer NO va ninguna botonera (spec 4.5): esas
+                    acciones —tomar control, reactivar la IA, completar, reabrir,
+                    resolver el asunto— viven todas en la ficha de la derecha, que
+                    se abre con el botón "Ficha" del encabezado del chat. Acá solo
+                    va el aviso de que la IA está respondiendo. */}
                 <div className="w-full">
                 {sendWarning && (
                   <p
                     className="mb-3 w-full min-w-0 max-w-full break-words rounded-lg px-3 py-2 text-[12px] [overflow-wrap:anywhere]"
-                    style={{ border: "1px solid color-mix(in srgb, var(--gold) 40%, transparent)", background: "color-mix(in srgb, var(--gold) 12%, transparent)", color: "var(--ink)" }}
+                    style={{ border: "1px solid color-mix(in srgb, var(--gold) 40%, transparent)", background: "color-mix(in srgb, var(--gold) 12%, transparent)", color: "var(--text-primary)" }}
                   >
                     {sendWarning}
                   </p>
@@ -4196,20 +4235,20 @@ export default function InboxApp() {
                 {fileError && (
                   <p
                     className="mb-3 w-full min-w-0 max-w-full break-words rounded-lg px-3 py-2 text-[12px] [overflow-wrap:anywhere]"
-                    style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+                    style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
                   >
                     {fileError}
                   </p>
                 )}
                 {selectedFile && (
                   <div
-                    className="mb-3 flex max-w-full items-center gap-3 rounded-2xl p-2.5"
-                    style={{ border: "1px solid var(--line)", background: "var(--panel-2)", boxShadow: "var(--shadow-sm)" }}
+                    className="mb-3 flex max-w-full items-center gap-3 rounded-[var(--radius-card)] p-2.5"
+                    style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-sm)" }}
                   >
                     {selectedFileIsPdf || !filePreviewUrl ? (
                       <div
                         className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold"
-                        style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+                        style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
                       >
                         PDF
                       </div>
@@ -4221,14 +4260,14 @@ export default function InboxApp() {
                       />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold" style={{ color: "var(--ink)" }}>
+                      <p className="truncate text-[13px] font-semibold" style={{ color: "var(--text-primary)" }}>
                         {selectedFile.name}
                       </p>
-                      <p className="mt-0.5 text-[11px]" style={{ color: "var(--ink-2)" }}>
+                      <p className="mt-0.5 text-[11px]" style={{ color: "var(--text-secondary)" }}>
                         {selectedFileIsPdf ? "PDF adjunto" : "Imagen adjunta"} · {selectedFileSizeLabel}
                       </p>
                       {draft.trim() && (
-                        <p className="mt-1 line-clamp-1 text-[12px]" style={{ color: "var(--ink-2)" }}>
+                        <p className="mt-1 line-clamp-1 text-[12px]" style={{ color: "var(--text-secondary)" }}>
                           Caption: {draft.trim()}
                         </p>
                       )}
@@ -4238,16 +4277,37 @@ export default function InboxApp() {
                       onClick={clearSelectedFile}
                       disabled={sendingMedia}
                       className="d-soft flex h-8 w-8 shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-50"
-                      style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-2)" }}
+                      style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-secondary)" }}
                       aria-label="Quitar archivo"
                     >
                       ×
                     </button>
                   </div>
                 )}
+                {/*
+                  Aviso de que el agente sigue al mando (spec 4.5). Solo sale
+                  cuando la IA está de verdad respondiendo esta conversación:
+                  ni en staff (ahí nunca interviene), ni con la conversación
+                  cerrada, ni fuera de la ventana de 24 h, donde el composer ya
+                  está bloqueado y la línea sería una promesa falsa.
+                */}
+                {!selectedIsStaff &&
+                  !inputDisabled &&
+                  selected.operationalStatus === "ai_active" &&
+                  selected.controlMode === "ai" && (
+                    <p
+                      className="mb-2 flex w-full min-w-0 items-start gap-1.5 px-1 text-[11.5px] leading-snug [overflow-wrap:anywhere]"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
+                      <Spark className="mt-[1px] h-3 w-3 shrink-0" style={{ color: "var(--gold)" }} aria-hidden />
+                      <span>
+                        La IA está respondiendo · si escribes, tomas el control de la conversación
+                      </span>
+                    </p>
+                  )}
                 <div
                   className={`flex w-full min-w-0 max-w-full items-center gap-2 ${inputDisabled ? "opacity-[0.55]" : ""} transition-opacity`}
-                  style={{ padding: "5px 6px 5px 14px", borderRadius: 999, background: "var(--panel)", border: "1px solid var(--line)", boxShadow: "var(--shadow)" }}
+                  style={{ padding: "5px 6px 5px 14px", borderRadius: 999, background: "var(--bg-card)", border: "1px solid var(--border-soft)", boxShadow: "var(--shadow)" }}
                 >
                   <input
                     ref={fileInputRef}
@@ -4261,8 +4321,8 @@ export default function InboxApp() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={inputDisabled || sendingMedia}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition hover:bg-[var(--panel-2)] disabled:cursor-not-allowed disabled:opacity-35"
-                    style={{ background: "transparent", color: "var(--ink-3)" }}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition hover:bg-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-35"
+                    style={{ background: "transparent", color: "var(--text-secondary)" }}
                     aria-label="Adjuntar archivo"
                     title="Adjuntar archivo"
                   >
@@ -4296,17 +4356,17 @@ export default function InboxApp() {
                             ? selectedFileIsPdf
                               ? "Caption opcional para el documento…"
                               : "Caption opcional para la imagen…"
-                          : "Escribe como agente humano…"
+                          : "Escribe para responder como humano…"
                     }
-                    className="min-h-[2.25rem] min-w-0 flex-1 resize-none touch-manipulation border-none bg-transparent py-2 text-[15px] leading-snug outline-none placeholder:text-[var(--ink-3)] disabled:cursor-not-allowed lg:text-[14px]"
-                    style={{ color: "var(--ink)" }}
+                    className="min-h-[2.25rem] min-w-0 flex-1 resize-none touch-manipulation border-none bg-transparent py-2 text-[15px] leading-snug outline-none placeholder:text-[var(--text-secondary)] disabled:cursor-not-allowed lg:text-[14px]"
+                    style={{ color: "var(--text-primary)" }}
                   />
                   <button
                     type="button"
                     onClick={() => void sendMessage()}
                     disabled={(!draft.trim() && !selectedFile) || inputDisabled || sendingMedia}
                     className="d-prim flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-35"
-                    style={{ background: "var(--red)", color: "#fff", border: "none" }}
+                    style={{ background: "var(--accent)", color: "#fff", border: "none" }}
                     aria-label="Enviar"
                   >
                     {sendingMedia ? (
@@ -4318,7 +4378,7 @@ export default function InboxApp() {
                 </div>
                 {replyBlockedByMeta && (
                   <div className="mt-2.5 w-full min-w-0">
-                    <p className="text-[12px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--ink-2)" }}>
+                    <p className="text-[12px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-primary)" }}>
                       Han pasado más de 24 horas desde el último mensaje{" "}
                       {selected.isStaff ? "del contacto" : "del huésped"}, o no hay mensajes suyos.
                       No puedes responder por política de Meta.
@@ -4347,11 +4407,11 @@ export default function InboxApp() {
                         <button
                           type="button"
                           onClick={() => openStartConversation(selectedPhoneDigits)}
-                          className="grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)]"
+                          className="grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--border-soft)]"
                           style={{
-                            border: "1px solid var(--line)",
-                            background: "var(--panel)",
-                            color: "var(--ink-2)",
+                            border: "1px solid var(--border-soft)",
+                            background: "var(--bg-card)",
+                            color: "var(--text-secondary)",
                           }}
                         >
                           <IconCompose className="h-4 w-4" />
@@ -4365,18 +4425,18 @@ export default function InboxApp() {
             </>
           ) : deepLinkMissing ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-              <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>
+              <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
                 Esa conversación no está en esta vista
               </p>
-              <p className="max-w-xs text-[13px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+              <p className="max-w-xs text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
                 Puede ser de otro hotel. No abrimos otra en su lugar para no mostrarte el chat
                 equivocado: selecciona una de la lista o cambia de hotel.
               </p>
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
-              <p className="text-sm font-medium" style={{ color: "var(--ink-2)" }}>Selecciona una conversación</p>
-              <p className="max-w-xs text-[13px]" style={{ color: "var(--ink-3)" }}>Cola unificada con estados IA y prioridad.</p>
+              <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Selecciona una conversación</p>
+              <p className="max-w-xs text-[13px]" style={{ color: "var(--text-secondary)" }}>Cola unificada con estados IA y prioridad.</p>
             </div>
           )}
         </section>
@@ -4386,17 +4446,17 @@ export default function InboxApp() {
           aria-orientation="vertical"
           aria-label="Ajustar ancho del panel"
           onMouseDown={startColumnResize("right")}
-          className="group hidden w-1 shrink-0 cursor-col-resize items-stretch lg:flex"
+          className={`group w-1 shrink-0 cursor-col-resize items-stretch ${detailsOpen ? "hidden lg:flex" : "hidden"}`}
           title="Arrastra para ajustar el ancho"
         >
-          <span className="block h-full w-px bg-[var(--line)] transition-colors group-hover:w-1 group-hover:bg-[var(--red)]" />
+          <span className="block h-full w-px bg-[var(--border-soft)] transition-colors group-hover:w-1 group-hover:bg-[var(--accent)]" />
         </div>
 
         <aside
-          className="hidden h-full min-h-0 shrink-0 flex-col lg:flex"
+          className={`h-full min-h-0 shrink-0 flex-col ${detailsOpen ? "hidden lg:flex" : "hidden"}`}
           style={{
-            background: "var(--panel)",
-            borderLeft: "1px solid var(--line)",
+            background: "var(--bg-app)",
+            borderLeft: "1px solid var(--border-soft)",
             ...(isDesktop ? { width: rightWidth } : { width: 312 }),
           }}
         >
@@ -4408,6 +4468,7 @@ export default function InboxApp() {
               onComplete={markCompleted}
               onResolveRequest={resolveRequest}
               onReopen={reopenConversation}
+              onClosePanel={() => setDetailsOpen(false)}
               resolvingRequest={resolvingRequest}
               pendingAction={pendingAction}
             />
@@ -4425,35 +4486,20 @@ export default function InboxApp() {
           />
           <div
             className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col shadow-2xl"
-            style={{ borderLeft: "1px solid var(--line)", background: "var(--panel)" }}
+            style={{ borderLeft: "1px solid var(--border-soft)", background: "var(--bg-app)" }}
           >
-            <div
-              className="flex h-14 shrink-0 items-center justify-between px-4"
-              style={{ borderBottom: "1px solid var(--line)", background: "var(--panel)" }}
-            >
-              <span className="grotesk text-[15px] font-bold" style={{ color: "var(--ink)" }}>Ficha operativa</span>
-              <button
-                type="button"
-                onClick={() => setGuestOpen(false)}
-                className="d-soft flex h-10 w-10 items-center justify-center rounded-xl"
-                style={{ color: "var(--ink-2)" }}
-                aria-label="Cerrar panel"
-              >
-                <IconClose className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="ibx-scroll min-h-0 flex-1 overflow-y-auto">
-              <GuestPanelContent
-                conversation={selected}
-                onTakeHuman={takeHumanControl}
-                onReactivateAi={reactivateAi}
-                onComplete={markCompleted}
-                onResolveRequest={resolveRequest}
-                onReopen={reopenConversation}
-                resolvingRequest={resolvingRequest}
-                pendingAction={pendingAction}
-              />
-            </div>
+            {/* Sin cabecera propia: la X de la card de contacto es la que cierra. */}
+            <GuestPanelContent
+              conversation={selected}
+              onTakeHuman={takeHumanControl}
+              onReactivateAi={reactivateAi}
+              onComplete={markCompleted}
+              onResolveRequest={resolveRequest}
+              onReopen={reopenConversation}
+              onClosePanel={() => setGuestOpen(false)}
+              resolvingRequest={resolvingRequest}
+              pendingAction={pendingAction}
+            />
           </div>
         </div>
       )}
@@ -4467,13 +4513,13 @@ export default function InboxApp() {
         >
           <div
             className="w-full max-w-sm rounded-2xl p-5"
-            style={{ border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
+            style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 id="moderation-dialog-title" className="grotesk text-[15px] font-bold" style={{ color: "var(--ink)" }}>
+            <h3 id="moderation-dialog-title" className="grotesk text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>
               {moderationDialogAction === "block" ? "Bloquear conversación" : "Desbloquear conversación"}
             </h3>
-            <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
+            <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "var(--text-primary)" }}>
               {moderationDialogAction === "block" ? (
                 <>
                   ¿Bloquear a {selected.guest.name || selected.guestPhone}? Esta acción se puede revertir
@@ -4489,7 +4535,7 @@ export default function InboxApp() {
                 disabled={moderationInProgress}
                 onClick={() => setModerationDialogAction(null)}
                 className="d-soft grotesk rounded-lg px-3 py-2 text-[13px] font-semibold disabled:opacity-50"
-                style={{ border: "1px solid var(--line)", color: "var(--ink-2)" }}
+                style={{ border: "1px solid var(--border-soft)", color: "var(--text-secondary)" }}
               >
                 Cancelar
               </button>
@@ -4498,7 +4544,7 @@ export default function InboxApp() {
                 disabled={moderationInProgress}
                 onClick={() => void applyConversationModeration(moderationDialogAction)}
                 className="d-prim grotesk rounded-lg px-3 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
-                style={{ background: "var(--red)", border: "none" }}
+                style={{ background: "var(--accent)", border: "none" }}
               >
                 {moderationInProgress
                   ? moderationDialogAction === "block"
@@ -4527,21 +4573,15 @@ export default function InboxApp() {
           })
         }
       />
-      <FeedbackModal
-        open={feedbackOpen}
-        activeHotelId={conversationHotelId}
-        onClose={() => setFeedbackOpen(false)}
-        onSuccess={() =>
-          setTemplateToast({ type: "success", message: "¡Gracias! Tu feedback fue enviado." })
-        }
-      />
-      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      {/* Ayuda, feedback y novedades cuelgan del menú del avatar en el sidebar:
+          son de la sesión, no de la conversación abierta. */}
       <StaffContactsModal
         open={staffContactsOpen}
         activeHotelId={conversationHotelId}
         onClose={() => setStaffContactsOpen(false)}
       />
     </div>
+    </AppShell>
   );
 }
 
@@ -4610,10 +4650,10 @@ function MonoRow({ k, v, accent }: { k: string; v: string; accent?: string }) {
   return (
     <div
       className="ibx-mono flex justify-between gap-3"
-      style={{ padding: "8px 0", fontSize: 12, borderBottom: "1px solid var(--line-2)" }}
+      style={{ padding: "8px 0", fontSize: 12, borderBottom: "1px solid var(--border-soft)" }}
     >
-      <span style={{ color: "var(--ink-3)" }}>{k}</span>
-      <span className="text-right" style={{ color: accent ?? "var(--ink)", fontWeight: 500 }}>
+      <span style={{ color: "var(--text-secondary)" }}>{k}</span>
+      <span className="text-right" style={{ color: accent ?? "var(--text-primary)", fontWeight: 500 }}>
         {v}
       </span>
     </div>
@@ -4625,11 +4665,105 @@ function CockpitLabel({ children }: { children: React.ReactNode }) {
   return (
     <span
       className="ibx-mono"
-      style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-3)" }}
+      style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-secondary)" }}
     >
       {children}
     </span>
   );
+}
+
+/**
+ * Card blanca del panel derecho. El panel va sobre el crema (`--bg`) y cada
+ * bloque se levanta como card, igual que la lista de huéspedes.
+ */
+function PanelCard({
+  children,
+  className = "",
+  padded = true,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  padded?: boolean;
+}) {
+  return (
+    <div
+      className={`min-w-0 ${padded ? "p-3.5" : ""} ${className}`}
+      style={{
+        borderRadius: "var(--radius-card)",
+        background: "var(--bg-card)",
+        border: "1px solid var(--border-soft)",
+        boxShadow: "var(--shadow-sm)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Interruptor de FerrarIA. No decide nada por su cuenta: encendido llama a
+ * "reactivar IA" y apagado a "tomar control humano", las mismas dos acciones
+ * que ya existían como botones.
+ */
+function AiToggleSwitch({
+  on,
+  busy,
+  disabled,
+  onToggle,
+}: {
+  on: boolean;
+  busy: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={on ? "Poner a FerrarIA en pausa" : "Reactivar a FerrarIA"}
+      aria-busy={busy}
+      disabled={disabled}
+      onClick={onToggle}
+      className="relative inline-flex shrink-0 items-center transition disabled:cursor-not-allowed disabled:opacity-50"
+      style={{
+        width: 44,
+        height: 25,
+        borderRadius: 999,
+        background: on ? "var(--live)" : "var(--border-soft)",
+        border: `1px solid ${on ? "var(--live)" : "var(--border-soft)"}`,
+      }}
+    >
+      <span
+        className="block transition-transform"
+        style={{
+          width: 19,
+          height: 19,
+          borderRadius: 999,
+          background: "#fff",
+          boxShadow: "var(--shadow-sm)",
+          transform: `translateX(${on ? 21 : 2}px)`,
+        }}
+      />
+    </button>
+  );
+}
+
+/**
+ * "hace N minutos" de la última respuesta del agente en el hilo cargado.
+ *
+ * Se deriva en cliente de los mensajes que ya están en memoria: la respuesta de
+ * `/api/inbox` no trae el dato y esa ruta no acepta campos nuevos. Devuelve
+ * `null` cuando el hilo aún no tiene ninguna respuesta del agente cargada, y en
+ * ese caso el subtexto simplemente no menciona la última respuesta.
+ */
+function lastAiReplyAgo(messages: Message[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i];
+    if (m.sender !== "ai") continue;
+    return tiempoTranscurrido(m.sentAtIso ?? m.sentAt);
+  }
+  return null;
 }
 
 function GuestPanelContent({
@@ -4639,6 +4773,7 @@ function GuestPanelContent({
   onComplete,
   onResolveRequest,
   onReopen,
+  onClosePanel,
   resolvingRequest,
   pendingAction,
 }: {
@@ -4648,6 +4783,7 @@ function GuestPanelContent({
   onComplete: () => void;
   onResolveRequest: () => void;
   onReopen: () => void;
+  onClosePanel: () => void;
   resolvingRequest: boolean;
   pendingAction: null | "human" | "ai" | "complete" | "reopen";
 }) {
@@ -4669,6 +4805,10 @@ function GuestPanelContent({
   const isPendingRequest = conversation.request === "pending";
   const isClosed = conversation.operationalStatus === "closed";
   const actionsBusy = pendingAction !== null || resolvingRequest;
+  const aiOn = conversation.aiActive && conversation.controlMode === "ai";
+  const aiAgo = lastAiReplyAgo(conversation.messages);
+  /** El detalle crudo arranca plegado: es depuración, no operación diaria. */
+  const [techOpen, setTechOpen] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryLoadMode, setSummaryLoadMode] = useState<"initial" | "regenerate">("initial");
   const [summaryError, setSummaryError] = useState<string | null>(null);
@@ -4802,31 +4942,69 @@ function GuestPanelContent({
   }, [conversation.id, applySummaryResult]);
 
   return (
-    <div className="flex h-full flex-col px-4 pb-4" style={{ background: "var(--panel)" }}>
-      {/* Cabecera */}
-      <div className="flex shrink-0 items-center gap-3 pb-4 pt-[18px]" style={{ borderBottom: "1px solid var(--line)" }}>
-        <Avatar name={guest.name} seed={guest.id} size={50} />
-        <div className="min-w-0">
-          <div className="grotesk truncate" style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>
+    <div className="ibx-scroll flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3" style={{ background: "var(--bg-app)" }}>
+      {/* 1 · Card de contacto */}
+      <PanelCard className="flex shrink-0 items-center gap-3">
+        <Avatar name={guest.name} seed={guest.id} size={44} />
+        <div className="min-w-0 flex-1">
+          <div className="grotesk truncate" style={{ fontSize: 15.5, fontWeight: 700, color: "var(--text-primary)" }}>
             {guest.name}
           </div>
-          <div className="ibx-mono mt-0.5 truncate" style={{ fontSize: 11, color: "var(--ink-3)" }}>
+          <div className="ibx-mono mt-0.5 truncate" style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>
             {guest.phone}
           </div>
         </div>
-      </div>
+        <button
+          type="button"
+          onClick={onClosePanel}
+          className="d-soft flex h-8 w-8 shrink-0 items-center justify-center"
+          style={{ borderRadius: "var(--radius-chip)", color: "var(--text-secondary)" }}
+          aria-label="Cerrar la ficha"
+        >
+          <IconClose className="h-[18px] w-[18px]" />
+        </button>
+      </PanelCard>
+
+      {/* 2 · Card de FerrarIA */}
+      {isStaff ? (
+        <PanelCard className="flex shrink-0 items-center gap-2">
+          <IconStaff className="h-4 w-4 shrink-0" style={{ color: "var(--staff)" }} aria-hidden />
+          <span className="text-[12.5px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+            Conversación de staff — el agente no interviene
+          </span>
+        </PanelCard>
+      ) : (
+        <PanelCard className="shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="grotesk flex items-center gap-2" style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+                <Dot color={aiOn ? "var(--live)" : "var(--text-secondary)"} />
+                {aiOn ? "IA activa" : "IA en pausa"}
+              </div>
+              <span
+                className="ibx-mono mt-1.5 inline-block"
+                style={{ fontSize: 10, color: "var(--text-secondary)", border: "1px solid var(--border-soft)", borderRadius: 5, padding: "1px 5px" }}
+              >
+                {aiOn ? "⌘H para tomar el control" : "⌘R para reactivarla"}
+              </span>
+            </div>
+            <AiToggleSwitch
+              on={aiOn}
+              busy={pendingAction === "ai" || pendingAction === "human"}
+              disabled={actionsBusy}
+              onToggle={aiOn ? onTakeHuman : onReactivateAi}
+            />
+          </div>
+          <p className="mt-2 text-[12.5px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+            {aiOn ? "FerrarIA responde automáticamente" : "FerrarIA está en pausa: las respuestas las escribes tú"}
+            {aiAgo ? ` · última respuesta ${aiAgo}` : ""}
+          </p>
+        </PanelCard>
+      )}
 
       {/* Acciones */}
-      {isStaff ? (
-        <div
-          className="flex shrink-0 items-center gap-2 py-4 text-[12.5px] leading-relaxed"
-          style={{ borderBottom: "1px solid var(--line)", color: "var(--ink-3)" }}
-        >
-          <IconStaff className="h-4 w-4 shrink-0" style={{ color: "var(--staff)" }} aria-hidden />
-          <span>Conversación de staff — la IA no interviene</span>
-        </div>
-      ) : (
-      <div className="shrink-0 py-4" style={{ borderBottom: "1px solid var(--line)" }}>
+      {!isStaff && (
+      <PanelCard className="shrink-0">
         <div className="mb-3">
           <CockpitLabel>Acciones</CockpitLabel>
         </div>
@@ -4837,7 +5015,7 @@ function GuestPanelContent({
             disabled={actionsBusy}
             aria-busy={pendingAction === "reopen"}
             className="d-prim grotesk flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ padding: 12, borderRadius: 11, border: "none", background: "var(--red)", color: "#fff", fontSize: 14, fontWeight: 700 }}
+            style={{ padding: 12, borderRadius: 11, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 700 }}
           >
             {pendingAction === "reopen" ? (
               <>
@@ -4860,7 +5038,7 @@ function GuestPanelContent({
                 disabled={actionsBusy}
                 aria-busy={resolvingRequest}
                 className="d-prim grotesk mb-2.5 flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-                style={{ padding: 12, borderRadius: 11, border: "none", background: "var(--red)", color: "#fff", fontSize: 14, fontWeight: 700 }}
+                style={{ padding: 12, borderRadius: 11, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 700 }}
               >
                 {resolvingRequest ? (
                   <>
@@ -4875,25 +5053,9 @@ function GuestPanelContent({
                 )}
               </button>
             )}
-            <div className="grid grid-cols-2 gap-2">
-              <CmdAction
-                icon={IconUserCircle}
-                label="Tomar control humano"
-                hint="⌘H"
-                tone="human"
-                busy={pendingAction === "human"}
-                onClick={onTakeHuman}
-                disabled={actionsBusy}
-              />
-              <CmdAction
-                icon={IconRobot}
-                label="Reactivar IA"
-                hint="⌘R"
-                tone="ai"
-                busy={pendingAction === "ai"}
-                onClick={onReactivateAi}
-                disabled={actionsBusy}
-              />
+            {/* Control humano / IA vive arriba en el interruptor; el resumen,
+                en su propia sección. Acá quedan las acciones de cierre. */}
+            <div className="grid grid-cols-1 gap-2">
               <CmdAction
                 icon={IconCheck}
                 label="Marcar como completado"
@@ -4903,46 +5065,52 @@ function GuestPanelContent({
                 onClick={onComplete}
                 disabled={actionsBusy}
               />
-              <CmdAction
-                icon={IconSparkles}
-                label="Crear resumen del chat"
-                hint="⌘S"
-                tone="summary"
-                busy={summaryLoading}
-                onClick={() => void createChatSummary()}
-                disabled={summaryLoading}
-              />
             </div>
           </>
         )}
-      </div>
+      </PanelCard>
       )}
 
-      <div className="ibx-scroll min-h-0 flex-1 overflow-y-auto">
-        {/* Resumen del chat */}
-        {!isStaff && (
-        <div className="py-4" style={{ borderBottom: "1px solid var(--line)" }}>
-          <div className="mb-3 flex items-center">
-            <CockpitLabel>Resumen del chat</CockpitLabel>
+      {/* 3 · Huésped */}
+      <PanelCard className="shrink-0">
+        <div className="mb-1">
+          <CockpitLabel>Huésped</CockpitLabel>
+        </div>
+        <MonoRow k="Canal" v={conversation.channelLabel} />
+        <MonoRow k="Hotel" v={guest.property} />
+        <MonoRow k="Última actividad" v={formatActivityIso(conversation.lastActivityIso)} />
+      </PanelCard>
+
+      {/* 4 · Resumen */}
+      {!isStaff && (
+        <PanelCard className="shrink-0">
+          <div className="mb-3 flex items-center gap-2">
+            <CockpitLabel>Resumen</CockpitLabel>
             <button
               type="button"
               onClick={() => void createChatSummary()}
               disabled={summaryLoading}
               className="d-act grotesk ml-auto inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ padding: "4px 9px", border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--red)", borderRadius: 7, fontSize: 11.5, fontWeight: 700 }}
+              style={{ padding: "5px 10px", border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--accent)", borderRadius: "var(--radius-chip)", fontSize: 11.5, fontWeight: 700 }}
             >
-              <Spark className="h-3 w-3" style={{ color: "var(--red)" }} aria-hidden />
-              Generar
+              <Spark className="h-3 w-3" style={{ color: "var(--accent)" }} aria-hidden />
+              Generar resumen
+              <span
+                className="ibx-mono"
+                style={{ fontSize: 10, color: "var(--text-secondary)", border: "1px solid var(--border-soft)", borderRadius: 5, padding: "1px 5px" }}
+              >
+                ⌘S
+              </span>
             </button>
           </div>
           {summaryLoading && (
             <div
               className="flex items-center gap-2.5 rounded-xl px-3 py-3 text-[13px]"
-              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }}
+              style={{ border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--text-secondary)" }}
               role="status"
               aria-live="polite"
             >
-              <Spinner className="h-4 w-4 shrink-0 animate-spin text-[var(--red)]" />
+              <Spinner className="h-4 w-4 shrink-0 animate-spin text-[var(--accent)]" />
               <span>
                 {summaryLoadMode === "initial"
                   ? "Cargando resumen…"
@@ -4953,110 +5121,110 @@ function GuestPanelContent({
           {!summaryLoading && summaryError && (
             <div
               className="rounded-xl px-3 py-2.5 text-[13px] leading-relaxed"
-              style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+              style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
               role="alert"
             >
               {summaryError}
             </div>
           )}
           {!summaryLoading && !summaryError && summaryText && (
-            <div className="min-w-0 rounded-lg p-3" style={{ background: "var(--panel-2)", border: "1px solid var(--line)" }}>
-              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed" style={{ color: "var(--ink)" }}>
+            <div className="min-w-0 rounded-lg p-3" style={{ background: "var(--bg-app)", border: "1px solid var(--border-soft)" }}>
+              <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed" style={{ color: "var(--text-primary)" }}>
                 {summaryText}
               </p>
             </div>
           )}
           {!summaryLoading && !summaryError && summaryDbEmpty && (
-            <p className="ibx-mono text-[12px]" style={{ color: "var(--ink-3)" }}>Sin resumen aún.</p>
+            <p className="ibx-mono text-[12px]" style={{ color: "var(--text-secondary)" }}>Sin resumen aún.</p>
           )}
-        </div>
-        )}
+        </PanelCard>
+      )}
 
-        {/* Datos */}
-        <div className="py-4">
-          <div className="mb-2">
-            <CockpitLabel>Datos</CockpitLabel>
-          </div>
-          <MonoRow
-            k={isWaLidIdentifier(guest.phone) ? "ID de WhatsApp" : "Teléfono"}
-            v={guest.phone}
-          />
-          <MonoRow k="Canal" v="WhatsApp" />
-          <MonoRow k="Estado IA" v={iaEstado} />
-          <MonoRow k="Última actividad" v={formatActivityIso(conversation.lastActivityIso)} />
-          <MonoRow k="Mensajes (cargados)" v={String(conversation.messages.length)} />
-          <MonoRow k="Needs Human (BD)" v={conversation.needsHuman ? "Sí" : "No"} />
-          <MonoRow
-            k="Request (BD)"
-            v={conversation.request ?? "—"}
-            accent={isPendingRequest ? "var(--red)" : undefined}
-          />
-          <MonoRow k="IA activa (BD)" v={conversation.aiActive ? "Sí" : "No"} />
-          <MonoRow k="Estado (BD)" v={conversation.dbStatus ?? "—"} />
-          <MonoRow k="Bloqueado" v={conversation.blocked ? "Sí" : "No"} />
-          {conversation.blockedAt && (
-            <MonoRow k="blocked_at" v={formatActivityIso(conversation.blockedAt)} />
-          )}
-        </div>
-
-        {/* Cotización / propiedad */}
-        <div className="py-4" style={{ borderTop: "1px solid var(--line)" }}>
+      {!notesAreDefault && (
+        <PanelCard className="shrink-0">
           <div className="mb-2 flex items-center gap-2">
-            <IconBuilding className="h-4 w-4" style={{ color: "var(--ink-3)" }} aria-hidden />
-            <CockpitLabel>Cotización / propiedad</CockpitLabel>
+            <IconNote className="h-4 w-4" style={{ color: "var(--gold)" }} aria-hidden />
+            <CockpitLabel>Notas (tabla / handoff)</CockpitLabel>
           </div>
-          <p className="text-[14px] font-medium leading-snug" style={{ color: "var(--ink)" }}>{guest.property}</p>
-        </div>
-
-        {!notesAreDefault && (
-          <div className="py-4" style={{ borderTop: "1px solid var(--line)" }}>
-            <div className="mb-2 flex items-center gap-2">
-              <IconNote className="h-4 w-4" style={{ color: "var(--gold)" }} aria-hidden />
-              <CockpitLabel>Notas (tabla / handoff)</CockpitLabel>
-            </div>
-            <p
-              className="rounded-lg p-3 text-[13px] leading-relaxed"
-              style={{ background: "color-mix(in srgb, var(--gold) 10%, transparent)", color: "var(--ink)" }}
-            >
-              {guest.internalNotes}
-            </p>
-          </div>
-        )}
-
-        {hasTags && (
-          <div className="py-4" style={{ borderTop: "1px solid var(--line)" }}>
-            <div className="mb-3 flex items-center gap-2">
-              <IconTag className="h-4 w-4" style={{ color: "var(--ink-3)" }} aria-hidden />
-              <CockpitLabel>Etiquetas</CockpitLabel>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {guest.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="grotesk"
-                  style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--panel-2)", color: "var(--ink-2)" }}
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="flex gap-2 py-4" style={{ borderTop: "1px solid var(--line)" }}>
-          <button
-            type="button"
-            onClick={() => void navigator.clipboard?.writeText(guest.phone)}
-            className="d-act grotesk flex flex-1 items-center justify-center gap-2"
-            style={{ padding: "10px", borderRadius: 11, border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)", fontSize: 12, fontWeight: 600 }}
+          <p
+            className="rounded-lg p-3 text-[13px] leading-relaxed"
+            style={{ background: "color-mix(in srgb, var(--gold) 10%, transparent)", color: "var(--text-primary)" }}
           >
-            <IconPhone className="h-4 w-4" />
-            {isWaLidIdentifier(guest.phone) ? "Copiar ID" : "Copiar teléfono"}
-          </button>
-        </div>
+            {guest.internalNotes}
+          </p>
+        </PanelCard>
+      )}
 
-        <p className="ibx-mono pb-2 text-center text-[10px]" style={{ color: "var(--ink-3)" }}>FerrarIA · Inbox</p>
-      </div>
+      {hasTags && (
+        <PanelCard className="shrink-0">
+          <div className="mb-3 flex items-center gap-2">
+            <IconTag className="h-4 w-4" style={{ color: "var(--text-secondary)" }} aria-hidden />
+            <CockpitLabel>Etiquetas</CockpitLabel>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {guest.tags.map((tag) => (
+              <span
+                key={tag}
+                className="grotesk"
+                style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--bg-app)", color: "var(--text-secondary)" }}
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        </PanelCard>
+      )}
+
+      {/* 5 · Datos técnicos, plegado por defecto */}
+      <PanelCard className="shrink-0" padded={false}>
+        <button
+          type="button"
+          onClick={() => setTechOpen((v) => !v)}
+          aria-expanded={techOpen}
+          className="d-soft flex w-full items-center gap-2 p-3.5 text-left"
+          style={{ borderRadius: "var(--radius-card)" }}
+        >
+          <CockpitLabel>Datos técnicos</CockpitLabel>
+          <IconChevronDown
+            className="ml-auto h-4 w-4 shrink-0 transition-transform"
+            style={{ color: "var(--text-secondary)", transform: techOpen ? "rotate(180deg)" : "none" }}
+            aria-hidden
+          />
+        </button>
+        {techOpen && (
+          <div className="px-3.5 pb-3.5">
+            <MonoRow
+              k={isWaLidIdentifier(guest.phone) ? "ID de WhatsApp" : "Teléfono"}
+              v={guest.phone}
+            />
+            <MonoRow k="Estado IA" v={iaEstado} />
+            <MonoRow k="Mensajes (cargados)" v={String(conversation.messages.length)} />
+            <MonoRow k="Needs Human (BD)" v={conversation.needsHuman ? "Sí" : "No"} />
+            <MonoRow
+              k="Request (BD)"
+              v={conversation.request ?? "—"}
+              accent={isPendingRequest ? "var(--accent)" : undefined}
+            />
+            <MonoRow k="IA activa (BD)" v={conversation.aiActive ? "Sí" : "No"} />
+            <MonoRow k="Estado (BD)" v={conversation.dbStatus ?? "—"} />
+            <MonoRow k="Bloqueado" v={conversation.blocked ? "Sí" : "No"} />
+            {conversation.blockedAt && (
+              <MonoRow k="blocked_at" v={formatActivityIso(conversation.blockedAt)} />
+            )}
+            <button
+              type="button"
+              onClick={() => void navigator.clipboard?.writeText(guest.phone)}
+              className="d-act grotesk mt-3 flex w-full items-center justify-center gap-2"
+              style={{ padding: "10px", borderRadius: 11, border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--text-primary)", fontSize: 12, fontWeight: 600 }}
+            >
+              <IconPhone className="h-4 w-4" />
+              {isWaLidIdentifier(guest.phone) ? "Copiar ID" : "Copiar teléfono"}
+            </button>
+          </div>
+        )}
+      </PanelCard>
+
+      <p className="ibx-mono shrink-0 pb-1 text-center text-[10px]" style={{ color: "var(--text-secondary)" }}>FerrarIA · Inbox</p>
     </div>
   );
 }

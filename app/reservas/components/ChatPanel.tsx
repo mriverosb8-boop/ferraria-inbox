@@ -21,7 +21,7 @@ function MessageBubble({ message }: { message: Message }) {
         className={`max-w-[86%] rounded-2xl px-3 py-2 text-[13px] leading-relaxed shadow-sm ring-1 ${
           isGuest
             ? "rounded-bl-md bg-[var(--panel-3)] text-[var(--ink)] ring-[var(--line)]"
-            : "rounded-br-md bg-[var(--red-soft)] text-[var(--ink)] ring-[var(--red)]"
+            : "rounded-br-md bg-[var(--red-soft)] text-[var(--ink)] ring-[var(--accent)]"
         }`}
       >
         <p className="whitespace-pre-wrap break-words">
@@ -84,7 +84,7 @@ export function ChatPanel({ reserva, onClose }: Props) {
         {loading ? (
           <p className="py-8 text-center text-[13px] text-[var(--ink-2)]">Cargando conversación...</p>
         ) : error ? (
-          <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-900">
+          <p className="rounded-xl border border-[var(--accent)] bg-[var(--red-soft)] px-3 py-2 text-[13px] text-[var(--accent)]">
             {error}
           </p>
         ) : messages.length === 0 ? (
@@ -103,7 +103,7 @@ export function ChatPanel({ reserva, onClose }: Props) {
         {conversationId ? (
           <Link
             href={`/?conversationId=${encodeURIComponent(conversationId)}`}
-            className="flex w-full items-center justify-center rounded-xl border border-[var(--red)] bg-[var(--panel-2)] px-3 py-2.5 text-[12px] font-semibold text-[var(--ink)] transition hover:bg-[var(--panel-3)]"
+            className="flex w-full items-center justify-center rounded-xl border border-[var(--accent)] bg-[var(--panel-2)] px-3 py-2.5 text-[12px] font-semibold text-[var(--ink)] transition hover:bg-[var(--panel-3)]"
           >
             Abrir en inbox
           </Link>

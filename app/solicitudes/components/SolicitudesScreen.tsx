@@ -2,11 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { BrandHeaderMark } from "@/app/components/BrandHeaderMark";
-import { HeaderMobileMenu } from "@/app/components/HeaderMobileMenu";
-import { InboxHeaderTabs } from "@/app/components/InboxHeaderTabs";
-import { LogoutButton } from "@/app/components/LogoutButton";
-import { ThemeToggle } from "@/app/components/ThemeToggle";
+import { AppShell } from "@/app/components/AppShell";
 import { readStoredActiveHotelId, writeStoredActiveHotelId } from "@/lib/active-hotel-storage";
 import {
   FILTRO_LABEL,
@@ -122,16 +118,17 @@ export function SolicitudesScreen() {
   const vacio = VACIO[filtro];
 
   return (
-    <div className="flex h-[100dvh] max-h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--ink)]">
+    <AppShell hotelId={scopedHotelId}>
+    <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]">
       <div className="fixed right-4 top-4 z-[600] flex max-w-[min(100vw-2rem,24rem)] flex-col gap-2">
         {toasts.map((toast) => (
           <div
             key={toast.id}
             role={toast.tipo === "error" ? "alert" : "status"}
-            className={`rounded-xl border px-4 py-3 text-[13px] font-semibold shadow-lg ring-1 ${
+            className={`rounded-xl border px-4 py-3 text-[13px] font-semibold shadow-lg ${
               toast.tipo === "error"
-                ? "border-rose-300 bg-rose-50 text-rose-950 ring-rose-200"
-                : "border-emerald-300 bg-emerald-50 text-emerald-950 ring-emerald-200"
+                ? "border-[var(--accent)] bg-[var(--red-soft)] text-[var(--accent)]"
+                : "border-emerald-300 bg-emerald-50 text-emerald-950"
             }`}
           >
             {toast.mensaje}
@@ -139,51 +136,34 @@ export function SolicitudesScreen() {
         ))}
       </div>
 
-      <header
-        className="flex h-[52px] shrink-0 items-center px-4 lg:h-14 lg:px-6"
-        style={{
-          background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)",
-          borderBottom: "1px solid var(--red-deep)",
-          boxShadow: "0 1px 8px rgba(196,43,32,.25)",
-        }}
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-3.5">
-          <BrandHeaderMark size="sm" />
-          <div className="min-w-0">
-            <h1 className="grotesk truncate text-[16px] font-bold tracking-tight text-white">
-              Ferrar<span style={{ color: "rgba(255,255,255,.82)" }}>IA</span>
-            </h1>
-            <p className="hidden truncate text-[11px] leading-tight text-white/80 sm:block">
-              Solicitudes de los huéspedes
-            </p>
-          </div>
-          <InboxHeaderTabs hotelId={scopedHotelId} onRed />
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <div className="hidden items-center gap-1 sm:flex">
-            <ThemeToggle />
-            <LogoutButton onRed />
-          </div>
-          <HeaderMobileMenu onRed>
-            <ThemeToggle variant="menu" />
-            <LogoutButton onRed variant="menu" />
-          </HeaderMobileMenu>
-        </div>
-      </header>
-
       {estado === "error" && error && (
-        <div className="shrink-0 border-b border-rose-200 bg-rose-50 px-4 py-2 text-center text-[13px] text-rose-900">
+        <div
+          className="shrink-0 border-b px-4 py-2 text-center text-[13px]"
+          style={{ borderColor: "var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
+        >
           {error}
         </div>
       )}
 
       <main className="min-h-0 flex-1 overflow-y-auto scrollbar-app p-4 lg:p-5">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+          {/* Encabezado de la pantalla (docs/REDESIGN.md §7.1). Reemplaza a la
+              barra roja superior: el logo y los controles de cuenta ya viven en
+              el sidebar. */}
+          <div>
+            <h1 className="grotesk text-[19px] font-bold tracking-tight text-[var(--text-primary)]">
+              Tickets de servicio
+            </h1>
+            <p className="mt-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+              Solicitudes de los huéspedes detectadas por la IA — mantenimiento, room service, housekeeping.
+            </p>
+          </div>
+
           {availableHotels.length >= 2 && (
-            <div className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-4 shadow-sm">
+            <div className="rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] p-4 shadow-sm">
               <label
                 htmlFor="solicitudes-hotel"
-                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--ink-2)]"
+                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--text-secondary)]"
               >
                 Hotel activo
               </label>
@@ -194,7 +174,7 @@ export function SolicitudesScreen() {
                   setActiveHotelId(event.target.value);
                   writeStoredActiveHotelId(event.target.value);
                 }}
-                className="w-full cursor-pointer rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3.5 py-2.5 text-[14px] text-[var(--ink)] shadow-sm focus:border-[var(--red)] focus:outline-none focus:ring-2 focus:ring-[var(--red)]/20"
+                className="w-full cursor-pointer rounded-xl border border-[var(--border-soft)] bg-[var(--bg-app)] px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
               >
                 {availableHotels.map((hotel) => (
                   <option key={hotel.id} value={hotel.id}>
@@ -214,10 +194,10 @@ export function SolicitudesScreen() {
                   type="button"
                   onClick={() => setFiltro(opcion)}
                   aria-current={activo ? "page" : undefined}
-                  className={`grotesk min-h-[46px] rounded-xl px-5 py-3 text-[15px] font-semibold transition ${
+                  className={`grotesk min-h-[46px] rounded-[var(--radius-chip)] px-5 py-3 text-[15px] font-semibold transition ${
                     activo
-                      ? "bg-[var(--red)] text-white shadow-sm"
-                      : "bg-[var(--panel)] text-[var(--ink-2)] ring-1 ring-[var(--line)] hover:bg-[var(--panel-2)]"
+                      ? "bg-[var(--accent)] text-white shadow-sm hover:bg-[var(--accent-hover)]"
+                      : "bg-[var(--bg-card)] text-[var(--text-secondary)] ring-1 ring-[var(--border-soft)] hover:bg-[var(--bg-app)]"
                   }`}
                 >
                   {FILTRO_LABEL[opcion]}
@@ -227,26 +207,26 @@ export function SolicitudesScreen() {
           </nav>
 
           {estado === "cargando" && (
-            <p className="py-12 text-center text-[15px] text-[var(--ink-2)]">
+            <p className="py-12 text-center text-[15px] text-[var(--text-secondary)]">
               Cargando solicitudes...
             </p>
           )}
 
           {estado === "sin-acceso" && (
-            <div className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-8 text-center shadow-sm">
-              <p className="grotesk text-[17px] font-bold text-[var(--ink)]">
+            <div className="rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] p-8 text-center shadow-sm">
+              <p className="grotesk text-[17px] font-bold text-[var(--text-primary)]">
                 Tu usuario todavía no tiene acceso a las solicitudes
               </p>
-              <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-[var(--ink-2)]">
+              <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-[var(--text-secondary)]">
                 Pedile a un administrador que revise tu perfil y el hotel al que estás asignado.
               </p>
             </div>
           )}
 
           {estado === "lista" && solicitudes.length === 0 && (
-            <div className="rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-8 text-center shadow-sm">
-              <p className="grotesk text-[17px] font-bold text-[var(--ink)]">{vacio.titulo}</p>
-              <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-[var(--ink-2)]">
+            <div className="rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] p-8 text-center shadow-sm">
+              <p className="grotesk text-[17px] font-bold text-[var(--text-primary)]">{vacio.titulo}</p>
+              <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-[var(--text-secondary)]">
                 {vacio.detalle}
               </p>
             </div>
@@ -275,5 +255,6 @@ export function SolicitudesScreen() {
         }}
       />
     </div>
+    </AppShell>
   );
 }
