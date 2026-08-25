@@ -462,15 +462,15 @@ export function AppSidebar({
             <div
               role="menu"
               className="fixed bottom-[calc(62px+env(safe-area-inset-bottom,0px)+0.5rem)] right-2 z-[260] w-64 overflow-hidden rounded-2xl py-1 lg:bottom-3 lg:left-[98px] lg:right-auto"
-              style={{ border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
+              style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
             >
               <p
                 className="ibx-mono truncate px-3.5 pb-2 pt-2.5 text-[11px] font-semibold"
-                style={{ color: "var(--ink-3)" }}
+                style={{ color: "var(--text-secondary)" }}
               >
                 {email ?? "Sesión iniciada"}
               </p>
-              <div style={{ borderTop: "1px solid var(--line)" }} />
+              <div style={{ borderTop: "1px solid var(--border-soft)" }} />
 
               <button
                 type="button"
@@ -519,9 +519,9 @@ export function AppSidebar({
                 Ayuda
               </button>
 
-              <div style={{ borderTop: "1px solid var(--line)" }} />
+              <div style={{ borderTop: "1px solid var(--border-soft)" }} />
               <ThemeToggle variant="opciones" />
-              <div style={{ borderTop: "1px solid var(--line)" }} />
+              <div style={{ borderTop: "1px solid var(--border-soft)" }} />
               <LogoutButton variant="menu" />
             </div>
           )}

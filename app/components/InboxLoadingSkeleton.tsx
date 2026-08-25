@@ -15,26 +15,29 @@ const SKELETON_ITEMS = [
  * dentro del panel de la lista (cambio de hotel) manteniendo header/dropdown. */
 export function InboxListSkeleton() {
   return (
-    <div style={{ color: "var(--ink-2)" }}>
+    <div style={{ color: "var(--text-secondary)" }}>
       <div
         className="flex items-center justify-center gap-2 px-4 py-4"
-        style={{ borderBottom: "1px solid var(--line)", background: "color-mix(in srgb, var(--panel) 50%, transparent)" }}
+        style={{ borderBottom: "1px solid var(--border-soft)", background: "color-mix(in srgb, var(--bg-card) 50%, transparent)" }}
       >
         <Spinner className="h-4 w-4 animate-spin" style={{ color: "var(--accent)" }} />
         <p className="text-sm font-medium">Cargando conversaciones…</p>
       </div>
 
-      <div className="divide-y" style={{ borderColor: "var(--line-2)" }}>
+      {/* Dos tonos a propósito: `--border-soft` para los bloques con peso (avatar,
+          nombre) y el crema `--bg-app` para los secundarios, para que el skeleton
+          insinúe la jerarquía real de la fila en vez de un bloque plano. */}
+      <div className="divide-y" style={{ borderColor: "var(--border-soft)" }}>
         {SKELETON_ITEMS.map((item, index) => (
-          <div key={index} className="flex items-start gap-3.5 px-4 py-3.5" style={{ borderColor: "var(--line-2)" }}>
-            <div className="h-10 w-10 shrink-0 animate-pulse rounded-full" style={{ background: "var(--panel-3)" }} />
+          <div key={index} className="flex items-start gap-3.5 px-4 py-3.5" style={{ borderColor: "var(--border-soft)" }}>
+            <div className="h-10 w-10 shrink-0 animate-pulse rounded-full" style={{ background: "var(--border-soft)" }} />
             <div className="min-w-0 flex-1 space-y-2 pt-1">
-              <div className={`h-3.5 max-w-full animate-pulse rounded ${item.nameWidth}`} style={{ background: "var(--panel-3)" }} />
-              <div className={`h-3 max-w-full animate-pulse rounded ${item.previewWidth}`} style={{ background: "var(--line-2)" }} />
+              <div className={`h-3.5 max-w-full animate-pulse rounded ${item.nameWidth}`} style={{ background: "var(--border-soft)" }} />
+              <div className={`h-3 max-w-full animate-pulse rounded ${item.previewWidth}`} style={{ background: "var(--bg-app)" }} />
             </div>
             <div className="flex min-w-[44px] shrink-0 flex-col items-end gap-2 pt-1">
-              <div className="h-2.5 w-9 animate-pulse rounded" style={{ background: "var(--line-2)" }} />
-              <div className="h-4 w-4 animate-pulse rounded-full" style={{ background: "var(--panel-3)" }} />
+              <div className="h-2.5 w-9 animate-pulse rounded" style={{ background: "var(--bg-app)" }} />
+              <div className="h-4 w-4 animate-pulse rounded-full" style={{ background: "var(--border-soft)" }} />
             </div>
           </div>
         ))}
@@ -65,8 +68,8 @@ export function InboxThreadSkeleton() {
           className={`flex w-full ${bubble.side === "right" ? "justify-end" : "justify-start"}`}
         >
           <div
-            className={`max-w-full animate-pulse rounded-2xl ${bubble.width} ${bubble.height}`}
-            style={{ background: bubble.side === "right" ? "var(--panel-3)" : "var(--line-2)" }}
+            className={`max-w-full animate-pulse rounded-[var(--radius-bubble)] ${bubble.width} ${bubble.height}`}
+            style={{ background: bubble.side === "right" ? "var(--border-soft)" : "var(--bg-card)" }}
           />
         </div>
       ))}
@@ -80,11 +83,11 @@ export function InboxLoadingSkeleton() {
   return (
     <div
       className="flex h-[100dvh] flex-col items-center justify-center px-4 supports-[height:100dvh]:min-h-[100dvh]"
-      style={{ background: "var(--bg)", color: "var(--ink-2)" }}
+      style={{ background: "var(--bg-app)", color: "var(--text-secondary)" }}
     >
       <div
-        className="w-full max-w-[min(100%,28rem)] overflow-hidden rounded-2xl"
-        style={{ border: "1px solid var(--line)", background: "var(--panel-2)", boxShadow: "var(--shadow-lg)" }}
+        className="w-full max-w-[min(100%,28rem)] overflow-hidden rounded-[var(--radius-card)]"
+        style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
       >
         <div
           className="flex items-center gap-3 px-5 py-4"

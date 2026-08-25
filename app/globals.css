@@ -225,28 +225,34 @@ body {
   background: #c4b8aa;
 }
 
-/* Interacciones del rediseño (Dirección D). */
+/* Interacciones del rediseño, ya sobre los tokens del spec (§2.1).
+
+   El hover de las filas es un velo derivado de `--text-secondary` y no un color
+   fijo: las filas de Huéspedes van sobre el crema `--bg-app` y las de Staff
+   sobre la card blanca `--bg-card`, así que cualquier fondo sólido sería
+   invisible en una de las dos. Un velo oscurece las dos por igual y funciona
+   igual en claro y en oscuro. */
 .d-row {
   transition: background 0.12s;
 }
 .d-row:hover {
-  background: var(--panel-2);
+  background: color-mix(in srgb, var(--text-secondary) 14%, transparent);
 }
 .d-row.sel {
-  background: var(--sel);
+  background: var(--bg-card);
 }
 .d-act {
   transition: background 0.12s, border-color 0.12s;
 }
 .d-act:hover {
-  background: var(--panel);
-  border-color: var(--ink-3);
+  background: var(--bg-card);
+  border-color: var(--text-secondary);
 }
 .d-soft {
   transition: background 0.12s;
 }
 .d-soft:hover {
-  background: var(--panel-2);
+  background: color-mix(in srgb, var(--text-secondary) 14%, transparent);
 }
 .d-chip {
   transition: transform 0.1s, background 0.12s;

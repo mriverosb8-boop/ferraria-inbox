@@ -22,7 +22,7 @@ export function AppShell({ children, hideMobileNav = false, ...sidebarProps }: A
   return (
     <div
       className="flex h-[100dvh] max-h-[100dvh] w-full max-w-full overflow-hidden"
-      style={{ background: "var(--bg)", color: "var(--ink)" }}
+      style={{ background: "var(--bg-app)", color: "var(--text-primary)" }}
     >
       <AppSidebar {...sidebarProps} hideMobileNav={hideMobileNav} />
       <div

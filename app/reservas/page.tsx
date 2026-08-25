@@ -131,7 +131,7 @@ export default function ReservasPage() {
 
   return (
     <AppShell hotelId={scopedHotelId}>
-    <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--bg)] text-[var(--ink)]">
+    <div className="flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]">
       <div className="fixed right-4 top-4 z-[600] flex max-w-[min(100vw-2rem,24rem)] flex-col gap-2">
         {toasts.map((toast) => (
           <div
@@ -160,12 +160,13 @@ export default function ReservasPage() {
       )}
 
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden lg:p-5">
-        <section className="flex min-h-0 flex-col rounded-2xl border border-[var(--line)] bg-[var(--panel-2)] shadow-sm ring-1 ring-black/[0.03] lg:overflow-hidden">
+        {/* Contenedor principal como card blanca sobre el crema (spec §2.1 y §2.5). */}
+        <section className="flex min-h-0 flex-col rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] shadow-sm lg:overflow-hidden">
           {availableHotels.length >= 2 && (
-            <div className="shrink-0 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
+            <div className="shrink-0 border-b border-[var(--border-soft)] px-4 py-3">
               <label
                 htmlFor="reservas-active-hotel"
-                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--ink-2)]"
+                className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-[var(--text-secondary)]"
               >
                 Hotel activo
               </label>
@@ -178,7 +179,7 @@ export default function ReservasPage() {
                   writeStoredActiveHotelId(nextHotelId);
                   setSelectedReserva(null);
                 }}
-                className="w-full cursor-pointer appearance-none rounded-xl border border-[var(--line)] bg-[var(--panel)] py-2.5 pl-3.5 pr-10 text-[13px] text-[var(--ink)] shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                className="w-full cursor-pointer appearance-none rounded-xl border border-[var(--border-soft)] bg-[var(--bg-card)] py-2.5 pl-3.5 pr-10 text-[13px] text-[var(--text-primary)] shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                 style={{
                   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b665e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
                   backgroundRepeat: "no-repeat",
@@ -202,7 +203,7 @@ export default function ReservasPage() {
             onChange={setActiveTab}
           />
 
-          <div className="shrink-0 border-b border-[var(--line)] bg-[var(--panel)]/80 px-4 py-3">
+          <div className="shrink-0 border-b border-[var(--border-soft)] px-4 py-3">
             <input
               type="search"
               inputMode="tel"
@@ -210,16 +211,16 @@ export default function ReservasPage() {
               value={phoneQuery}
               onChange={(event) => setPhoneQuery(event.target.value)}
               placeholder="Buscar por teléfono…"
-              className="w-full rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3.5 py-2.5 text-[14px] text-[var(--ink)] shadow-sm placeholder:text-[var(--ink-3)] transition focus:border-[var(--accent)] focus:bg-[var(--panel)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+              className="w-full rounded-xl border border-[var(--border-soft)] bg-[var(--bg-app)] px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] shadow-sm placeholder:text-[var(--text-secondary)] transition focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             />
           </div>
 
           <div className="p-4 scrollbar-app lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
             {loading ? (
-              <p className="py-12 text-center text-sm text-[var(--ink-2)]">Cargando reservas...</p>
+              <p className="py-12 text-center text-sm text-[var(--text-secondary)]">Cargando reservas...</p>
             ) : filteredReservas.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="text-sm font-medium text-[var(--ink-2)]">
+                <p className="text-sm font-medium text-[var(--text-primary)]">
                   {phoneQueryDigits && visibleReservas.length > 0 ? noPhoneMatchMessage : emptyMessage}
                 </p>
               </div>
@@ -250,7 +251,7 @@ export default function ReservasPage() {
         <div
           className={`${
             selectedReserva
-              ? "fixed inset-0 z-[100] bg-[var(--bg)] p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[calc(62px+env(safe-area-inset-bottom,0px))] lg:pb-3"
+              ? "fixed inset-0 z-[100] bg-[var(--bg-app)] p-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[calc(62px+env(safe-area-inset-bottom,0px))] lg:pb-3"
               : "hidden"
           } lg:static lg:z-auto lg:block lg:min-h-0 lg:bg-transparent lg:p-0`}
         >
