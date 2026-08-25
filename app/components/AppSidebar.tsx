@@ -47,11 +47,6 @@ export type AppSidebarProps = {
    * perdería la conversación abierta.
    */
   onInboxViewChange?: (view: InboxView) => void;
-  /**
-   * Gate por engine. Si el hotel activo no corre en el engine no hay guard que
-   * impida que la IA le conteste al personal, así que la entrada no existe.
-   */
-  showStaff?: boolean;
   /** Conversaciones de staff con mensajes sin leer. Sin no leídas, sin badge. */
   staffUnreadCount?: number;
   /** Chat abierto en móvil: la barra inferior tapa el composer y se esconde. */
@@ -240,7 +235,6 @@ export function AppSidebar({
   hotelId,
   inboxView = "guests",
   onInboxViewChange,
-  showStaff = false,
   staffUnreadCount = 0,
   hideMobileNav = false,
   realtimeStatus,
@@ -350,8 +344,17 @@ export function AppSidebar({
   const puedeVerReservas = capabilities?.verReservas !== false;
   const puedeVerSolicitudes = capabilities?.verSolicitudes !== false;
 
+  /**
+   * Cambiar de vista sin navegar solo se puede cuando la bandeja ya está
+   * montada. Desde Reservas o Tickets no llega, y ahí Huéspedes y Staff son
+   * enlaces. NO decide qué entradas existen: las cuatro se pintan siempre.
+   */
   const canSwitchView = typeof onInboxViewChange === "function";
-  const staffVisible = canSwitchView && showStaff && puedeVerHuespedes;
+  // Staff son conversaciones del hotel con su propio personal: quien puede ver
+  // las conversaciones de huéspedes puede verlas, así que va con el mismo gate
+  // de rol y no con uno propio. Sin eso la entrada desaparecía en Reservas y
+  // Tickets, y la navegación cambiaba de forma según la pantalla.
+  const staffVisible = puedeVerHuespedes;
   const staffActive = staffVisible && inboxView === "staff";
   const guestsActive = !isReservas && !isSolicitudes && !staffActive;
 
@@ -384,7 +387,10 @@ export function AppSidebar({
       href: STAFF_HREF,
       icon: IconStaff,
       active: staffActive,
-      onSelect: () => onInboxViewChange?.("staff"),
+      // Igual que Huéspedes: botón dentro de la bandeja para no recargarla, y
+      // enlace a STAFF_HREF desde Reservas o Tickets, donde no hay bandeja
+      // montada que cambiar de vista.
+      onSelect: canSwitchView ? () => onInboxViewChange?.("staff") : undefined,
       // Mismo criterio que hoy: sin no leídas no hay badge en vez de un "0"
       // apagado, porque el cero permanente entrena a ignorarlo.
       badge: hasStaffUnread

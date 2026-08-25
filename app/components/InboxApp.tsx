@@ -3473,7 +3473,6 @@ export default function InboxApp() {
       hotelId={conversationHotelId}
       inboxView={activeInboxView}
       onInboxViewChange={changeInboxView}
-      showStaff={engineEnabled}
       staffUnreadCount={staffUnreadConversations}
       hideMobileNav={mobileTab === "chat"}
       realtimeStatus={realtimeUiStatus}
