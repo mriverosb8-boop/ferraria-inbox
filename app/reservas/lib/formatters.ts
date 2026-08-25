@@ -59,6 +59,46 @@ export function formatFecha(value: string | null | undefined, pair?: string | nu
     .replace(".", "");
 }
 
+/**
+ * Texto para un dato que la reserva simplemente no trae.
+ *
+ * Se muestra en gris secundario, nunca en rojo ni como error: que falte el
+ * correo del titular no es una falla que recepción pueda arreglar. Y nunca se
+ * rellena con un cero, que en una cifra de dinero se leería como un total real.
+ */
+export const SIN_DATO = "Sin dato";
+
+/** Igual que `formatTotal`, pero sin inventar un `$ 0` cuando no hay monto. */
+export function formatTotalOpcional(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return SIN_DATO;
+  const amount = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(amount)) return SIN_DATO;
+  return formatTotal(amount);
+}
+
+/** Igual que `formatFecha`, pero con el texto discreto en vez del guion. */
+export function formatFechaOpcional(value: string | null | undefined, pair?: string | null): string {
+  const formatted = formatFecha(value, pair);
+  return formatted === "—" ? SIN_DATO : formatted;
+}
+
+/** "2× Estandar" tal como viene la cotización; nada se recalcula acá. */
+export function formatHabitacionCorta(
+  numRooms: number | null | undefined,
+  roomType: string | null | undefined
+): string {
+  const rooms = typeof numRooms === "number" && Number.isFinite(numRooms) ? numRooms : null;
+  const tipo = String(roomType ?? "").trim();
+  if (rooms === null && !tipo) return SIN_DATO;
+  if (rooms === null) return abreviarHabitacion(tipo);
+  return `${rooms}× ${abreviarHabitacion(tipo)}`;
+}
+
+/** Un entero de la cotización tal cual viene, o el texto discreto si no vino. */
+export function formatConteo(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : SIN_DATO;
+}
+
 export function formatTiempoRelativo(value: string | null | undefined): string {
   if (!value) return "—";
   const time = new Date(value).getTime();
