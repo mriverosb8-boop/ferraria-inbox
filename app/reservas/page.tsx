@@ -193,7 +193,12 @@ export default function ReservasPage() {
           el chat se le monta encima al detalle y tapa el titular y las stat
           cards. */}
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 sm:p-4 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)_minmax(300px,360px)] xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden xl:p-5">
-        <section className="flex min-h-0 flex-col rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] shadow-sm xl:overflow-hidden">
+        {/* La columna de la lista es CONTENEDOR, así que va en crema: las
+            `ReservaCard` de adentro son las que van en blanco y se levantan del
+            fondo (docs/REDESIGN.md §2.1). En blanco sobre blanco las cards solo
+            se distinguían por el borde y la lista entera se leía como un bloque
+            plano. */}
+        <section className="flex min-h-0 flex-col rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-app)] xl:overflow-hidden">
           <TabsHeader
             activeTab={activeTab}
             pendingCount={pendingCount}
@@ -212,7 +217,7 @@ export default function ReservasPage() {
               onChange={(event) => setPhoneQuery(event.target.value)}
               placeholder="Buscar por teléfono…"
               aria-label="Buscar reservas por teléfono"
-              className="w-full rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-app)] px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] transition focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+              className="w-full rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] transition focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             />
 
             {availableHotels.length >= 2 && (

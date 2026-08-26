@@ -18,7 +18,7 @@ type StaffContactsModalProps = {
 
 const inputStyle = {
   border: "1px solid var(--line)",
-  background: "var(--panel-2)",
+  background: "var(--bg-card)",
   color: "var(--ink)",
 };
 
@@ -228,7 +228,7 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
         className="absolute left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[min(calc(100vw-2rem),34rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl"
         style={{
           border: "1px solid var(--line)",
-          background: "var(--panel)",
+          background: "var(--bg-card)",
           boxShadow: "var(--shadow-lg)",
         }}
       >
@@ -252,7 +252,7 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
           </p>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 scrollbar-app">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--bg-app)] px-5 py-5 scrollbar-app">
           {notice && (
             <p
               className="mb-3 rounded-xl px-3 py-2 text-[12px]"
@@ -421,7 +421,7 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
                       className="rounded-2xl p-3.5"
                       style={{
                         border: "1px solid var(--line)",
-                        background: "var(--panel-2)",
+                        background: "var(--bg-card)",
                         opacity: contact.isActive ? 1 : 0.65,
                       }}
                     >
@@ -433,7 +433,7 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
                             onChange={(event) => setEditName(event.target.value)}
                             aria-label="Nombre del contacto"
                             className={inputClass}
-                            style={{ ...inputStyle, background: "var(--panel)" }}
+                            style={{ ...inputStyle, background: "var(--bg-card)" }}
                             disabled={busy}
                           />
                           <input
@@ -443,7 +443,7 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
                             aria-label="Cargo del contacto"
                             placeholder="Cargo (opcional)"
                             className={inputClass}
-                            style={{ ...inputStyle, background: "var(--panel)" }}
+                            style={{ ...inputStyle, background: "var(--bg-card)" }}
                             disabled={busy}
                           />
                           <div className="flex justify-end gap-2">
@@ -451,10 +451,10 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
                               type="button"
                               onClick={() => setEditingId(null)}
                               disabled={busy}
-                              className="rounded-xl px-3 py-2 text-[12.5px] font-semibold transition hover:bg-[var(--panel-3)] disabled:opacity-60"
+                              className="rounded-xl px-3 py-2 text-[12.5px] font-semibold transition hover:bg-[var(--bg-app)] disabled:opacity-60"
                               style={{
                                 border: "1px solid var(--line)",
-                                background: "var(--panel)",
+                                background: "var(--bg-card)",
                                 color: "var(--ink-2)",
                               }}
                             >
@@ -504,10 +504,10 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
                               type="button"
                               onClick={() => startEditing(contact)}
                               disabled={busy}
-                              className="rounded-xl px-3 py-2 text-[12.5px] font-semibold transition hover:bg-[var(--panel-3)] disabled:opacity-60"
+                              className="rounded-xl px-3 py-2 text-[12.5px] font-semibold transition hover:bg-[var(--bg-app)] disabled:opacity-60"
                               style={{
                                 border: "1px solid var(--line)",
-                                background: "var(--panel)",
+                                background: "var(--bg-card)",
                                 color: "var(--ink-2)",
                               }}
                             >
@@ -523,10 +523,10 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
                                 )
                               }
                               disabled={busy}
-                              className="rounded-xl px-3 py-2 text-[12.5px] font-semibold transition hover:bg-[var(--panel-3)] disabled:opacity-60"
+                              className="rounded-xl px-3 py-2 text-[12.5px] font-semibold transition hover:bg-[var(--bg-app)] disabled:opacity-60"
                               style={{
                                 border: "1px solid var(--line)",
-                                background: "var(--panel)",
+                                background: "var(--bg-card)",
                                 color: contact.isActive ? "var(--accent)" : "var(--ink-2)",
                               }}
                             >
@@ -545,15 +545,15 @@ export function StaffContactsModal({ open, activeHotelId, onClose }: StaffContac
 
         <div
           className="flex shrink-0 justify-end px-5 py-3"
-          style={{ borderTop: "1px solid var(--line)", background: "var(--panel-2)" }}
+          style={{ borderTop: "1px solid var(--line)", background: "var(--bg-app)" }}
         >
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl px-4 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)]"
+            className="rounded-xl px-4 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--bg-app)]"
             style={{
               border: "1px solid var(--line)",
-              background: "var(--panel)",
+              background: "var(--bg-card)",
               color: "var(--ink-2)",
             }}
           >

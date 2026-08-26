@@ -52,7 +52,7 @@ const TIPO_BADGE: Record<ChangelogTipo, { label: string; border: string; bg: str
   arreglo: {
     label: "Arreglo",
     border: "var(--line)",
-    bg: "var(--panel-3)",
+    bg: "var(--border-soft)",
     color: "var(--ink-2)",
   },
 };
@@ -168,7 +168,7 @@ export function ChangelogPanel({ open, onClose }: { open: boolean; onClose: () =
       />
       <div
         className="absolute left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[min(calc(100vw-2rem),30rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl"
-        style={{ border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
+        style={{ border: "1px solid var(--line)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
       >
         <div
           className="flex items-start justify-between gap-3 px-5 py-4"
@@ -198,7 +198,9 @@ export function ChangelogPanel({ open, onClose }: { open: boolean; onClose: () =
           </button>
         </div>
 
-        <div className="min-h-0 overflow-y-auto px-5 py-5 scrollbar-app">
+        {/* El cuerpo es contenedor, así que va en crema: cada novedad es la
+            card blanca que se levanta encima (docs/REDESIGN.md §2.1). */}
+        <div className="min-h-0 overflow-y-auto bg-[var(--bg-app)] px-5 py-5 scrollbar-app">
           <ol className="space-y-4">
             {CHANGELOG_ENTRIES.map((entry) => {
               const badge = TIPO_BADGE[entry.tipo];
@@ -206,7 +208,7 @@ export function ChangelogPanel({ open, onClose }: { open: boolean; onClose: () =
                 <li
                   key={`${entry.fecha}-${entry.titulo}`}
                   className="rounded-2xl px-4 py-3.5"
-                  style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}
+                  style={{ border: "1px solid var(--line)", background: "var(--bg-card)" }}
                 >
                   <div className="mb-1.5 flex items-center gap-2">
                     <span
@@ -233,13 +235,13 @@ export function ChangelogPanel({ open, onClose }: { open: boolean; onClose: () =
 
         <div
           className="flex shrink-0 justify-end px-5 py-3"
-          style={{ borderTop: "1px solid var(--line)", background: "var(--panel-2)" }}
+          style={{ borderTop: "1px solid var(--line)", background: "var(--bg-app)" }}
         >
           <button
             type="button"
             onClick={close}
-            className="grotesk rounded-xl px-4 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)]"
-            style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-2)" }}
+            className="grotesk rounded-xl px-4 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--bg-app)]"
+            style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink-2)" }}
           >
             Entendido
           </button>

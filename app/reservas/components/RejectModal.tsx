@@ -43,7 +43,7 @@ export function RejectModal({ reserva, submitting, onClose, onConfirm }: Props) 
           onChange={(event) => setReason(event.target.value)}
           placeholder="Ej: No hay disponibilidad para esas fechas"
           aria-label="Motivo del rechazo"
-          className="mt-4 min-h-28 w-full resize-none rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-app)] px-3 py-2.5 text-[14px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-secondary)] focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:ring-2 focus:ring-[var(--accent)]/20"
+          className="mt-4 min-h-28 w-full resize-none rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3 py-2.5 text-[14px] text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-secondary)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
         />
         <div className="mt-4 flex justify-end gap-2">
           <button

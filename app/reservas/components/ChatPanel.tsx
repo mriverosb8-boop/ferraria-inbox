@@ -122,7 +122,7 @@ export function ChatPanel({ reserva }: Props) {
           onClick={() => setChatAbierto((value) => !value)}
           aria-expanded={chatAbierto}
           aria-controls="reservas-chat-mensajes"
-          className="shrink-0 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-app)] px-3 py-2 text-[12px] font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-card)] xl:hidden"
+          className="shrink-0 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3 py-2 text-[12px] font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-app)] xl:hidden"
         >
           {chatAbierto ? "Ocultar el chat" : "Ver el chat"}
         </button>
@@ -166,7 +166,7 @@ export function ChatPanel({ reserva }: Props) {
             Abrir en Huéspedes
           </Link>
         ) : (
-          <p className="rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-app)] px-3 py-3 text-center text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
+          <p className="rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3 py-3 text-center text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
             Esta reserva no quedó enlazada a un chat, así que no se puede abrir en Huéspedes.
           </p>
         )}

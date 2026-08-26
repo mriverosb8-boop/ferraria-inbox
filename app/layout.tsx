@@ -54,7 +54,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="h-full overflow-x-hidden overflow-y-hidden bg-[var(--bg)] font-sans text-[var(--ink)] antialiased">
+      <body className="h-full overflow-x-hidden overflow-y-hidden bg-[var(--bg-app)] font-sans text-[var(--text-primary)] antialiased">
         {children}
       </body>
     </html>

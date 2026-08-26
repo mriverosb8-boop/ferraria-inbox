@@ -609,7 +609,7 @@ export function AppSidebar({
                   className="grotesk mt-3 w-full rounded-[var(--radius-chip)] px-3 py-2 text-[13px] font-bold transition-colors"
                   style={
                     push.status === "subscribed"
-                      ? { border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--text-primary)" }
+                      ? { border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-primary)" }
                       : { background: "var(--accent)", color: "#fff" }
                   }
                 >

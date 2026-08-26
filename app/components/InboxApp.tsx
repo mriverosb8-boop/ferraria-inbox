@@ -736,7 +736,7 @@ function LazyImagePlaceholder({
       type="button"
       onClick={onLoad}
       className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 shadow-sm transition hover:border-[var(--accent)] hover:bg-[var(--border-soft)]"
-      style={{ borderColor: "color-mix(in srgb, var(--accent) 45%, var(--border-soft))", background: "var(--bg-app)", color: "var(--text-secondary)" }}
+      style={{ borderColor: "color-mix(in srgb, var(--accent) 45%, var(--border-soft))", background: "var(--bg-card)", color: "var(--text-secondary)" }}
     >
       <IconImage className="h-8 w-8 opacity-70" aria-hidden />
       <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>{label}</span>
@@ -746,7 +746,7 @@ function LazyImagePlaceholder({
 
 function LazyMediaLoadingState({ label }: { label: string }) {
   return (
-    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl px-4" style={{ border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--text-secondary)" }}>
+    <div className="flex h-48 w-[260px] max-w-full flex-col items-center justify-center gap-2 rounded-xl px-4" style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-secondary)" }}>
       <Spinner className="h-6 w-6 animate-spin opacity-70" />
       <span className="text-sm">{label}</span>
     </div>
@@ -825,6 +825,8 @@ const ACTION_TONES: Record<ActionTone, { base: string; soft: string; deep: strin
   complete: { base: "var(--text-secondary)", soft: "var(--border-soft)", deep: "var(--text-primary)", border: "var(--text-secondary)" },
   // Crear resumen → rojo de marca.
   summary: { base: "var(--accent)", soft: "var(--red-soft)", deep: "var(--accent)", border: "var(--accent)" },
+  // El neutro no tiene color propio: en reposo es blanco como el resto de la
+  // card y al pasar el mouse se tiñe con el crema de la app.
   neutral: { base: "var(--text-secondary)", soft: "var(--bg-app)", deep: "var(--accent)", border: "var(--accent)" },
 };
 
@@ -862,7 +864,10 @@ function CmdAction({
         padding: "12px 13px",
         borderRadius: 11,
         border: `1px solid ${hover ? t.border : `color-mix(in srgb, ${t.base} 25%, var(--border-soft))`}`,
-        background: hover ? t.soft : "var(--bg-app)",
+        // En reposo va en blanco como la card que lo contiene: el crema de
+        // antes le metía un parche gris al panel. Lo que lo despega del fondo
+        // es el borde teñido con el tono de la acción, y el hover sí colorea.
+        background: hover ? t.soft : "var(--bg-card)",
         color: hover ? t.deep : "var(--text-primary)",
         transition: "background .12s, border-color .12s, color .12s",
       }}
@@ -1224,7 +1229,7 @@ function UnavailableMediaCard({ message }: { message: Message }) {
     <div className="flex max-w-full flex-col gap-2">
       <div
         className="flex max-w-full items-center gap-3 rounded-xl p-2.5"
-        style={{ border: "1px dashed var(--border-soft)", background: "var(--bg-app)" }}
+        style={{ border: "1px dashed var(--border-soft)", background: "var(--bg-card)" }}
       >
         <div
           className="grid h-11 w-11 shrink-0 place-items-center rounded-lg"
@@ -3370,15 +3375,16 @@ export default function InboxApp() {
         type="button"
         onClick={() => openChat(c.id)}
         aria-current={active ? "true" : undefined}
-        className="d-row flex w-full text-left"
+        className={`d-row flex w-full text-left${active ? " sel" : ""}`}
         style={{
           gap: 12,
           padding: "12px 13px",
           borderRadius: "var(--radius-card)",
-          border: `1.5px solid ${active ? "var(--accent)" : "transparent"}`,
-          // Solo la seleccionada fija fondo: sin `background` inline, el hover
-          // de `.d-row` sigue funcionando en las demás.
-          ...(active ? { background: "var(--bg-card)", boxShadow: "var(--shadow-sm)" } : null),
+          border: `1.5px solid ${active ? "var(--accent)" : "var(--border-soft)"}`,
+          // El blanco de la fila lo pone `.d-row` en globals.css, no un inline:
+          // así el hover sigue funcionando. Acá solo va lo que distingue a la
+          // seleccionada: borde terracota y sombra.
+          ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
         }}
       >
         <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
@@ -3478,17 +3484,17 @@ export default function InboxApp() {
         type="button"
         onClick={() => openChat(c.id)}
         aria-current={active ? "true" : undefined}
-        className="d-row flex w-full text-left"
+        className={`d-row flex w-full text-left${active ? " sel" : ""}`}
         style={{
           gap: 12,
           padding: "12px 13px",
           borderRadius: "var(--radius-card)",
           // Borde del item seleccionado: terracota del spec (§2.2).
-          border: `1.5px solid ${active ? "var(--accent)" : "transparent"}`,
-          // Solo la seleccionada fija fondo: sin `background` inline, el hover
-          // de `.d-row` sigue funcionando en las demás (el inline le gana a la
-          // regla de hover, no al revés).
-          ...(active ? { background: "var(--bg-card)", boxShadow: "var(--shadow-sm)" } : null),
+          border: `1.5px solid ${active ? "var(--accent)" : "var(--border-soft)"}`,
+          // El blanco de la fila lo pone `.d-row` en globals.css, no un inline:
+          // así el hover sigue funcionando (el inline le gana a la regla de
+          // hover, no al revés). Acá solo va la sombra de la seleccionada.
+          ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
         }}
       >
         <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
@@ -3651,7 +3657,10 @@ export default function InboxApp() {
                     className="d-soft flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left"
                     style={{
                       fontSize: 13,
-                      background: isSelected ? "var(--bg-app)" : "transparent",
+                      // La lista desplegable ya es blanca: el hotel activo se
+                      // marca con el tinte terracota, no con crema, que sobre
+                      // blanco se leía como un renglón gris.
+                      background: isSelected ? "var(--red-soft)" : "transparent",
                       fontWeight: isSelected ? 600 : 400,
                       color: "var(--text-primary)",
                     }}
@@ -4064,7 +4073,7 @@ export default function InboxApp() {
                   style={{
                     borderRadius: 9,
                     border: "1px solid var(--border-soft)",
-                    background: "var(--bg-app)",
+                    background: "var(--bg-card)",
                     color: "var(--text-primary)",
                     fontSize: 13,
                     fontWeight: 600,
@@ -4177,7 +4186,7 @@ export default function InboxApp() {
                             disabled={savingName}
                             placeholder="Nombre del huésped"
                             className="grotesk min-w-0 flex-1 rounded-lg px-2 py-1 outline-none disabled:opacity-60"
-                            style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", background: "var(--bg-app)", border: "1px solid var(--accent)" }}
+                            style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", background: "var(--bg-card)", border: "1px solid var(--accent)" }}
                             aria-label="Editar nombre del huésped"
                           />
                           <button
@@ -4200,7 +4209,7 @@ export default function InboxApp() {
                             onClick={cancelEditingName}
                             disabled={savingName}
                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
-                            style={{ background: "var(--bg-app)", color: "var(--text-secondary)", border: "1px solid var(--border-soft)" }}
+                            style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border-soft)" }}
                             aria-label="Cancelar edición"
                             title="Cancelar"
                           >
@@ -4991,7 +5000,7 @@ function PanelFileRow({ message }: { message: Message }) {
         style={{
           borderRadius: 9,
           border: "1px solid var(--border-soft)",
-          background: "var(--bg-app)",
+          background: "var(--bg-card)",
           color: "var(--text-primary)",
           fontSize: 11.5,
           fontWeight: 700,
@@ -5364,7 +5373,7 @@ function GuestPanelContent({
               onClick={() => void createChatSummary()}
               disabled={summaryLoading}
               className="d-act grotesk ml-auto inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ padding: "5px 10px", border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--accent)", borderRadius: "var(--radius-chip)", fontSize: 11.5, fontWeight: 700 }}
+              style={{ padding: "5px 10px", border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--accent)", borderRadius: "var(--radius-chip)", fontSize: 11.5, fontWeight: 700 }}
             >
               <Spark className="h-3 w-3" style={{ color: "var(--accent)" }} aria-hidden />
               Generar resumen
@@ -5379,7 +5388,7 @@ function GuestPanelContent({
           {summaryLoading && (
             <div
               className="flex items-center gap-2.5 rounded-xl px-3 py-3 text-[13px]"
-              style={{ border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--text-secondary)" }}
+              style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-secondary)" }}
               role="status"
               aria-live="polite"
             >
@@ -5401,7 +5410,7 @@ function GuestPanelContent({
             </div>
           )}
           {!summaryLoading && !summaryError && summaryText && (
-            <div className="min-w-0 rounded-lg p-3" style={{ background: "var(--bg-app)", border: "1px solid var(--border-soft)" }}>
+            <div className="min-w-0 rounded-lg p-3" style={{ background: "var(--bg-card)", border: "1px solid var(--border-soft)" }}>
               <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed" style={{ color: "var(--text-primary)" }}>
                 {summaryText}
               </p>
@@ -5439,7 +5448,7 @@ function GuestPanelContent({
               <span
                 key={tag}
                 className="grotesk"
-                style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--bg-app)", color: "var(--text-secondary)" }}
+                style={{ padding: "5px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "var(--bg-card)", border: "1px solid var(--border-soft)", color: "var(--text-secondary)" }}
               >
                 {tag}
               </span>
@@ -5488,7 +5497,7 @@ function GuestPanelContent({
               type="button"
               onClick={() => void navigator.clipboard?.writeText(guest.phone)}
               className="d-act grotesk mt-3 flex w-full items-center justify-center gap-2"
-              style={{ padding: "10px", borderRadius: 11, border: "1px solid var(--border-soft)", background: "var(--bg-app)", color: "var(--text-primary)", fontSize: 12, fontWeight: 600 }}
+              style={{ padding: "10px", borderRadius: 11, border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-primary)", fontSize: 12, fontWeight: 600 }}
             >
               <IconPhone className="h-4 w-4" />
               {isWaLidIdentifier(guest.phone) ? "Copiar ID" : "Copiar teléfono"}

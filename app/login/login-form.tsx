@@ -69,7 +69,7 @@ export function LoginForm() {
     <form
       onSubmit={(e) => void handleSubmit(e)}
       className="w-full max-w-[380px] overflow-hidden rounded-2xl border shadow-[0_18px_50px_-20px_color-mix(in_srgb,var(--accent)_35%,transparent)]"
-      style={{ borderColor: "var(--line)", background: "var(--panel)" }}
+      style={{ borderColor: "var(--line)", background: "var(--bg-card)" }}
     >
       <div
         className="flex items-center gap-3 px-6 py-5"
@@ -119,7 +119,7 @@ export function LoginForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none transition focus:ring-2 focus:ring-[var(--accent)]/25"
-              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
+              style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink)" }}
               placeholder="tu@email.com"
             />
           </label>
@@ -135,7 +135,7 @@ export function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-xl px-3 py-2.5 text-[14px] outline-none transition focus:ring-2 focus:ring-[var(--accent)]/25"
-              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
+              style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink)" }}
               placeholder="••••••••"
             />
           </label>

@@ -150,7 +150,7 @@ export function TicketCard({
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           {/* Sin número de habitación se dice así, con todas las letras: es un
               dato que falta, no una habitación llamada "—". */}
-          <span className="ibx-mono whitespace-nowrap rounded-[var(--radius-chip)] bg-[var(--bg-app)] px-2.5 py-1 text-[11.5px] text-[var(--text-secondary)]">
+          <span className="ibx-mono whitespace-nowrap rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-2.5 py-1 text-[11.5px] text-[var(--text-secondary)]">
             {habitacion ? `Hab. ${habitacion}` : "Sin habitación"}
           </span>
           <span

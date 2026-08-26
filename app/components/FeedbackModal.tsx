@@ -87,7 +87,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
       />
       <div
         className="absolute left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[min(calc(100vw-2rem),28rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl"
-        style={{ border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
+        style={{ border: "1px solid var(--line)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
       >
         <div
           className="px-5 py-4"
@@ -119,7 +119,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
                     style={
                       active
                         ? { border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }
-                        : { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }
+                        : { border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink-2)" }
                     }
                     aria-pressed={active}
                   >
@@ -145,7 +145,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
                     className="flex h-9 w-9 items-center justify-center rounded-lg text-[15px] transition"
                     style={{
                       border: `1px solid ${active ? "var(--gold)" : "var(--line)"}`,
-                      background: active ? "var(--gold-soft)" : "var(--panel-2)",
+                      background: active ? "var(--gold-soft)" : "var(--bg-card)",
                       color: active ? "var(--gold)" : "var(--ink-3)",
                     }}
                     aria-label={`${value} de 5`}
@@ -172,7 +172,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
               maxLength={MESSAGE_MAX_LENGTH}
               placeholder="Escribe aquí tu comentario…"
               className="min-h-28 w-full resize-none rounded-xl px-3.5 py-3 text-[14px] shadow-sm outline-none transition focus:ring-2 focus:ring-[var(--accent)]/25"
-              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
+              style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink)" }}
               disabled={submitting}
             />
             <p className="mt-1 text-right text-[11px]" style={{ color: "var(--ink-3)" }}>
@@ -194,8 +194,8 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
               type="button"
               onClick={handleClose}
               disabled={submitting}
-              className="rounded-xl px-4 py-2.5 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)] disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-2)" }}
+              className="rounded-xl px-4 py-2.5 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink-2)" }}
             >
               Cancelar
             </button>

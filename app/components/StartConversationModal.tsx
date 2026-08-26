@@ -162,7 +162,7 @@ export function StartConversationModal({
     }
   };
 
-  const inputStyle = { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" };
+  const inputStyle = { border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink)" };
 
   return (
     <div className="fixed inset-0 z-[250]" role="dialog" aria-modal="true" aria-labelledby="start-conversation-title">
@@ -175,7 +175,7 @@ export function StartConversationModal({
       />
       <div
         className="absolute left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[min(calc(100vw-2rem),28rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl"
-        style={{ border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
+        style={{ border: "1px solid var(--line)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
       >
         <div
           className="px-5 py-4"
@@ -235,7 +235,7 @@ export function StartConversationModal({
             {templatesLoading ? (
               <div
                 className="rounded-xl px-3.5 py-3 text-[13px]"
-                style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }}
+                style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink-2)" }}
               >
                 Cargando plantillas…
               </div>
@@ -249,7 +249,7 @@ export function StartConversationModal({
             ) : templates.length === 0 ? (
               <div
                 className="rounded-xl px-3.5 py-3 text-[13px]"
-                style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }}
+                style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink-2)" }}
               >
                 Este hotel no tiene plantillas activas configuradas.
               </div>
@@ -280,7 +280,7 @@ export function StartConversationModal({
           {selectedTemplate && selectedTemplate.bodyTemplate && (
             <div
               className="rounded-2xl p-3.5"
-              style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}
+              style={{ border: "1px solid var(--line)", background: "var(--bg-app)" }}
             >
               <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
                 Vista previa
@@ -297,7 +297,7 @@ export function StartConversationModal({
           )}
 
           {selectedTemplate && selectedTemplate.variables.length > 0 && (
-            <div className="space-y-3 rounded-2xl p-3.5" style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}>
+            <div className="space-y-3 rounded-2xl p-3.5" style={{ border: "1px solid var(--line)", background: "var(--bg-app)" }}>
               <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--ink-3)" }}>
                 Variables de plantilla
               </p>
@@ -323,7 +323,7 @@ export function StartConversationModal({
                     }}
                     placeholder={variable.placeholder}
                     className="w-full rounded-xl px-3.5 py-3 text-base shadow-sm outline-none transition focus:ring-2 focus:ring-[var(--accent)]/25 lg:text-[14px]"
-                    style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink)" }}
+                    style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink)" }}
                     disabled={submitting}
                   />
                 </div>
@@ -336,8 +336,8 @@ export function StartConversationModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="rounded-xl px-4 py-2.5 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)] disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-2)" }}
+              className="rounded-xl px-4 py-2.5 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink-2)" }}
             >
               Cancelar
             </button>
