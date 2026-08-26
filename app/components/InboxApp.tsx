@@ -101,25 +101,40 @@ function BlockedBadge({ className = "" }: { className?: string }) {
  * Marca de "esta conversación es con personal del hotel, no con un huésped"
  * (`conversations.guest_phone` presente en `staff_contacts`).
  *
- * Violeta, no rojo ni verde: esos dos ya significan "necesita acción" e "IA
- * activa" en la misma fila, y el gris es "Bloqueado". Tokens en `globals.css`,
- * así que sigue al tema oscuro.
+ * Gris (spec 5.3), no de color: vive dentro de la vista Staff, donde el hecho de
+ * que sea personal ya está dicho por todo lo demás, y una pastilla de color al
+ * lado del nombre competiría con el rojo del botón principal del encabezado.
+ * Tokens en `globals.css`, así que sigue al tema oscuro.
  */
 function StaffBadge({ className = "" }: { className?: string }) {
   return (
     <span
       className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${className}`}
       style={{
-        background: "var(--staff-soft)",
-        color: "var(--staff)",
-        boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--staff) 35%, transparent)",
+        background: "var(--bg-app)",
+        color: "var(--text-secondary)",
+        boxShadow: "inset 0 0 0 1px var(--border-soft)",
       }}
-      title="Contacto del personal del hotel"
     >
       Staff
     </span>
   );
 }
+
+/**
+ * Cargo del contacto de staff cuando no hay ninguno que mostrar (spec 5.2).
+ *
+ * Hoy es SIEMPRE este texto: `GET /api/inbox` solo cruza teléfonos contra
+ * `staff_contacts` para marcar `isStaff` y no trae la columna `role`, y ese
+ * endpoint es zona congelada. El cargo sí existe en la base y se edita desde
+ * "Contactos"; el día que la bandeja lo embarque, esta constante pasa a ser el
+ * fallback de los contactos que lo tengan vacío.
+ *
+ * Va en gris y sin ícono a propósito: es una ausencia, no un problema. Pintarla
+ * en rojo o con un signo de admiración mandaría a recepción a arreglar algo que
+ * no está roto.
+ */
+const STAFF_ROLE_FALLBACK = "Sin cargo";
 
 function formatBlockedAtColombia(iso: string): string {
   const parts = new Intl.DateTimeFormat("es-CO", {
@@ -225,75 +240,12 @@ function Dot({ size = 7, color }: { size?: number; color: string }) {
   );
 }
 
-/**
- * Token de estado de la conversación — una sola etiqueta, sin duplicados:
- * `pending`/`attention` → pill rojo sólido (necesita acción, aún sin humano);
- * `human` → pill dorado con fondo (la atiende una persona);
- * `ia` → pill verde con fondo (la maneja el agente); `done` → texto gris discreto.
+/*
+ * Acá vivía `StatusToken`, la pastilla de estado de tres renglones. Se fue con
+ * la última fila que la pintaba: Huéspedes usa `GuestStatusPrefix` (spec 4.3) y
+ * Staff ya no muestra estado ninguno, porque el semáforo describe el ciclo de
+ * vida del agente y en un hilo con el personal el agente no interviene.
  */
-function StatusToken({ variant }: { variant: StatusVariant }) {
-  const pill: React.CSSProperties = {
-    padding: "3px 9px 3px 7px",
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: "0.01em",
-    border: "1px solid transparent",
-  };
-
-  if (variant === "pending" || variant === "attention") {
-    return (
-      <span
-        className="grotesk inline-flex items-center gap-1.5"
-        style={{ ...pill, background: "var(--accent)", color: "#fff" }}
-      >
-        <Dot size={6} color="rgba(255,255,255,.85)" />
-        {variant === "pending" ? "Pendiente" : "Atención"}
-      </span>
-    );
-  }
-  if (variant === "human") {
-    return (
-      <span
-        className="grotesk inline-flex items-center gap-1.5"
-        style={{
-          ...pill,
-          background: "var(--gold-soft)",
-          color: "var(--gold)",
-          borderColor: "color-mix(in srgb, var(--gold) 45%, transparent)",
-        }}
-      >
-        <Dot size={6} color="var(--gold)" />
-        Humano
-      </span>
-    );
-  }
-  if (variant === "ia") {
-    return (
-      <span
-        className="grotesk inline-flex items-center gap-1.5"
-        style={{
-          ...pill,
-          background: "var(--live-soft)",
-          color: "var(--live)",
-          borderColor: "color-mix(in srgb, var(--live) 35%, transparent)",
-        }}
-      >
-        <Dot size={6} color="var(--live)" />
-        IA activa
-      </span>
-    );
-  }
-  return (
-    <span
-      className="inline-flex items-center gap-1.5"
-      style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-secondary)", letterSpacing: "0.01em" }}
-    >
-      <Dot color="var(--text-secondary)" />
-      Resuelto
-    </span>
-  );
-}
 
 /** Glifo, palabra y color de cada estado en el prefijo del preview (spec 4.3). */
 const GUEST_STATUS_PREFIX: Record<StatusVariant, { glyph: string; label: string; color: string }> = {
@@ -1159,6 +1111,102 @@ function PrivateWhatsAppFile({
 }
 
 /**
+ * Abre un adjunto en una pestaña nueva con UN solo clic.
+ *
+ * La pestaña se abre DENTRO del gesto del usuario y recién después se le pone la
+ * URL firmada: si se abriera al volver del `await`, el navegador la trataría
+ * como popup y la bloquearía sin decir nada.
+ *
+ * Reusa `fetchSignedMediaUrl`, la misma cadena (y la misma caché en memoria) que
+ * usan las tarjetas del hilo: no pide nada nuevo al servidor.
+ */
+function useOpenAttachment(message: Message) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const open = useCallback(() => {
+    if (busy) return;
+
+    const direct = message.mediaUrl?.trim();
+    if (direct) {
+      window.open(direct, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    const tab = window.open("", "_blank");
+    if (tab) tab.opener = null;
+
+    setBusy(true);
+    setFailed(false);
+    void (async () => {
+      try {
+        const url = await fetchSignedMediaUrl(message);
+        if (tab) {
+          tab.location.href = url;
+        } else {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      } catch {
+        tab?.close();
+        setFailed(true);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  }, [busy, message]);
+
+  return { open, busy, failed };
+}
+
+/**
+ * PDF de un hilo de staff: chip, no burbuja de texto (spec 5.4).
+ * "📄 nombre.pdf · Documento PDF", y el chip entero abre el archivo.
+ *
+ * El personal se pasa planillas, facturas y remisiones todo el día: una tarjeta
+ * alta por cada una empuja la conversación fuera de la pantalla justo cuando lo
+ * que se busca es el archivo de hace tres mensajes.
+ */
+function StaffPdfChip({ message }: { message: Message }) {
+  const { open, busy, failed } = useOpenAttachment(message);
+  const filename = message.mediaFilename?.trim() || "Documento PDF";
+  const caption = message.body || message.mediaCaption || "";
+
+  return (
+    <div className="flex min-w-0 max-w-full flex-col gap-1">
+      <button
+        type="button"
+        onClick={open}
+        disabled={busy}
+        className="flex min-w-0 max-w-full items-center gap-2 text-left transition-opacity hover:opacity-75 disabled:cursor-wait disabled:opacity-60"
+      >
+        <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>
+          📄
+        </span>
+        <span
+          className="min-w-0 truncate text-[13.5px] font-semibold"
+          style={{ color: "var(--text-primary)" }}
+        >
+          {filename}
+        </span>
+        <span className="shrink-0 text-[12px]" style={{ color: "var(--text-secondary)" }}>
+          · {busy ? "Abriendo…" : "Documento PDF"}
+        </span>
+      </button>
+      {failed && (
+        <span className="text-[11px] font-medium" style={{ color: "var(--accent)" }}>
+          No se pudo abrir el documento. Intenta de nuevo.
+        </span>
+      )}
+      {caption ? (
+        <p className="whitespace-pre-wrap break-words text-[13.5px]" style={{ color: "var(--text-primary)" }}>
+          {caption}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
  * Media sin archivo: la fila trae mime o filename pero ni `media_storage_path`
  * ni `media_url`. El adjunto superó el tope de 20 MB o el upload a Storage
  * falló, así que NO hay nada que firmar — de ahí que no se monte
@@ -1461,16 +1509,117 @@ function SystemEvent({ label }: { label: string }) {
   );
 }
 
+/**
+ * Menú "…" del encabezado del chat (spec 5.3). Guarda las acciones secundarias
+ * para que arriba quede a la vista solo la principal ("✓ Completado").
+ *
+ * Cada entrada es texto, no un ícono suelto: recepción trabaja en tablets, donde
+ * no hay hover que revele lo que significa un dibujo. Se cierra al elegir, al
+ * tocar afuera y con Escape.
+ */
+function HeaderMenu({
+  items,
+  label = "Más acciones",
+}: {
+  items: { key: string; label: string; onSelect: () => void; danger?: boolean }[];
+  label?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent | TouchEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div ref={wrapRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={label}
+        className="d-soft grotesk flex h-9 w-9 items-center justify-center"
+        style={{
+          borderRadius: 999,
+          border: "1px solid var(--border-soft)",
+          background: "var(--bg-card)",
+          color: "var(--text-secondary)",
+          fontSize: 17,
+          fontWeight: 700,
+          lineHeight: 1,
+        }}
+      >
+        <span aria-hidden style={{ marginTop: -6 }}>
+          …
+        </span>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-50 mt-1.5 min-w-[190px] overflow-hidden p-1"
+          style={{
+            borderRadius: "var(--radius-card)",
+            border: "1px solid var(--border-soft)",
+            background: "var(--bg-card)",
+            boxShadow: "var(--shadow-lg)",
+          }}
+        >
+          {items.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+              className="d-soft grotesk flex w-full items-center px-3 py-2 text-left"
+              style={{
+                borderRadius: 9,
+                fontSize: 13,
+                fontWeight: 600,
+                color: item.danger ? "var(--accent)" : "var(--text-primary)",
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({
   m,
   guestName,
   guestSeed,
   reaction,
   deliveryReceipt,
+  staff = false,
 }: {
   m: Message;
   guestName: string;
   guestSeed: string;
+  /** Hilo con el personal del hotel: cambia cómo se pintan los PDFs (spec 5.4). */
+  staff?: boolean;
   /** Emoji de la reacción vigente sobre ESTA burbuja; ver `buildThreadView`. */
   reaction?: string;
   /**
@@ -1513,12 +1662,29 @@ function MessageBubble({
   const missingFile = deliveryStatus !== "pending" && isMediaWithoutFile(m);
 
   /*
+    En Staff un PDF no se pinta como mensaje sino como chip (spec 5.4), así que
+    la burbuja pierde el color de quien habla y queda neutra: un chip de archivo
+    sobre el rojo de "Tú · agente" se leería como una alerta. La hora, el acuse
+    de entrega y la etiqueta de autor siguen abajo, que es lo que hace falta para
+    saber quién mandó el archivo y si llegó.
+  */
+  const staffPdfChip = staff && mediaKind === "pdf" && hasMediaSource && !missingFile;
+
+  /*
     Spec 4.4 y 2.3/2.5: huésped = card blanca a la izquierda, agente (IA) =
     crema amarillento con su borde a la derecha, respuesta humana = roja sólida
     con texto blanco. Radio 14 en todas, con la esquina del lado del avatar
     achicada para que se lea de un vistazo de qué lado viene el mensaje.
   */
-  const bubbleStyle: React.CSSProperties = isUser
+  const bubbleStyle: React.CSSProperties = staffPdfChip
+    ? {
+        background: "var(--bg-card)",
+        color: "var(--text-primary)",
+        border: "1px solid var(--border-soft)",
+        borderRadius: "var(--radius-chip)",
+        boxShadow: "var(--shadow-sm)",
+      }
+    : isUser
     ? {
         background: "var(--bubble-guest)",
         color: "var(--text-primary)",
@@ -1542,7 +1708,7 @@ function MessageBubble({
           border: "1px solid var(--accent)",
           borderRadius: "var(--radius-bubble) var(--radius-bubble) 4px var(--radius-bubble)",
         };
-  const onRed = isAgent;
+  const onRed = isAgent && !staffPdfChip;
   const metaColor = onRed ? "rgba(255,255,255,.8)" : "var(--text-secondary)";
 
   // Qué tick va al lado de la hora. El acuse de Meta manda; sin acuse queda en
@@ -1661,6 +1827,8 @@ function MessageBubble({
           )}
           {missingFile ? (
             <UnavailableMediaCard message={m} />
+          ) : staffPdfChip ? (
+            <StaffPdfChip message={m} />
           ) : hasMediaSource ? (
             mediaKind === "image" ? (
               <div className="flex max-w-full flex-col gap-2">
@@ -3179,67 +3347,47 @@ export default function InboxApp() {
   };
 
   /**
-   * Fila de la bandeja. Extraída porque ahora la pintan DOS vistas (Huéspedes y
-   * Staff); duplicar el JSX era garantía de que una de las dos se quedara vieja
-   * al primer cambio.
+   * Fila de la vista Staff (spec 5.2): "Nombre · Cargo" arriba y el preview del
+   * último mensaje debajo. Card blanca con borde rojo cuando está seleccionada,
+   * igual que Huéspedes, para que las dos bandejas se lean como la misma app.
    *
-   * No lleva la pastilla "Staff": dentro de la vista Staff es redundante y en
-   * la de Huéspedes no puede aparecer. La pastilla sigue en el encabezado de la
-   * conversación abierta, que es donde sí importa antes de escribir.
+   * Sin semáforo de estado y sin la barra roja del costado: "Pendiente",
+   * "Atención", "Humano" e "IA activa" describen el ciclo de vida del agente, y
+   * acá el agente no interviene. Los campos que los alimentan (`request`,
+   * `controlMode`, `operationalStatus`) sí vienen poblados en la base —por datos
+   * históricos y porque responder desde la bandeja marca control humano—, pero
+   * no significan nada en un hilo con el personal. El guard es de render: el
+   * dato no se toca.
    */
-  const renderConversationRow = (c: Conversation) => {
+  const renderStaffRow = (c: Conversation) => {
     const active = c.id === selectedId;
     const hasUnread = c.unreadCount > 0;
     const unreadLabel = c.unreadCount > 99 ? "99+" : String(c.unreadCount);
-    const isPending = c.request === "pending";
-    const isHumanHandled = c.controlMode === "human" && c.operationalStatus !== "closed";
-    // El humano ya la está atendiendo → no la marcamos como "atención" en rojo.
-    // En staff nunca: la barra roja es el acompañamiento visual del token de
-    // estado, y ese token no se pinta ahí (ver más abajo). Sin token, una barra
-    // roja suelta sería una alarma sin explicación.
-    const showAttentionBar =
-      !c.isStaff && (isPending || (c.operationalStatus === "requires_attention" && !isHumanHandled));
-    const statusVariant: StatusVariant = isPending
-      ? "pending"
-      : c.operationalStatus === "closed"
-        ? "done"
-        : isHumanHandled
-          ? "human"
-          : c.operationalStatus === "requires_attention"
-            ? "attention"
-            : "ia";
-    const propertyLabel = c.guest.property.split("—")[0]?.trim();
-    const showProperty =
-      propertyLabel &&
-      !["sin propiedad indicada", "true", "false"].includes(propertyLabel.toLowerCase());
-    const followupTimer = followupTimers.get(c.id);
     const { emoji, rest } = splitLeadingEmoji(c.guest.name);
     return (
       <button
         key={c.id}
         type="button"
         onClick={() => openChat(c.id)}
-        className={`d-row relative flex w-full text-left ${active ? "sel" : ""}`}
+        aria-current={active ? "true" : undefined}
+        className="d-row flex w-full text-left"
         style={{
-          gap: 13,
-          padding: "15px 20px 15px 22px",
-          borderBottom: "1px solid var(--border-soft)",
-          boxShadow: active ? "var(--shadow-sm)" : "none",
+          gap: 12,
+          padding: "12px 13px",
+          borderRadius: "var(--radius-card)",
+          border: `1.5px solid ${active ? "var(--accent)" : "transparent"}`,
+          // Solo la seleccionada fija fondo: sin `background` inline, el hover
+          // de `.d-row` sigue funcionando en las demás.
+          ...(active ? { background: "var(--bg-card)", boxShadow: "var(--shadow-sm)" } : null),
         }}
       >
-        {showAttentionBar && (
-          <span
-            aria-hidden
-            style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--accent)" }}
-          />
-        )}
         <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
+          <div className="flex items-baseline gap-1.5">
             <span
-              className="grotesk truncate"
+              className="grotesk shrink truncate"
               style={{
-                fontWeight: 600,
+                fontWeight: 700,
                 fontSize: 14.5,
                 letterSpacing: "-0.01em",
                 color: "var(--text-primary)",
@@ -3247,67 +3395,38 @@ export default function InboxApp() {
             >
               {(emoji ? emoji + " " : "") + rest}
             </span>
+            <span aria-hidden className="shrink-0" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+              ·
+            </span>
+            <span className="min-w-0 truncate" style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+              {STAFF_ROLE_FALLBACK}
+            </span>
             {c.blocked && <BlockedBadge className="shrink-0" />}
             <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
               {c.lastMessageAt}
             </span>
           </div>
-          <p
-            className="truncate"
-            style={{
-              margin: "4px 0 8px",
-              fontSize: 13,
-              color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
-              fontWeight: hasUnread ? 600 : 400,
-            }}
-          >
-            {stripWhatsappMarkup(c.lastMessagePreview)}
-          </p>
-          <div className="flex items-center gap-2">
-            {/*
-             * En staff la IA no interviene nunca, así que ningún token de este
-             * semáforo aplica: "Pendiente"/"Atención", "Humano" e "IA activa"
-             * describen el ciclo de vida del agente. Los campos que los alimentan
-             * (`request`, `controlMode`, `operationalStatus`) sí vienen poblados
-             * en la base —por datos históricos y porque responder desde el inbox
-             * marca control humano—, pero no significan nada en un hilo de
-             * personal. El guard es de render: no se toca el dato.
-             */}
-            {!c.isStaff && <StatusToken variant={statusVariant} />}
-            {statusVariant === "ia" && !c.isStaff && c.autoReactivatedAt !== null && c.autoReactivatedAt !== undefined && (
-              <AutoReactivatedBadge />
-            )}
-            {/*
-             * Fuera de staff, igual que "Volvió sola": el triage corre sobre
-             * hilos de huésped y en staff la IA no interviene, así que un
-             * distintivo que habla de lo que decidió la IA no aplica.
-             */}
-            {!c.isStaff && c.triageEscalatedAt !== null && c.triageEscalatedAt !== undefined && (
-              <TriageEscalatedBadge />
-            )}
-            {showProperty && (
-              <span className="truncate" style={{ fontSize: 11, color: "var(--text-secondary)" }} title={propertyLabel}>
-                {propertyLabel}
+          <div className="mt-1 flex items-center gap-2">
+            <p
+              className="min-w-0 flex-1 truncate"
+              style={{
+                margin: 0,
+                fontSize: 13,
+                color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
+                fontWeight: hasUnread ? 600 : 400,
+              }}
+            >
+              {stripWhatsappMarkup(c.lastMessagePreview)}
+            </p>
+            {hasUnread && (
+              <span
+                className="ibx-mono flex h-[18px] min-w-[18px] shrink-0 items-center justify-center px-1"
+                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
+                aria-label={`${c.unreadCount} mensajes sin leer`}
+              >
+                {unreadLabel}
               </span>
             )}
-            <span className="ml-auto flex shrink-0 items-center gap-1.5">
-              {followupTimer && (
-                <FollowupTimer
-                  quoteCreatedAt={followupTimer.quoteCreatedAt}
-                  onCancel={() => cancelFollowup(c.id, followupTimer.quoteRequestId, followupTimer.stage)}
-                />
-              )}
-              {hasUnread && (
-                <span
-                  className="ibx-mono flex h-[18px] min-w-[18px] items-center justify-center px-1"
-                  style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
-                  aria-label={`${c.unreadCount} mensajes sin leer`}
-                  title={`${c.unreadCount} mensajes sin leer`}
-                >
-                  {unreadLabel}
-                </span>
-              )}
-            </span>
           </div>
         </div>
       </button>
@@ -3316,14 +3435,13 @@ export default function InboxApp() {
 
   /**
    * Fila de la vista Huéspedes (rediseño, spec 4.3). Está separada de
-   * `renderConversationRow` —que sigue sirviendo a Staff sin un pixel de
-   * cambio— porque el rediseño va por fases y esta es la de Huéspedes: forzar
-   * una sola fila obligaría a rediseñar Staff en la misma tanda.
+   * `renderStaffRow` porque las dos vistas muestran cosas distintas en el mismo
+   * lugar: acá el estado del agente, allá el cargo de la persona. Comparten la
+   * card (mismo padding, mismo borde rojo al seleccionar) y nada más.
    *
-   * Qué cambia respecto de la de Staff: dos renglones en vez de tres (el estado
-   * pasa a ser el prefijo del preview), la fila seleccionada se convierte en una
-   * card blanca con borde rojo sobre el crema, y la barra roja de la izquierda
-   * desaparece porque el punto rojo del prefijo ya dice lo mismo.
+   * Dos renglones: el estado es el prefijo del preview, la fila seleccionada se
+   * convierte en una card blanca con borde rojo sobre el crema, y la barra roja
+   * de la izquierda desapareció porque el punto rojo del prefijo dice lo mismo.
    *
    * No se pierde ningún dato: lo que antes vivía en el tercer renglón
    * (temporizador de seguimiento, "Volvió sola", triage, propiedad) sigue ahí,
@@ -3485,12 +3603,11 @@ export default function InboxApp() {
             className="d-act flex w-full cursor-pointer items-center gap-2 outline-none"
             style={{
               padding: enFila ? "6px 10px" : "10px 13px",
-              // En Huéspedes el panel es crema, así que el selector va
-              // en blanco para despegarse del fondo; en Staff el panel
-              // ya es blanco y sigue con la superficie de siempre.
-              borderRadius: staffViewActive ? 11 : 12,
+              // Las dos listas van sobre crema, así que el selector va en
+              // blanco para despegarse del fondo.
+              borderRadius: enFila ? 11 : 12,
               border: "1px solid var(--border-soft)",
-              background: staffViewActive ? "var(--bg-app)" : "var(--bg-card)",
+              background: "var(--bg-card)",
               color: "var(--text-primary)",
               fontSize: enFila ? 12 : 13.5,
               fontWeight: 600,
@@ -3637,48 +3754,32 @@ export default function InboxApp() {
           } h-full w-full min-h-0 min-w-0 flex-col lg:flex lg:h-auto lg:shrink-0`}
           style={{
             /*
-             * Huéspedes va sobre el crema de la app: es lo que hace que la
-             * conversación seleccionada se lea como una card blanca levantada
-             * del fondo. Staff sigue sobre el panel claro de siempre porque su
-             * rediseño es de otra fase y sus filas no son cards.
+             * Crema en las dos vistas: es lo que hace que la conversación
+             * seleccionada se lea como una card blanca levantada del fondo.
              */
-            background: staffViewActive ? "var(--bg-card)" : "var(--bg-app)",
+            background: "var(--bg-app)",
             borderRight: "1px solid var(--border-soft)",
             ...(isDesktop ? { width: leftWidth, flex: "0 0 auto" } : null),
           }}
         >
           <div className="shrink-0 px-5 pb-3.5 pt-[18px]">
             <div className={`flex items-center gap-2.5 ${staffViewActive ? "mb-2" : "mb-3.5"}`}>
-              {staffViewActive ? (
-                <h2
-                  className="grotesk"
-                  style={{
-                    margin: 0,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    letterSpacing: "0.13em",
-                    textTransform: "uppercase",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  Personal
-                </h2>
-              ) : (
-                <h2
-                  className="grotesk min-w-0 truncate"
-                  style={{
-                    margin: 0,
-                    fontSize: 17,
-                    fontWeight: 700,
-                    letterSpacing: "-0.02em",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  Huéspedes
-                </h2>
-              )}
+              {/* Mismo título en las dos vistas (spec 4.1 y 5.1): cambia la
+                  palabra, no el peso ni el tamaño. */}
+              <h2
+                className="grotesk min-w-0 truncate"
+                style={{
+                  margin: 0,
+                  fontSize: 17,
+                  fontWeight: 700,
+                  letterSpacing: "-0.02em",
+                  color: "var(--text-primary)",
+                }}
+              >
+                {staffViewActive ? "Staff" : "Huéspedes"}
+              </h2>
               <span
-                className={`ibx-mono inline-flex shrink-0 items-center gap-1.5 ${staffViewActive ? "ml-auto" : ""}`}
+                className="ibx-mono inline-flex shrink-0 items-center gap-1.5"
                 style={{ fontSize: 11.5, fontWeight: 700, color: refreshing ? "var(--accent)" : "var(--text-secondary)" }}
                 aria-live="polite"
                 title={
@@ -3705,13 +3806,13 @@ export default function InboxApp() {
                 type="button"
                 onClick={() => void handleRefresh()}
                 disabled={refreshing}
-                className={`d-act flex h-8 w-8 shrink-0 items-center justify-center disabled:opacity-50 ${staffViewActive ? "" : "ml-auto"}`}
+                className="d-act ml-auto flex h-8 w-8 shrink-0 items-center justify-center disabled:opacity-50"
                 style={{
-                  borderRadius: staffViewActive ? 9 : 10,
+                  borderRadius: 10,
                   border: "1px solid var(--border-soft)",
-                  // Sobre el crema de Huéspedes el gris del panel no se despega
-                  // del fondo; en Staff el panel ya es claro y queda igual.
-                  background: staffViewActive ? "var(--bg-app)" : "var(--bg-card)",
+                  // Blanca sobre el crema de la lista: el gris del panel no se
+                  // despegaría del fondo.
+                  background: "var(--bg-card)",
                   color: "var(--text-secondary)",
                 }}
                 aria-label="Refrescar conversaciones"
@@ -3752,12 +3853,11 @@ export default function InboxApp() {
                  encabezado terminaba mucho más alto que el de Huéspedes,
                  comiéndose filas de la lista en una tablet. */
               <div>
-                {/* Que son hilos con el personal ya lo dicen el tab de arriba y
-                    el título "Personal", así que el subtítulo se queda solo con
-                    lo que no se deduce de ningún otro lado: que el agente no
+                {/* Subtítulo del spec 5.1, literal. Lo que no se deduce de
+                    ningún otro lado es la segunda frase: que el agente no
                     contesta en esta bandeja. */}
                 <p className="mb-2 text-[12px] leading-snug" style={{ color: "var(--text-secondary)" }}>
-                  Hilos con el personal del hotel: el agente no responde acá.
+                  Conversaciones con el personal del hotel. La IA no interviene acá.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   {/* "Comenzar conversación" solo existe en Staff: en Huéspedes
@@ -3777,7 +3877,7 @@ export default function InboxApp() {
                     style={{
                       borderRadius: 9,
                       border: "1px solid var(--border-soft)",
-                      background: "var(--bg-app)",
+                      background: "var(--bg-card)",
                       color: "var(--text-secondary)",
                       fontSize: 12,
                       fontWeight: 600,
@@ -3902,8 +4002,8 @@ export default function InboxApp() {
               <>
             {staffViewActive ? (
               /* ───────── Vista Staff ─────────
-                 Las MISMAS filas de la bandeja (`renderConversationRow`), sin
-                 encabezado propio: el tab de arriba ya dice dónde estás. */
+                 Filas propias (`renderStaffRow`, spec 5.2), sin encabezado
+                 dentro de la lista: el de arriba ya dice dónde estás. */
               staffConversations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2.5 px-6 py-16 text-center">
                   <IconStaff className="h-7 w-7" style={{ color: "var(--staff)" }} aria-hidden />
@@ -3924,7 +4024,7 @@ export default function InboxApp() {
                     style={{
                       borderRadius: 9,
                       border: "1px solid var(--border-soft)",
-                      background: "var(--bg-app)",
+                      background: "var(--bg-card)",
                       color: "var(--text-primary)",
                       fontSize: 13,
                       fontWeight: 600,
@@ -3934,7 +4034,9 @@ export default function InboxApp() {
                   </button>
                 </div>
               ) : (
-                staffConversations.map(renderConversationRow)
+                <div className="flex flex-col gap-1 px-2.5 py-2.5">
+                  {staffConversations.map(renderStaffRow)}
+                </div>
               )
             ) : (
               <>
@@ -4114,16 +4216,21 @@ export default function InboxApp() {
                         <h2 className="grotesk min-w-0 flex-1 truncate" style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em", color: "var(--text-primary)" }}>
                           {selected.guest.name}
                         </h2>
-                        <button
-                          type="button"
-                          onClick={startEditingName}
-                          className="d-soft flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
-                          style={{ color: "var(--text-secondary)" }}
-                          aria-label="Editar nombre del huésped"
-                          title="Editar nombre"
-                        >
-                          <IconPencil className="h-4 w-4" />
-                        </button>
+                        {/* En Staff renombrar vive en el menú "…" (spec 5.3):
+                            arriba queda solo el nombre, la pastilla y la acción
+                            principal. */}
+                        {!selectedIsStaff && (
+                          <button
+                            type="button"
+                            onClick={startEditingName}
+                            className="d-soft flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                            style={{ color: "var(--text-secondary)" }}
+                            aria-label="Editar nombre del huésped"
+                            title="Editar nombre"
+                          >
+                            <IconPencil className="h-4 w-4" />
+                          </button>
+                        )}
                         {/* Que la recepcionista sepa con quién habla antes de escribir. */}
                         {selected.isStaff && <StaffBadge />}
                         {selected.blocked && <BlockedBadge />}
@@ -4166,35 +4273,84 @@ export default function InboxApp() {
                     )}
                   </div>
                 </div>
-                {/* Bloquear es moderación de huésped: contra el propio personal
-                    del hotel no tiene sentido y es un clic peligroso al alcance
-                    de la mano. En staff se oculta, no se deshabilita. */}
-                {!selectedIsStaff && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setModerationDialogAction(selected.blocked ? "unblock" : "block")
-                    }
-                    className="d-soft grotesk inline-flex h-9 shrink-0 items-center gap-1.5 px-2.5"
-                    style={{ borderRadius: 999, border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-secondary)", fontSize: 11.5, fontWeight: 600 }}
-                    title={selected.blocked ? "Desbloquear conversación" : "Bloquear conversación"}
-                  >
-                    <IconBlock className="h-4 w-4" />
-                    <span className="hidden sm:inline">{selected.blocked ? "Desbloquear" : "Bloquear"}</span>
-                  </button>
+                {selectedIsStaff ? (
+                  /* Encabezado de Staff (spec 5.3): la acción principal a la
+                     vista y el resto detrás del "…".
+                     "Completado" no bloquea nada acá: `conversationClosed`
+                     ignora el cierre en staff a propósito, así que el compositor
+                     sigue habilitado y el hilo se puede seguir usando. */
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void markCompleted()}
+                      disabled={pendingAction !== null}
+                      aria-busy={pendingAction === "complete"}
+                      className="d-prim grotesk inline-flex h-9 shrink-0 items-center gap-1.5 px-3 disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{ borderRadius: 999, border: "none", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 700 }}
+                    >
+                      {pendingAction === "complete" ? (
+                        <>
+                          <Spinner className="h-4 w-4 animate-spin" />
+                          Completando…
+                        </>
+                      ) : (
+                        <>
+                          <IconCheck className="h-4 w-4" aria-hidden />
+                          Completado
+                        </>
+                      )}
+                    </button>
+                    <HeaderMenu
+                      items={[
+                        {
+                          key: "rename",
+                          label: "Editar nombre",
+                          onSelect: startEditingName,
+                        },
+                        {
+                          key: "ficha",
+                          label: "Ver ficha del contacto",
+                          onSelect: () => {
+                            setGuestOpen(true);
+                            setDetailsOpen(true);
+                          },
+                        },
+                      ]}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {/* Bloquear es moderación de huésped: contra el propio
+                        personal del hotel no tiene sentido y es un clic
+                        peligroso al alcance de la mano. En staff se oculta acá y
+                        vive al final de la ficha (spec 5.5), donde hay que ir a
+                        buscarlo. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setModerationDialogAction(selected.blocked ? "unblock" : "block")
+                      }
+                      className="d-soft grotesk inline-flex h-9 shrink-0 items-center gap-1.5 px-2.5"
+                      style={{ borderRadius: 999, border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-secondary)", fontSize: 11.5, fontWeight: 600 }}
+                      title={selected.blocked ? "Desbloquear conversación" : "Bloquear conversación"}
+                    >
+                      <IconBlock className="h-4 w-4" />
+                      <span className="hidden sm:inline">{selected.blocked ? "Desbloquear" : "Bloquear"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGuestOpen(true);
+                        setDetailsOpen(true);
+                      }}
+                      className={`d-soft grotesk flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 ${detailsOpen ? "lg:hidden" : ""}`}
+                      style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}
+                    >
+                      <IconGuest className="h-4 w-4" />
+                      Ficha
+                    </button>
+                  </>
                 )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGuestOpen(true);
-                    setDetailsOpen(true);
-                  }}
-                  className={`d-soft grotesk flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 ${detailsOpen ? "lg:hidden" : ""}`}
-                  style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}
-                >
-                  <IconGuest className="h-4 w-4" />
-                  Ficha
-                </button>
               </div>
 
               <div
@@ -4224,6 +4380,7 @@ export default function InboxApp() {
                               m={m}
                               guestName={selected.guest.name}
                               guestSeed={selected.guest.id}
+                              staff={selectedIsStaff}
                               reaction={reactionByMessageId.get(m.id)}
                               deliveryReceipt={
                                 m.wamid ? deliveryReceipts.get(m.wamid) : undefined
@@ -4496,6 +4653,9 @@ export default function InboxApp() {
               onResolveRequest={resolveRequest}
               onReopen={reopenConversation}
               onClosePanel={() => setDetailsOpen(false)}
+              onBlockContact={() =>
+                setModerationDialogAction(selected.blocked ? "unblock" : "block")
+              }
               resolvingRequest={resolvingRequest}
               pendingAction={pendingAction}
             />
@@ -4524,6 +4684,9 @@ export default function InboxApp() {
               onResolveRequest={resolveRequest}
               onReopen={reopenConversation}
               onClosePanel={() => setGuestOpen(false)}
+              onBlockContact={() =>
+                setModerationDialogAction(selected.blocked ? "unblock" : "block")
+              }
               resolvingRequest={resolvingRequest}
               pendingAction={pendingAction}
             />
@@ -4793,6 +4956,53 @@ function lastAiReplyAgo(messages: Message[]): string | null {
   return null;
 }
 
+/**
+ * Un PDF de la sección "Archivos recientes" de la ficha de staff (spec 5.5).
+ * "Abrir" firma la URL y abre la pestaña con un solo clic.
+ */
+function PanelFileRow({ message }: { message: Message }) {
+  const { open, busy, failed } = useOpenAttachment(message);
+  const filename = message.mediaFilename?.trim() || "Documento PDF";
+
+  return (
+    <div
+      className="flex items-center gap-2.5 py-2"
+      style={{ borderBottom: "1px solid var(--border-soft)" }}
+    >
+      <span aria-hidden style={{ fontSize: 15, lineHeight: 1 }}>
+        📄
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[12.5px] font-semibold" style={{ color: "var(--text-primary)" }}>
+          {filename}
+        </p>
+        <p
+          className="mt-0.5 text-[11px]"
+          style={{ color: failed ? "var(--accent)" : "var(--text-secondary)" }}
+        >
+          {failed ? "No se pudo abrir. Intenta de nuevo." : "Documento PDF"}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={open}
+        disabled={busy}
+        className="d-act grotesk shrink-0 px-2.5 py-1.5 disabled:cursor-wait disabled:opacity-60"
+        style={{
+          borderRadius: 9,
+          border: "1px solid var(--border-soft)",
+          background: "var(--bg-app)",
+          color: "var(--text-primary)",
+          fontSize: 11.5,
+          fontWeight: 700,
+        }}
+      >
+        {busy ? "Abriendo…" : "Abrir"}
+      </button>
+    </div>
+  );
+}
+
 function GuestPanelContent({
   conversation,
   onTakeHuman,
@@ -4801,6 +5011,7 @@ function GuestPanelContent({
   onResolveRequest,
   onReopen,
   onClosePanel,
+  onBlockContact,
   resolvingRequest,
   pendingAction,
 }: {
@@ -4811,6 +5022,8 @@ function GuestPanelContent({
   onResolveRequest: () => void;
   onReopen: () => void;
   onClosePanel: () => void;
+  /** Abre el diálogo de bloqueo. En staff es la última acción de la ficha. */
+  onBlockContact: () => void;
   resolvingRequest: boolean;
   pendingAction: null | "human" | "ai" | "complete" | "reopen";
 }) {
@@ -4834,6 +5047,21 @@ function GuestPanelContent({
   const actionsBusy = pendingAction !== null || resolvingRequest;
   const aiOn = conversation.aiActive && conversation.controlMode === "ai";
   const aiAgo = lastAiReplyAgo(conversation.messages);
+  /**
+   * PDFs del hilo, del más nuevo al más viejo (spec 5.5). Sale de los mensajes
+   * que ya están en memoria: no se consulta nada nuevo. Se listan todos, sin
+   * tope: un "los 5 más recientes" callado haría creer que no hay más.
+   */
+  const staffPdfs = useMemo(() => {
+    if (!isStaff) return [] as Message[];
+    return conversation.messages
+      .filter(
+        (m) =>
+          resolveMediaKind(m.mediaMimeType) === "pdf" &&
+          Boolean(m.mediaUrl || m.mediaStoragePath)
+      )
+      .reverse();
+  }, [conversation.messages, isStaff]);
   /** El detalle crudo arranca plegado: es depuración, no operación diaria. */
   const [techOpen, setTechOpen] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(true);
@@ -5098,15 +5326,33 @@ function GuestPanelContent({
       </PanelCard>
       )}
 
-      {/* 3 · Huésped */}
+      {/* 3 · Huésped (spec 4.6) / Contacto (spec 5.5) */}
       <PanelCard className="shrink-0">
         <div className="mb-1">
-          <CockpitLabel>Huésped</CockpitLabel>
+          <CockpitLabel>{isStaff ? "Contacto" : "Huésped"}</CockpitLabel>
         </div>
         <MonoRow k="Canal" v={conversation.channelLabel} />
         <MonoRow k="Hotel" v={guest.property} />
         <MonoRow k="Última actividad" v={formatActivityIso(conversation.lastActivityIso)} />
       </PanelCard>
+
+      {/* Archivos recientes — solo en staff (spec 5.5 §3). El personal se pasa
+          planillas y remisiones, y buscarlas scrolleando el hilo es lo que hace
+          que terminen reenviándose por tercera vez. */}
+      {isStaff && (
+        <PanelCard className="shrink-0">
+          <div className="mb-1">
+            <CockpitLabel>Archivos recientes</CockpitLabel>
+          </div>
+          {staffPdfs.length === 0 ? (
+            <p className="pt-1.5 text-[12.5px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+              Todavía no hay documentos en esta conversación.
+            </p>
+          ) : (
+            staffPdfs.map((m) => <PanelFileRow key={m.id} message={m} />)
+          )}
+        </PanelCard>
+      )}
 
       {/* 4 · Resumen */}
       {!isStaff && (
@@ -5250,6 +5496,21 @@ function GuestPanelContent({
           </div>
         )}
       </PanelCard>
+
+      {/* Último de la ficha de staff (spec 5.5 §4). Va como link rojo y no como
+          botón: bloquear al propio personal del hotel es una decisión rara, y
+          hay que ir hasta el final del panel para encontrarla. Abre el mismo
+          diálogo de confirmación que en Huéspedes. */}
+      {isStaff && (
+        <button
+          type="button"
+          onClick={onBlockContact}
+          className="grotesk shrink-0 self-center px-2 py-1 underline underline-offset-2 transition-opacity hover:opacity-75"
+          style={{ background: "none", border: "none", color: "var(--accent)", fontSize: 12.5, fontWeight: 600 }}
+        >
+          {conversation.blocked ? "Desbloquear contacto" : "Bloquear contacto"}
+        </button>
+      )}
 
       <p className="ibx-mono shrink-0 pb-1 text-center text-[10px]" style={{ color: "var(--text-secondary)" }}>FerrarIA · Inbox</p>
     </div>
