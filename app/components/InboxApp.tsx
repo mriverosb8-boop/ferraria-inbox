@@ -3464,6 +3464,93 @@ export default function InboxApp() {
   const selectedFileIsPdf = isPdfFile(selectedFile);
   const selectedFileSizeLabel = selectedFile ? formatFileSize(selectedFile.size) : "";
 
+  /**
+   * Selector de hotel activo. Se pinta en dos sitios distintos según la vista:
+   * en Huéspedes ocupa su propio renglón debajo de los chips, y en Staff entra
+   * en la misma fila que las acciones. Con un solo hotel no se pinta en ningún
+   * lado. Solo cambia la caja: la lista desplegable es la misma, y por eso
+   * `hotelSelectRef` puede seguir siendo uno —nunca hay dos en pantalla.
+   */
+  const renderHotelSelector = (variant: "bloque" | "en-fila") => {
+    if (availableHotels.length < 2) return null;
+    const enFila = variant === "en-fila";
+    const selectedHotelId = activeHotelId ?? resolvedActiveHotelId ?? "";
+    const selectedHotel = availableHotels.find((hotel) => hotel.id === selectedHotelId);
+    return (
+      <div className={enFila ? "min-w-[142px] flex-1" : "mt-3.5"}>
+        <div ref={hotelSelectRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setHotelSelectOpen((open) => !open)}
+            className="d-act flex w-full cursor-pointer items-center gap-2 outline-none"
+            style={{
+              padding: enFila ? "6px 10px" : "10px 13px",
+              // En Huéspedes el panel es crema, así que el selector va
+              // en blanco para despegarse del fondo; en Staff el panel
+              // ya es blanco y sigue con la superficie de siempre.
+              borderRadius: staffViewActive ? 11 : 12,
+              border: "1px solid var(--border-soft)",
+              background: staffViewActive ? "var(--bg-app)" : "var(--bg-card)",
+              color: "var(--text-primary)",
+              fontSize: enFila ? 12 : 13.5,
+              fontWeight: 600,
+            }}
+            aria-haspopup="listbox"
+            aria-expanded={hotelSelectOpen}
+            aria-label="Hotel activo"
+          >
+            <span style={{ fontSize: enFila ? 13 : 15 }} aria-hidden>🏨</span>
+            <span className="truncate">{selectedHotel?.name ?? "Seleccionar hotel"}</span>
+            <IconChevronDown
+              className={`ml-auto h-4 w-4 shrink-0 transition-transform ${hotelSelectOpen ? "rotate-180" : ""}`}
+              style={{ color: "var(--text-secondary)" }}
+              aria-hidden
+            />
+          </button>
+          {hotelSelectOpen && (
+            <div
+              className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-[230] overflow-hidden"
+              style={{ borderRadius: 12, border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
+              role="listbox"
+              aria-label="Hotel activo"
+            >
+              {availableHotels.map((hotel) => {
+                const isSelected = hotel.id === selectedHotelId;
+                return (
+                  <button
+                    key={hotel.id}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => {
+                      setActiveHotelId(hotel.id);
+                      writeStoredActiveHotelId(hotel.id);
+                      setSelectedId("");
+                      // El aviso hablaba de la lista del hotel
+                      // anterior: en el nuevo vuelve a autoseleccionar.
+                      setDeepLinkMissing(false);
+                      setHotelSelectOpen(false);
+                    }}
+                    className="d-soft flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left"
+                    style={{
+                      fontSize: 13,
+                      background: isSelected ? "var(--bg-app)" : "transparent",
+                      fontWeight: isSelected ? 600 : 400,
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    <span className="truncate">{hotel.name}</span>
+                    {isSelected && <IconCheck className="h-4 w-4 shrink-0" style={{ color: "var(--accent)" }} aria-hidden />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   if (loading && conversations.length === 0) {
     return <InboxLoadingSkeleton />;
   }
@@ -3561,7 +3648,7 @@ export default function InboxApp() {
           }}
         >
           <div className="shrink-0 px-5 pb-3.5 pt-[18px]">
-            <div className="mb-3.5 flex items-center gap-2.5">
+            <div className={`flex items-center gap-2.5 ${staffViewActive ? "mb-2" : "mb-3.5"}`}>
               {staffViewActive ? (
                 <h2
                   className="grotesk"
@@ -3659,9 +3746,18 @@ export default function InboxApp() {
                 el personal. En su lugar va la gestión de contactos, que es la
                 única acción que esta vista necesita. */}
             {staffViewActive ? (
-              <div className="mb-3.5 flex flex-col gap-2.5">
-                <p className="text-[12.5px] leading-snug" style={{ color: "var(--text-secondary)" }}>
-                  Conversaciones con el personal del hotel. La IA no interviene acá.
+              /* Encabezado compacto: una línea de contexto y un solo renglón de
+                 acciones. Antes eran cuatro bloques apilados —subtítulo largo,
+                 dos botones y el selector de hotel en su propio renglón— y el
+                 encabezado terminaba mucho más alto que el de Huéspedes,
+                 comiéndose filas de la lista en una tablet. */
+              <div>
+                {/* Que son hilos con el personal ya lo dicen el tab de arriba y
+                    el título "Personal", así que el subtítulo se queda solo con
+                    lo que no se deduce de ningún otro lado: que el agente no
+                    contesta en esta bandeja. */}
+                <p className="mb-2 text-[12px] leading-snug" style={{ color: "var(--text-secondary)" }}>
+                  Hilos con el personal del hotel: el agente no responde acá.
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   {/* "Comenzar conversación" solo existe en Staff: en Huéspedes
@@ -3669,7 +3765,7 @@ export default function InboxApp() {
                   <button
                     type="button"
                     onClick={() => openStartConversation()}
-                    className="grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-2 text-[12.5px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
+                    className="grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
                   >
                     <IconCompose className="h-4 w-4 shrink-0" aria-hidden />
                     Comenzar conversación
@@ -3690,6 +3786,10 @@ export default function InboxApp() {
                     <IconStaff className="h-4 w-4 shrink-0" style={{ color: "var(--staff)" }} aria-hidden />
                     Contactos
                   </button>
+                  {/* Con un solo hotel no se pinta y la fila queda con los dos
+                      botones nomás; con varios entra acá y si el panel se
+                      angosta baja a su propio renglón en vez de aplastarse. */}
+                  {renderHotelSelector("en-fila")}
                 </div>
               </div>
             ) : (
@@ -3780,83 +3880,8 @@ export default function InboxApp() {
               </>
             )}
 
-            {availableHotels.length >= 2 && (() => {
-              const selectedHotelId = activeHotelId ?? resolvedActiveHotelId ?? "";
-              const selectedHotel = availableHotels.find((hotel) => hotel.id === selectedHotelId);
-              return (
-                <div className="mt-3.5">
-                  <div ref={hotelSelectRef} className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setHotelSelectOpen((open) => !open)}
-                      className="d-act flex w-full cursor-pointer items-center gap-2.5 outline-none"
-                      style={{
-                        padding: "10px 13px",
-                        // En Huéspedes el panel es crema, así que el selector va
-                        // en blanco para despegarse del fondo; en Staff el panel
-                        // ya es blanco y sigue con la superficie de siempre.
-                        borderRadius: staffViewActive ? 11 : 12,
-                        border: "1px solid var(--border-soft)",
-                        background: staffViewActive ? "var(--bg-app)" : "var(--bg-card)",
-                        color: "var(--text-primary)",
-                        fontSize: 13.5,
-                        fontWeight: 600,
-                      }}
-                      aria-haspopup="listbox"
-                      aria-expanded={hotelSelectOpen}
-                      aria-label="Hotel activo"
-                    >
-                      <span style={{ fontSize: 15 }} aria-hidden>🏨</span>
-                      <span className="truncate">{selectedHotel?.name ?? "Seleccionar hotel"}</span>
-                      <IconChevronDown
-                        className={`ml-auto h-4 w-4 shrink-0 transition-transform ${hotelSelectOpen ? "rotate-180" : ""}`}
-                        style={{ color: "var(--text-secondary)" }}
-                        aria-hidden
-                      />
-                    </button>
-                    {hotelSelectOpen && (
-                      <div
-                        className="absolute left-0 right-0 top-[calc(100%+0.375rem)] z-[230] overflow-hidden"
-                        style={{ borderRadius: 12, border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
-                        role="listbox"
-                        aria-label="Hotel activo"
-                      >
-                        {availableHotels.map((hotel) => {
-                          const isSelected = hotel.id === selectedHotelId;
-                          return (
-                            <button
-                              key={hotel.id}
-                              type="button"
-                              role="option"
-                              aria-selected={isSelected}
-                              onClick={() => {
-                                setActiveHotelId(hotel.id);
-                                writeStoredActiveHotelId(hotel.id);
-                                setSelectedId("");
-                                // El aviso hablaba de la lista del hotel
-                                // anterior: en el nuevo vuelve a autoseleccionar.
-                                setDeepLinkMissing(false);
-                                setHotelSelectOpen(false);
-                              }}
-                              className="d-soft flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left"
-                              style={{
-                                fontSize: 13,
-                                background: isSelected ? "var(--bg-app)" : "transparent",
-                                fontWeight: isSelected ? 600 : 400,
-                                color: "var(--text-primary)",
-                              }}
-                            >
-                              <span className="truncate">{hotel.name}</span>
-                              {isSelected && <IconCheck className="h-4 w-4 shrink-0" style={{ color: "var(--accent)" }} aria-hidden />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
+            {/* En Staff el selector ya viaja dentro de la fila de acciones. */}
+            {!staffViewActive && renderHotelSelector("bloque")}
 
           </div>
 
