@@ -477,7 +477,7 @@ export function AppSidebar({
     <>
     <aside
       aria-label="Navegación principal"
-      className={`flex shrink-0 items-center ${hideMobileNav ? "max-lg:hidden" : ""} max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-[200] max-lg:h-[calc(62px+env(safe-area-inset-bottom,0px))] max-lg:flex-row max-lg:gap-1 max-lg:px-2 max-lg:pb-[env(safe-area-inset-bottom,0px)] lg:h-full lg:w-[90px] lg:flex-col lg:gap-3 lg:overflow-hidden lg:px-2 lg:py-3`}
+      className={`flex shrink-0 items-center ${hideMobileNav ? "max-lg:hidden" : ""} max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-[200] max-lg:h-[calc(62px+env(safe-area-inset-bottom,0px))] max-lg:flex-row max-lg:gap-2 max-lg:px-3 max-lg:pb-[env(safe-area-inset-bottom,0px)] lg:h-full lg:w-[90px] lg:flex-col lg:gap-3 lg:overflow-hidden lg:px-2 lg:py-3`}
       style={{ background: "var(--sidebar)" }}
     >
       <div className="hidden shrink-0 lg:block">
@@ -540,7 +540,11 @@ export function AppSidebar({
         })}
       </nav>
 
-      <div className="flex shrink-0 items-center max-lg:flex-row max-lg:gap-1 lg:w-full lg:flex-col lg:gap-2">
+      {/* Campana y avatar. En la barra inferior del teléfono van separados entre
+          sí y con aire contra el borde derecho: pegados se tocaban y se erraba
+          el toque. El alto de la barra y el safe-area de abajo no se tocan,
+          porque otras pantallas reservan ese espacio. */}
+      <div className="flex shrink-0 items-center max-lg:flex-row max-lg:gap-2.5 max-lg:pr-1 lg:w-full lg:flex-col lg:gap-2">
         {/* Campana de notificaciones. A diferencia del indicador de estado de
             abajo sí se pinta en la barra inferior del teléfono: es un botón de
             36px, no un texto, y es el único acceso al estado del permiso en
@@ -576,7 +580,7 @@ export function AppSidebar({
             <div
               role="dialog"
               aria-label="Notificaciones de este dispositivo"
-              className="fixed bottom-[calc(62px+env(safe-area-inset-bottom,0px)+0.5rem)] right-2 z-[260] w-72 overflow-hidden rounded-2xl p-3.5 lg:bottom-3 lg:left-[98px] lg:right-auto"
+              className="fixed bottom-[calc(62px+env(safe-area-inset-bottom,0px)+0.5rem)] right-3 z-[260] w-72 overflow-hidden rounded-2xl p-3.5 lg:bottom-3 lg:left-[98px] lg:right-auto"
               style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
             >
               <p className="grotesk text-[13px] font-bold" style={{ color: "var(--text-primary)" }}>
@@ -663,7 +667,7 @@ export function AppSidebar({
                cortado. */
             <div
               role="menu"
-              className="fixed bottom-[calc(62px+env(safe-area-inset-bottom,0px)+0.5rem)] right-2 z-[260] w-64 overflow-hidden rounded-2xl py-1 lg:bottom-3 lg:left-[98px] lg:right-auto"
+              className="fixed bottom-[calc(62px+env(safe-area-inset-bottom,0px)+0.5rem)] right-3 z-[260] w-64 overflow-hidden rounded-2xl py-1 lg:bottom-3 lg:left-[98px] lg:right-auto"
               style={{ border: "1px solid var(--border-soft)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
             >
               <p
