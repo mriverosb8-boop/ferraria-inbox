@@ -433,21 +433,33 @@ export function AppSidebar({
   }
 
   /**
-   * Copy del indicador de actualización en vivo. Nada de "Realtime", "canal" ni
-   * "conectado": lo que necesita saber recepción es si la bandeja se actualiza
-   * sola o si le toca darle al botón de refrescar.
+   * Un solo indicador de estado. Antes eran dos —la conexión del navegador y la
+   * actualización de la bandeja— y para recepción decían lo mismo con palabras
+   * distintas: cuando algo se caía quedaban dos avisos que había que cruzar.
+   *
+   * Verde y "En línea" solo cuando las dos cosas están bien. Si alguna falla se
+   * ve un único aviso con el problema concreto, y la falta de red manda sobre lo
+   * demás: sin internet la bandeja tampoco se actualiza sola, así que avisar de
+   * las dos cosas sería dar la misma noticia dos veces.
+   *
+   * Nada de vocabulario técnico: lo que necesita saber recepción es si la
+   * bandeja se actualiza sola o si le toca darle al botón de refrescar.
+   *
+   * En Reservas y Tickets no llega estado de actualización —esas pantallas no la
+   * usan—, así que ahí "En línea" habla solo de la conexión.
    */
-  const liveCopy: Record<RealtimeUiStatus, { label: string; dot: string; background: string; color: string }> = {
-    connected: {
-      label: "En vivo",
-      dot: "var(--success-text)",
-      background: "var(--success-bg)",
-      color: "var(--success-text)",
-    },
-    waiting: { label: "Conectando", dot: "#ffe08a", background: "rgba(255,255,255,.18)", color: "#fff" },
-    error: { label: "Actualiza a mano", dot: "var(--sidebar)", background: "#fff", color: "var(--sidebar)" },
-  };
-  const live = realtimeStatus ? liveCopy[realtimeStatus] : null;
+  const status: { label: string; dot: string; background: string; color: string } = !online
+    ? { label: "Sin red", dot: "#fff", background: "rgba(255,255,255,.18)", color: "#fff" }
+    : realtimeStatus === "error"
+      ? { label: "Actualiza a mano", dot: "var(--sidebar)", background: "#fff", color: "var(--sidebar)" }
+      : realtimeStatus === "waiting"
+        ? { label: "Conectando", dot: "#ffe08a", background: "rgba(255,255,255,.18)", color: "#fff" }
+        : {
+            label: "En línea",
+            dot: "var(--success-text)",
+            background: "var(--success-bg)",
+            color: "var(--success-text)",
+          };
 
   const notif = NOTIF_COPY[push.status];
   // Badge de la campana. Es siempre 1 porque lo que se avisa es un solo asunto
@@ -529,7 +541,7 @@ export function AppSidebar({
       </nav>
 
       <div className="flex shrink-0 items-center max-lg:flex-row max-lg:gap-1 lg:w-full lg:flex-col lg:gap-2">
-        {/* Campana de notificaciones. A diferencia de los dos indicadores de
+        {/* Campana de notificaciones. A diferencia del indicador de estado de
             abajo sí se pinta en la barra inferior del teléfono: es un botón de
             36px, no un texto, y es el único acceso al estado del permiso en
             móvil. */}
@@ -604,41 +616,20 @@ export function AppSidebar({
           )}
         </div>
 
-        {/* Los dos indicadores van juntos y solo en escritorio: en la barra
-            inferior de un teléfono no hay ancho para un texto que casi siempre
-            dice lo mismo, y un punto suelto sin label no explica nada.
-            "En línea" es la conexión del navegador; "En vivo" es si la bandeja
-            se está actualizando sola. */}
-        {live && (
-          <p
-            className="ibx-mono hidden w-full items-start gap-1 rounded-[10px] px-1.5 py-1 text-[9.5px] font-semibold leading-[1.3] lg:flex"
-            style={{ background: live.background, color: live.color }}
-            role="status"
-          >
-            <span
-              className="mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full"
-              style={{ background: live.dot }}
-              aria-hidden
-            />
-            <span className="min-w-0 flex-1">{live.label}</span>
-          </p>
-        )}
-
+        {/* El indicador va solo en escritorio: en la barra inferior de un
+            teléfono no hay ancho para un texto que casi siempre dice lo mismo, y
+            un punto suelto sin label no explica nada. */}
         <p
-          className="ibx-mono hidden items-center gap-1.5 rounded-full px-2 py-1 text-[9.5px] font-semibold lg:inline-flex"
-          style={
-            online
-              ? { background: "var(--success-bg)", color: "var(--success-text)" }
-              : { background: "rgba(255,255,255,.18)", color: "#fff" }
-          }
+          className="ibx-mono hidden w-full items-start gap-1 rounded-[10px] px-1.5 py-1 text-[9.5px] font-semibold leading-[1.3] lg:flex"
+          style={{ background: status.background, color: status.color }}
           role="status"
         >
           <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full"
-            style={{ background: online ? "var(--success-text)" : "#fff" }}
+            className="mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ background: status.dot }}
             aria-hidden
           />
-          {online ? "En línea" : "Sin red"}
+          <span className="min-w-0 flex-1">{status.label}</span>
         </p>
 
         <div ref={menuRef} className="flex shrink-0 items-center justify-center lg:w-full">
