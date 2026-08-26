@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, type SVGProps } from "react";
+import { useEffect, useRef, useState, type SVGProps } from "react";
 import type { Message } from "@/lib/inbox-types";
 import { WhatsappText } from "@/app/components/WhatsappText";
 import { avatarFlatColors, initials } from "@/lib/avatar";
@@ -65,11 +65,22 @@ export function ChatPanel({ reserva }: Props) {
   const conversationId = reserva?.conversation_id || reserva?.quote_requests?.conversation_id || null;
   const guestPhone = reserva?.quote_requests?.sender_phone ?? null;
   const { conversation, messages, loading, error } = useConversationMessages({ conversationId, guestPhone });
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // En el teléfono el chat arranca plegado: así al abrir una reserva se ve el
+  // detalle completo de una, y la pantalla queda con un solo scroll vertical.
+  // Desde `xl` el chat es la tercera columna y está siempre abierto. Vuelve a
+  // arrancar plegado en cada reserva porque la página remonta este panel con
+  // una `key` por reserva.
+  const [chatAbierto, setChatAbierto] = useState(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, reserva?.id]);
+    const list = listRef.current;
+    if (!list) return;
+    // Se mueve el scroll de la lista y nada más. `scrollIntoView` arrastraba
+    // también a los contenedores de arriba, y en el teléfono eso dejaba el
+    // encabezado del detalle fuera de pantalla apenas cargaban los mensajes.
+    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+  }, [messages.length, reserva?.id, chatAbierto]);
 
   if (!reserva) {
     return (
@@ -85,10 +96,12 @@ export function ChatPanel({ reserva }: Props) {
   const avatar = avatarFlatColors(reserva.id);
 
   return (
-    // Abajo de `xl` el chat vive dentro del detalle, que es una sola columna
-    // con scroll: sin el tope de alto la conversación empujaría el botón de
-    // "Abrir en Huéspedes" fuera de la pantalla.
-    <aside className="flex min-h-[60vh] max-h-[75vh] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] shadow-sm xl:h-full xl:max-h-none xl:min-h-0">
+    // Abajo de `xl` el chat es el último bloque del detalle, que es una sola
+    // columna con scroll: por eso no crece solo (`shrink-0` para que el detalle
+    // de arriba nunca quede aplastado ni tapado) y la conversación tiene su
+    // propio tope de alto, para que el botón de "Abrir en Huéspedes" siga
+    // quedando al final de todo y a la vista.
+    <aside className="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] shadow-sm max-xl:shrink-0 xl:h-full xl:min-h-0">
       <header className="flex min-h-14 shrink-0 items-center gap-2.5 border-b border-[var(--border-soft)] px-4 py-3">
         <span
           className="ibx-mono flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-[12px] font-bold"
@@ -97,15 +110,33 @@ export function ChatPanel({ reserva }: Props) {
         >
           {initials(guestName)}
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h2 className="grotesk truncate text-[14px] font-semibold text-[var(--text-primary)]">{guestName}</h2>
           <p className="ibx-mono truncate text-[10.5px] text-[var(--text-secondary)]">
             Chat de WhatsApp · solo lectura
           </p>
         </div>
+        {/* El estado del bloque se lee como texto, no como un ícono a adivinar. */}
+        <button
+          type="button"
+          onClick={() => setChatAbierto((value) => !value)}
+          aria-expanded={chatAbierto}
+          aria-controls="reservas-chat-mensajes"
+          className="shrink-0 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-app)] px-3 py-2 text-[12px] font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-card)] xl:hidden"
+        >
+          {chatAbierto ? "Ocultar el chat" : "Ver el chat"}
+        </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--bg-app)] px-3 py-4 scrollbar-app">
+      {/* Abajo de `xl` la conversación mide lo que mida su contenido con un tope
+          de 55vh; desde `xl` llena la columna (`xl:flex-1`) como venía. */}
+      <div
+        ref={listRef}
+        id="reservas-chat-mensajes"
+        className={`${
+          chatAbierto ? "block max-xl:max-h-[55vh]" : "hidden"
+        } min-h-0 overflow-y-auto bg-[var(--bg-app)] px-3 py-4 scrollbar-app xl:block xl:flex-1`}
+      >
         {loading ? (
           <p className="py-8 text-center text-[13px] text-[var(--text-secondary)]">Cargando conversación...</p>
         ) : error ? (
@@ -121,7 +152,6 @@ export function ChatPanel({ reserva }: Props) {
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
-            <div ref={bottomRef} className="h-px" aria-hidden />
           </div>
         )}
       </div>

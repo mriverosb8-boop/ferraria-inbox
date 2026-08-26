@@ -173,7 +173,11 @@ export function ReservaDetalle({
   const mascotas = quote?.pets == null ? SIN_DATO : formatSiNo(quote.pets);
 
   return (
-    <section className="flex min-h-0 flex-col gap-3.5 xl:overflow-y-auto xl:pr-1 scrollbar-app">
+    // `shrink-0` abajo de `xl`: el contenedor del detalle es una columna flex
+    // con scroll y sin esto el navegador comprimía esta sección para meter el
+    // chat en pantalla, así que el titular y las cuatro stat cards quedaban
+    // debajo del chat en vez de arriba.
+    <section className="flex min-h-0 flex-col gap-3.5 max-xl:shrink-0 xl:overflow-y-auto xl:pr-1 scrollbar-app">
       <header className="flex flex-wrap items-start gap-3">
         <button
           type="button"

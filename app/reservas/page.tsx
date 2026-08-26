@@ -185,7 +185,13 @@ export default function ReservasPage() {
       {/* Tres columnas del rediseño (docs/REDESIGN.md §3): lista, detalle y chat.
           Debajo de `xl` no caben las tres, así que la lista se queda sola y el
           detalle con su chat se abren encima; el `xl:contents` hace que esos dos
-          vuelvan a ser columnas de la grilla cuando hay ancho de sobra. */}
+          vuelvan a ser columnas de la grilla cuando hay ancho de sobra.
+
+          Abajo de `xl` ese contenedor es el único que scrollea y sus dos hijos
+          van uno debajo del otro sin encogerse (`max-xl:shrink-0` en cada uno):
+          primero el detalle completo y después el chat. Si se los deja encoger,
+          el chat se le monta encima al detalle y tapa el titular y las stat
+          cards. */}
       <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 sm:p-4 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)_minmax(300px,360px)] xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden xl:p-5">
         <section className="flex min-h-0 flex-col rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] shadow-sm xl:overflow-hidden">
           <TabsHeader
@@ -286,7 +292,9 @@ export default function ReservasPage() {
             onReject={setRejectingReserva}
             onReopen={(item) => void handleReopen(item)}
           />
-          <ChatPanel reserva={selectedReserva} />
+          {/* La `key` por reserva remonta el panel: así el chat vuelve a
+              arrancar plegado en el teléfono cada vez que se elige otra. */}
+          <ChatPanel key={selectedReserva?.id ?? "sin-reserva"} reserva={selectedReserva} />
         </div>
       </main>
 
