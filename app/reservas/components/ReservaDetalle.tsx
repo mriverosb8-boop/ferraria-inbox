@@ -171,10 +171,6 @@ export function ReservaDetalle({
 
   const desayuno = quote?.breakfast_included == null ? SIN_DATO : formatSiNo(quote.breakfast_included);
   const mascotas = quote?.pets == null ? SIN_DATO : formatSiNo(quote.pets);
-  const huespedes =
-    quote?.adults == null && quote?.children == null
-      ? SIN_DATO
-      : `${formatConteo(quote?.adults)} · ${formatConteo(quote?.children)}`;
 
   return (
     <section className="flex min-h-0 flex-col gap-3.5 xl:overflow-y-auto xl:pr-1 scrollbar-app">
@@ -236,8 +232,13 @@ export function ReservaDetalle({
 
         <Card titulo="Cotización">
           <Fila label="Noches" value={formatConteo(quote?.nights)} />
-          <Fila label="Adultos · Niños" value={huespedes} />
-          <Fila label="Desayuno · Mascotas" value={`${desayuno} · ${mascotas}`} mono={false} />
+          {/* Una fila por dato. Apareados ("Adultos · Niños", "2 · Sin dato")
+              había que adivinar cuál valor era de cuál etiqueta, y con un dato
+              ausente en el medio la lectura se volvía ambigua. */}
+          <Fila label="Adultos" value={formatConteo(quote?.adults)} />
+          <Fila label="Niños" value={formatConteo(quote?.children)} />
+          <Fila label="Desayuno" value={desayuno} mono={false} />
+          <Fila label="Mascotas" value={mascotas} mono={false} />
           <Fila label="Subtotal sin IVA" value={formatTotalOpcional(subtotalBeforeIva)} />
           <Fila label="IVA 19%" value={formatTotalOpcional(ivaAmount)} />
           <Fila label="Total con IVA" value={formatTotalOpcional(totalAmount)} destacado />
