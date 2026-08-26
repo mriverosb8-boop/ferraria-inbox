@@ -34,7 +34,7 @@ export function LogoutButton({
         type="button"
         onClick={() => void handleSignOut()}
         disabled={loading}
-        className={`${HEADER_MENU_ROW_CLASS} text-[var(--red)]`}
+        className={`${HEADER_MENU_ROW_CLASS} text-[var(--accent)]`}
         role="menuitem"
         aria-label="Cerrar sesión"
       >

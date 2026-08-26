@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { SVGProps } from "react";
 import {
   CATEGORIA_LABEL,
   ESTADO_LABEL,
@@ -8,23 +9,79 @@ import {
   normalizeArea,
   tiempoTranscurrido,
   type ServiceTicket,
+  type TicketArea,
   type TicketEstado,
 } from "@/lib/service-tickets";
 
 /**
- * Colores del estado. El texto SIEMPRE dice el estado en palabras: el color es
- * refuerzo, nunca la única señal (hay tablets con brillo bajo y gente que no
- * distingue estos tonos).
+ * Icono del tipo de solicitud (docs/REDESIGN.md §7.3). Es refuerzo visual para
+ * reconocer la card de un vistazo: el tipo SIEMPRE va también escrito al lado,
+ * porque un icono solo no se lee en una tablet a media luz.
+ */
+const CATEGORIA_ICONO: Readonly<Record<TicketArea, string>> = {
+  mantenimiento: "🔧",
+  room_service: "🍽️",
+  housekeeping: "🧹",
+  otro: "🛎️",
+};
+
+/**
+ * Colores del estado (§7.3): abierta roja, en curso ámbar, resuelta verde.
+ * El texto SIEMPRE dice el estado en palabras: el color es refuerzo, nunca la
+ * única señal (hay tablets con brillo bajo y gente que no distingue estos tonos).
+ *
+ * "Cancelada" no está en el spec porque no es un estado que se filtre desde los
+ * chips; aparece igual dentro de "Todas", así que va en neutro para no competir
+ * con los tres que sí exigen lectura.
  */
 const ESTADO_CLASES: Readonly<Record<TicketEstado, string>> = {
-  abierto: "bg-[var(--red)]/12 text-[var(--red-deep)] ring-1 ring-[var(--red)]/25",
-  en_curso: "bg-amber-500/15 text-amber-700 ring-1 ring-amber-500/30",
-  resuelto: "bg-emerald-500/15 text-emerald-700 ring-1 ring-emerald-500/30",
-  cancelado: "bg-[var(--panel-3)] text-[var(--ink-3)] ring-1 ring-[var(--line)]",
+  abierto: "bg-[var(--red-soft)] text-[var(--accent)]",
+  en_curso: "bg-[var(--gold-soft)] text-[var(--gold)]",
+  resuelto: "bg-[var(--success-bg)] text-[var(--success-text)]",
+  cancelado: "bg-[var(--bg-app)] text-[var(--text-secondary)]",
+};
+
+const ESTADO_PUNTO: Readonly<Record<TicketEstado, string>> = {
+  abierto: "bg-[var(--accent)]",
+  en_curso: "bg-[var(--gold)]",
+  resuelto: "bg-[var(--success-text)]",
+  cancelado: "bg-[var(--text-secondary)]",
 };
 
 const BOTON_BASE =
-  "grotesk min-h-[46px] flex-1 rounded-xl px-4 py-3 text-[15px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50";
+  "grotesk inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50";
+
+function IconPersona(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} {...props}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.25a7.5 7.5 0 1115 0"
+      />
+    </svg>
+  );
+}
+
+function IconCheck(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l5.25 5.25L19.5 6.75" />
+    </svg>
+  );
+}
+
+function IconChat(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} {...props}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3.75c-4.556 0-8.25 3.03-8.25 6.77 0 1.87.924 3.56 2.418 4.78l-.83 3.45a.4.4 0 00.58.45l3.4-1.79c.85.2 1.75.31 2.682.31 4.556 0 8.25-3.03 8.25-6.77S16.556 3.75 12 3.75z"
+      />
+    </svg>
+  );
+}
 
 export function TicketCard({
   ticket,
@@ -40,7 +97,8 @@ export function TicketCard({
   onPedirCancelacion: (ticket: ServiceTicket) => void;
 }) {
   const estado = estadoDe(ticket);
-  const categoria = CATEGORIA_LABEL[normalizeArea(ticket.categoria)];
+  const area = normalizeArea(ticket.categoria);
+  const categoria = CATEGORIA_LABEL[area];
   const habitacion = ticket.habitacion?.trim();
   const desde = tiempoTranscurrido(ticket.created_at);
   const descripcion = ticket.descripcion?.trim();
@@ -53,86 +111,116 @@ export function TicketCard({
   return (
     <article
       id={`solicitud-${ticket.id}`}
-      className={`rounded-2xl border bg-[var(--panel)] p-4 shadow-sm transition ${
-        resaltado
-          ? "border-[var(--red)] ring-2 ring-[var(--red)]/35"
-          : "border-[var(--line)] ring-1 ring-black/[0.03]"
-      } ${cerrada ? "opacity-90" : ""}`}
+      className={`flex flex-col rounded-[var(--radius-card)] border bg-[var(--bg-card)] p-4 shadow-sm transition ${
+        resaltado || estado === "abierto"
+          ? "border-[var(--accent)]/60"
+          : "border-[var(--border-soft)]"
+      } ${resaltado ? "ring-2 ring-[var(--accent)]/25" : ""}`}
     >
       {resaltado && (
-        <p className="mb-2.5 rounded-lg bg-[var(--red)]/10 px-3 py-2 text-[13px] font-semibold text-[var(--red-deep)]">
+        <p className="mb-3 rounded-[var(--radius-chip)] bg-[var(--red-soft)] px-3 py-2 text-[13px] font-semibold text-[var(--accent)]">
           Esta es la solicitud de la notificación que abriste.
         </p>
       )}
 
-      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <h2 className="grotesk text-[15px] font-bold uppercase tracking-wide text-[var(--ink)]">
-          {categoria}
-        </h2>
-        <p className="text-[14px] font-semibold text-[var(--ink-2)]">
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-chip)] bg-[var(--bg-app)] text-[17px]"
+        >
+          {CATEGORIA_ICONO[area]}
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <h2 className="grotesk text-[15px] font-bold tracking-tight text-[var(--text-primary)]">
+            {categoria}
+          </h2>
+          {/* El spec pide "Nombre · hace N días", pero la solicitud no trae el
+              nombre del huésped: se muestra solo la antigüedad en vez de
+              inventar un nombre o pintar un hueco alarmante. Si la fecha
+              tampoco se puede leer, la línea entera se omite. */}
+          {desde && (
+            <p className="ibx-mono mt-0.5 text-[11.5px] text-[var(--text-secondary)]">{desde}</p>
+          )}
+        </div>
+
+        {/* Sin `shrink-0` a propósito: en una tablet angosta las dos píldoras
+            se acomodan una debajo de la otra en vez de empujar la card a scroll
+            horizontal. */}
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           {/* Sin número de habitación se dice así, con todas las letras: es un
               dato que falta, no una habitación llamada "—". */}
-          {habitacion ? `Habitación ${habitacion}` : "Sin habitación"}
-        </p>
+          <span className="ibx-mono whitespace-nowrap rounded-[var(--radius-chip)] bg-[var(--bg-app)] px-2.5 py-1 text-[11.5px] text-[var(--text-secondary)]">
+            {habitacion ? `Hab. ${habitacion}` : "Sin habitación"}
+          </span>
+          <span
+            className={`grotesk inline-flex items-center gap-1.5 whitespace-nowrap rounded-[var(--radius-chip)] px-2.5 py-1 text-[11.5px] font-semibold ${ESTADO_CLASES[estado]}`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${ESTADO_PUNTO[estado]}`} aria-hidden />
+            {ESTADO_LABEL[estado]}
+          </span>
+        </div>
       </div>
 
-      <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-[var(--ink-2)]">
-        <span
-          className={`inline-flex items-center rounded-md px-2 py-0.5 text-[12px] font-semibold ${ESTADO_CLASES[estado]}`}
-        >
-          {ESTADO_LABEL[estado]}
-        </span>
-        {/* Si la fecha no se puede leer no se inventa una antigüedad: se omite. */}
-        {desde && <span>· {desde}</span>}
-      </p>
-
-      <p className="mt-3 whitespace-pre-wrap text-[15px] leading-relaxed text-[var(--ink)]">
+      <p className="mt-3 whitespace-pre-wrap text-[14.5px] leading-relaxed text-[var(--text-primary)]">
         {descripcion || "La solicitud llegó sin descripción."}
       </p>
 
-      {!cerrada && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {puedeTomar && (
-            <button
-              type="button"
-              disabled={ocupado}
-              onClick={() => onCambiarEstado(ticket, "en_curso")}
-              className={`${BOTON_BASE} bg-[var(--panel-2)] text-[var(--ink)] ring-1 ring-[var(--line)] hover:bg-[var(--panel-3)]`}
-            >
-              Tomar
-            </button>
-          )}
-          {puedeResolver && (
-            <button
-              type="button"
-              disabled={ocupado}
-              onClick={() => onCambiarEstado(ticket, "resuelto")}
-              className={`${BOTON_BASE} bg-emerald-600 text-white hover:bg-emerald-700`}
-            >
-              Resolver
-            </button>
-          )}
-          {puedeCancelar && (
-            <button
-              type="button"
-              disabled={ocupado}
-              onClick={() => onPedirCancelacion(ticket)}
-              className={`${BOTON_BASE} max-w-[10rem] bg-transparent text-[var(--ink-2)] ring-1 ring-[var(--line)] hover:bg-[var(--panel-2)]`}
-            >
-              Cancelar
-            </button>
-          )}
-        </div>
-      )}
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--border-soft)] pt-3">
+        {puedeTomar && (
+          <button
+            type="button"
+            disabled={ocupado}
+            onClick={() => onCambiarEstado(ticket, "en_curso")}
+            className={`${BOTON_BASE} border border-[var(--border-soft)] bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-app)]`}
+          >
+            <IconPersona className="h-4 w-4" aria-hidden />
+            Tomar
+          </button>
+        )}
 
-      {ticket.conversation_id && (
-        <Link
-          href={`/?conversationId=${encodeURIComponent(ticket.conversation_id)}`}
-          className="mt-3 inline-block text-[14px] font-semibold text-[var(--red-deep)] underline underline-offset-2 hover:opacity-80"
-        >
-          Ver conversación
-        </Link>
-      )}
+        {puedeResolver && (
+          <button
+            type="button"
+            disabled={ocupado}
+            onClick={() => onCambiarEstado(ticket, "resuelto")}
+            className={`${BOTON_BASE} bg-[var(--accent)] text-white shadow-sm hover:bg-[var(--accent-hover)]`}
+          >
+            <IconCheck className="h-4 w-4" aria-hidden />
+            Resolver
+          </button>
+        )}
+
+        {puedeCancelar && (
+          <button
+            type="button"
+            disabled={ocupado}
+            onClick={() => onPedirCancelacion(ticket)}
+            className={`${BOTON_BASE} bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-app)] hover:text-[var(--text-primary)]`}
+          >
+            Cancelar
+          </button>
+        )}
+
+        {/* Cerrada es definitivo: no hay "Reabrir" porque el servidor rechaza
+            cualquier cambio sobre una solicitud resuelta o cancelada. En vez de
+            un botón que siempre falla, se dice en pantalla qué hacer. */}
+        {cerrada && (
+          <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
+            Ya está cerrada. Si vuelve a pasar, abre una solicitud nueva.
+          </p>
+        )}
+
+        {ticket.conversation_id && (
+          <Link
+            href={`/?conversationId=${encodeURIComponent(ticket.conversation_id)}`}
+            className="grotesk ml-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-chip)] px-3 text-[13.5px] font-semibold text-[var(--accent)] transition hover:bg-[var(--red-soft)]"
+          >
+            <IconChat className="h-4 w-4" aria-hidden />
+            Ver conversación
+          </Link>
+        )}
+      </div>
     </article>
   );
 }

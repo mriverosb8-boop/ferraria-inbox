@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 /**
  * Sección de "Actualizaciones" (changelog) del inbox — 100% frontend.
@@ -45,9 +45,9 @@ const TIPO_BADGE: Record<ChangelogTipo, { label: string; border: string; bg: str
   },
   mejora: {
     label: "Mejora",
-    border: "var(--red)",
+    border: "var(--accent)",
     bg: "var(--red-soft)",
-    color: "var(--red-deep)",
+    color: "var(--accent)",
   },
   arreglo: {
     label: "Arreglo",
@@ -107,7 +107,7 @@ function formatFecha(iso: string): string {
 }
 
 /** Chispa dorada (identidad de novedades). */
-function SparkMark(props: React.SVGProps<SVGSVGElement>) {
+export function SparkMark(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 100 100" fill="currentColor" {...props}>
       <path d="M50,18 C53,40 60,47 82,50 C60,53 53,60 50,82 C47,60 40,53 18,50 C40,47 47,40 50,18 Z" />
@@ -116,10 +116,12 @@ function SparkMark(props: React.SVGProps<SVGSVGElement>) {
 }
 
 /**
- * Botón de "Novedades" para el header + su modal. Autocontenido: maneja su
- * propio estado de apertura y el badge de no-leído (localStorage).
+ * Estado de "Novedades": si hay algo sin leer, si el panel está abierto y cómo
+ * abrirlo o cerrarlo. Vive en un hook y no dentro del botón porque el disparador
+ * es una fila del menú de usuario (sidebar) y el badge se pinta sobre el avatar:
+ * son dos lugares distintos leyendo la MISMA firma de localStorage.
  */
-export function ChangelogButton({ onRed = false }: { onRed?: boolean }) {
+export function useChangelog() {
   const [manualOpen, setManualOpen] = useState(false);
   const signature = useMemo(() => latestSignature(), []);
   // En el servidor devolvemos la firma actual → sin badge/popup hasta hidratar.
@@ -127,147 +129,122 @@ export function ChangelogButton({ onRed = false }: { onRed?: boolean }) {
   const hasUnseen = seen !== signature;
 
   // El panel se abre solo la primera vez que hay una novedad sin ver (popup)
-  // y también manualmente desde el botón. Al cerrarlo, queda marcado como visto.
+  // y también manualmente desde el menú. Al cerrarlo, queda marcado como visto.
   const open = manualOpen || hasUnseen;
 
-  const close = () => {
+  const close = useCallback(() => {
     setManualOpen(false);
     markSeen(signature);
-  };
+  }, [signature]);
+
+  const openPanel = useCallback(() => setManualOpen(true), []);
 
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setManualOpen(false);
-        markSeen(signature);
-      }
+      if (event.key === "Escape") close();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, signature]);
+  }, [open, close]);
 
-  const handleOpen = () => setManualOpen(true);
+  return { open, hasUnseen, openPanel, close };
+}
+
+/** Panel de actualizaciones. Se controla desde `useChangelog`. */
+export function ChangelogPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const close = onClose;
+
+  if (!open) return null;
 
   return (
-    <>
+    <div className="fixed inset-0 z-[280]" role="dialog" aria-modal="true" aria-labelledby="changelog-title">
       <button
         type="button"
-        onClick={handleOpen}
-        className={`grotesk relative inline-flex items-center gap-1.5 transition-colors ${
-          onRed ? "hover:bg-white/15" : "hover:bg-[var(--panel-3)]"
-        }`}
-        style={
-          onRed
-            ? { padding: "7px 12px", borderRadius: 8, border: "none", background: "transparent", color: "#fff", fontSize: 13, fontWeight: 600 }
-            : { padding: "7px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)", fontSize: 13, fontWeight: 600 }
-        }
-        aria-label="Ver actualizaciones"
+        className="absolute inset-0 backdrop-blur-sm"
+        style={{ background: "color-mix(in srgb, var(--ink) 35%, transparent)" }}
+        aria-label="Cerrar actualizaciones"
+        onClick={close}
+      />
+      <div
+        className="absolute left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[min(calc(100vw-2rem),30rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl"
+        style={{ border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
       >
-        <SparkMark className="h-4 w-4" style={{ color: onRed ? "#ffe08a" : "var(--gold)" }} aria-hidden />
-        <span className="hidden sm:inline">Novedades</span>
-        {hasUnseen && (
-          <span
-            className="absolute right-1 top-1 h-2 w-2 rounded-full"
-            style={{
-              background: onRed ? "#ffe08a" : "var(--gold)",
-              boxShadow: onRed ? "0 0 0 2px var(--red)" : "0 0 0 2px var(--panel)",
-            }}
-            aria-hidden
-          />
-        )}
-      </button>
-
-      {open && (
-        <div className="fixed inset-0 z-[280]" role="dialog" aria-modal="true" aria-labelledby="changelog-title">
+        <div
+          className="flex items-start justify-between gap-3 px-5 py-4"
+          style={{ background: "var(--accent)" }}
+        >
+          <div>
+            <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/80">
+              <SparkMark className="h-3 w-3" style={{ color: "#ffe08a" }} aria-hidden />
+              FerrarIA
+            </p>
+            <h2 id="changelog-title" className="grotesk mt-1 text-lg font-bold tracking-tight text-white">
+              Actualizaciones
+            </h2>
+            <p className="mt-1 text-[13px] leading-relaxed text-white/85">
+              Lo nuevo que fuimos mejorando en tu inbox.
+            </p>
+          </div>
           <button
             type="button"
-            className="absolute inset-0 backdrop-blur-sm"
-            style={{ background: "color-mix(in srgb, var(--ink) 35%, transparent)" }}
-            aria-label="Cerrar actualizaciones"
             onClick={close}
-          />
-          <div
-            className="absolute left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[min(calc(100vw-2rem),30rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl"
-            style={{ border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
+            aria-label="Cerrar"
+            className="-mr-1 -mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/80 transition hover:bg-white/15 hover:text-white"
           >
-            <div
-              className="flex items-start justify-between gap-3 px-5 py-4"
-              style={{ background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)" }}
-            >
-              <div>
-                <p className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/80">
-                  <SparkMark className="h-3 w-3" style={{ color: "#ffe08a" }} aria-hidden />
-                  FerrarIA
-                </p>
-                <h2 id="changelog-title" className="grotesk mt-1 text-lg font-bold tracking-tight text-white">
-                  Actualizaciones
-                </h2>
-                <p className="mt-1 text-[13px] leading-relaxed text-white/85">
-                  Lo nuevo que fuimos mejorando en tu inbox.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={close}
-                aria-label="Cerrar"
-                className="-mr-1 -mt-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/80 transition hover:bg-white/15 hover:text-white"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4.5 w-4.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="min-h-0 overflow-y-auto px-5 py-5 scrollbar-app">
-              <ol className="space-y-4">
-                {CHANGELOG_ENTRIES.map((entry) => {
-                  const badge = TIPO_BADGE[entry.tipo];
-                  return (
-                    <li
-                      key={`${entry.fecha}-${entry.titulo}`}
-                      className="rounded-2xl px-4 py-3.5"
-                      style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}
-                    >
-                      <div className="mb-1.5 flex items-center gap-2">
-                        <span
-                          className="grotesk inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide"
-                          style={{ border: `1px solid ${badge.border}`, background: badge.bg, color: badge.color }}
-                        >
-                          {badge.label}
-                        </span>
-                        <span className="ml-auto text-[11.5px] font-medium" style={{ color: "var(--ink-3)" }}>
-                          {formatFecha(entry.fecha)}
-                        </span>
-                      </div>
-                      <h3 className="grotesk text-[15px] font-bold tracking-tight" style={{ color: "var(--ink)" }}>
-                        {entry.titulo}
-                      </h3>
-                      <p className="mt-1 text-[13.5px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
-                        {entry.descripcion}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-
-            <div
-              className="flex shrink-0 justify-end px-5 py-3"
-              style={{ borderTop: "1px solid var(--line)", background: "var(--panel-2)" }}
-            >
-              <button
-                type="button"
-                onClick={close}
-                className="grotesk rounded-xl px-4 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)]"
-                style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-2)" }}
-              >
-                Entendido
-              </button>
-            </div>
-          </div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4.5 w-4.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
         </div>
-      )}
-    </>
+
+        <div className="min-h-0 overflow-y-auto px-5 py-5 scrollbar-app">
+          <ol className="space-y-4">
+            {CHANGELOG_ENTRIES.map((entry) => {
+              const badge = TIPO_BADGE[entry.tipo];
+              return (
+                <li
+                  key={`${entry.fecha}-${entry.titulo}`}
+                  className="rounded-2xl px-4 py-3.5"
+                  style={{ border: "1px solid var(--line)", background: "var(--panel-2)" }}
+                >
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <span
+                      className="grotesk inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide"
+                      style={{ border: `1px solid ${badge.border}`, background: badge.bg, color: badge.color }}
+                    >
+                      {badge.label}
+                    </span>
+                    <span className="ml-auto text-[11.5px] font-medium" style={{ color: "var(--ink-3)" }}>
+                      {formatFecha(entry.fecha)}
+                    </span>
+                  </div>
+                  <h3 className="grotesk text-[15px] font-bold tracking-tight" style={{ color: "var(--ink)" }}>
+                    {entry.titulo}
+                  </h3>
+                  <p className="mt-1 text-[13.5px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
+                    {entry.descripcion}
+                  </p>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+
+        <div
+          className="flex shrink-0 justify-end px-5 py-3"
+          style={{ borderTop: "1px solid var(--line)", background: "var(--panel-2)" }}
+        >
+          <button
+            type="button"
+            onClick={close}
+            className="grotesk rounded-xl px-4 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)]"
+            style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-2)" }}
+          >
+            Entendido
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
