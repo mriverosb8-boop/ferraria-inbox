@@ -1,14 +1,13 @@
 "use client";
 
+import { avatarFlatColors, initials } from "@/lib/avatar";
 import {
-  abreviarHabitacion,
-  buildOperaClipboardText,
+  SIN_DATO,
   formatCOT,
-  formatFecha,
-  formatRoomType,
-  formatSiNo,
+  formatFechaOpcional,
+  formatHabitacionCorta,
   formatTiempoRelativo,
-  formatTotal,
+  formatTotalOpcional,
   getQuoteTaxAmounts,
 } from "../lib/formatters";
 import type { Reserva } from "../lib/types";
@@ -16,159 +15,90 @@ import type { Reserva } from "../lib/types";
 type Props = {
   reserva: Reserva;
   selected: boolean;
-  processed?: boolean;
-  actionDisabled?: boolean;
-  onComplete: (reserva: Reserva) => void;
-  onCopy: (text: string) => void;
-  onViewChat: (reserva: Reserva) => void;
-  onReject: (reserva: Reserva) => void;
-  onReopen: (reserva: Reserva) => void;
+  onSelect: (reserva: Reserva) => void;
 };
 
-export function ReservaCard({
-  reserva,
-  selected,
-  processed,
-  actionDisabled,
-  onComplete,
-  onCopy,
-  onViewChat,
-  onReject,
-  onReopen,
-}: Props) {
+function Dato({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const vacio = value === SIN_DATO;
+  return (
+    <div className="flex min-w-0 items-baseline justify-between gap-2">
+      <span className="shrink-0 text-[12px] text-[var(--text-secondary)]">{label}</span>
+      <span
+        className={`truncate text-[12.5px] font-semibold ${mono && !vacio ? "ibx-mono" : ""} ${
+          vacio ? "font-normal text-[var(--text-secondary)]" : "text-[var(--text-primary)]"
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Tarjeta de la lista de Reservas (docs/REDESIGN.md §6.3).
+ *
+ * Solo resume y selecciona: el detalle completo y las acciones viven en el
+ * panel del centro, para que la lista se pueda barrer de un vistazo desde una
+ * tablet sin scroll infinito.
+ */
+export function ReservaCard({ reserva, selected, onSelect }: Props) {
   const quote = reserva.quote_requests;
+  const nombre = reserva.titular_nombre || "Titular sin nombre";
   const cot = formatCOT(reserva.quote_request_id);
-  const roomLabel = `${quote?.num_rooms ?? 0}x ${abreviarHabitacion(quote?.room_type_requested)}`;
-  const fullRoomLabel = `${quote?.num_rooms ?? 0} x ${formatRoomType(quote?.room_type_requested)}`;
-  const { subtotalBeforeIva, ivaAmount, totalAmount } = getQuoteTaxAmounts(quote);
-  const notes = reserva.notas?.trim() || "Sin notas";
+  const { totalAmount } = getQuoteTaxAmounts(quote);
+  const avatar = avatarFlatColors(reserva.id);
 
   return (
-    <article
-      className={`rounded-2xl bg-[var(--panel)] p-4 shadow-sm ring-1 ring-black/[0.03] transition ${
-        selected
-          ? "border-2 border-[var(--red)]"
-          : "border border-[var(--line)]"
-      }`}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="truncate text-[15px] font-semibold text-[var(--ink)]">
-            {reserva.titular_nombre || "Titular sin nombre"}
-          </h3>
-          <p className="mt-1 truncate text-[12px] text-[var(--ink-2)]">
-            {quote?.sender_phone ?? "—"} · {reserva.correo || "sin correo"}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="font-mono text-[11px] font-semibold text-[var(--ink-3)]">{cot}</span>
-          <span className="text-[12px] text-[var(--ink-3)]">{formatTiempoRelativo(reserva.created_at)}</span>
-        </div>
-      </div>
-
-      <dl className="mt-4 grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-4">
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-3)]">Entrada</dt>
-          <dd className="mt-1 font-semibold text-[var(--ink)]">
-            {formatFecha(quote?.fecha_entrada, quote?.fecha_salida)}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-3)]">Salida</dt>
-          <dd className="mt-1 font-semibold text-[var(--ink)]">
-            {formatFecha(quote?.fecha_salida, quote?.fecha_entrada)}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-3)]">Habitación</dt>
-          <dd className="mt-1 font-semibold text-[var(--ink)]">{roomLabel}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-3)]">Total</dt>
-          <dd className="mt-1 font-semibold tabular-nums text-[var(--ink)]">{formatTotal(totalAmount)}</dd>
-        </div>
-      </dl>
-
-      <div className="mt-4 grid gap-4 text-[13px] text-[var(--ink-2)] lg:grid-cols-2">
-        <section className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-3)]">Datos del titular</p>
-          <div className="mt-2 space-y-1.5">
-            <p><span className="font-semibold text-[var(--ink-2)]">Titular:</span> {reserva.titular_nombre || "—"}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Documento:</span> {reserva.cedula || "—"}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Correo:</span> {reserva.correo || "—"}</p>
-            <p className="break-words"><span className="font-semibold text-[var(--ink-2)]">Notas:</span> {notes}</p>
+    <article>
+      <button
+        type="button"
+        onClick={() => onSelect(reserva)}
+        aria-current={selected ? "true" : undefined}
+        className={`w-full rounded-[var(--radius-card)] border bg-[var(--bg-card)] p-3.5 text-left shadow-sm transition ${
+          selected
+            ? "border-[var(--accent)] ring-1 ring-[var(--accent)]"
+            : "border-[var(--border-soft)] hover:border-[var(--text-secondary)]/40"
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <span
+            className="ibx-mono flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] text-[13px] font-bold"
+            style={{ background: avatar.bg, color: avatar.fg }}
+            aria-hidden
+          >
+            {initials(nombre)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="grotesk truncate text-[14.5px] font-semibold text-[var(--text-primary)]">
+              {nombre}
+            </p>
+            <p className="ibx-mono mt-0.5 truncate text-[11px] text-[var(--text-secondary)]">
+              {cot} · {formatTiempoRelativo(reserva.created_at)}
+            </p>
           </div>
-        </section>
+          {reserva.status !== "pendiente" && (
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+                reserva.status === "rechazada"
+                  ? "bg-[var(--red-soft)] text-[var(--accent)]"
+                  : "bg-[var(--success-bg)] text-[var(--success-text)]"
+              }`}
+            >
+              {reserva.status === "rechazada" ? "Rechazada" : "Completada"}
+            </span>
+          )}
+        </div>
 
-        <section className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] p-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--ink-3)]">Cotización</p>
-          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
-            <p><span className="font-semibold text-[var(--ink-2)]">Entrada:</span> {formatFecha(quote?.fecha_entrada, quote?.fecha_salida)}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Salida:</span> {formatFecha(quote?.fecha_salida, quote?.fecha_entrada)}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Noches:</span> {quote?.nights ?? 0}</p>
-            <p className="col-span-2"><span className="font-semibold text-[var(--ink-2)]">Habitación:</span> {fullRoomLabel}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Adultos:</span> {quote?.adults ?? 0}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Niños:</span> {quote?.children ?? 0}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Mascotas:</span> {formatSiNo(quote?.pets)}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Desayuno:</span> {formatSiNo(quote?.breakfast_included)}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Subtotal sin IVA:</span> {formatTotal(subtotalBeforeIva)}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">IVA 19%:</span> {formatTotal(ivaAmount)}</p>
-            <p><span className="font-semibold text-[var(--ink-2)]">Total con IVA:</span> {formatTotal(totalAmount)}</p>
-          </div>
-        </section>
-      </div>
-
-      {reserva.status === "rechazada" && reserva.rejection_reason ? (
-        <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-900">
-          <span className="font-semibold">Motivo de rechazo:</span> {reserva.rejection_reason}
-        </p>
-      ) : null}
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {!processed ? (
-          <button
-            type="button"
-            onClick={() => onComplete(reserva)}
-            disabled={actionDisabled}
-            className="rounded-xl bg-emerald-600 px-3 py-2 text-[12px] font-semibold text-white shadow-sm ring-1 ring-emerald-700/30 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Completar
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => onCopy(buildOperaClipboardText(reserva))}
-          className="rounded-xl border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-[12px] font-semibold text-[var(--ink)] transition hover:bg-[var(--panel-3)]"
-        >
-          Copiar datos
-        </button>
-        <button
-          type="button"
-          onClick={() => onViewChat(reserva)}
-          className="rounded-xl border border-[var(--red)] bg-[var(--panel)] px-3 py-2 text-[12px] font-semibold text-[var(--ink)] transition hover:bg-[var(--panel-3)]"
-        >
-          Ver chat
-        </button>
-        {processed ? (
-          <button
-            type="button"
-            onClick={() => onReopen(reserva)}
-            disabled={actionDisabled}
-            className="rounded-xl border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-[12px] font-semibold text-[var(--ink)] transition hover:bg-[var(--panel-3)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Volver a pendientes
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onReject(reserva)}
-            disabled={actionDisabled}
-            className="rounded-xl px-3 py-2 text-[12px] font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Rechazar
-          </button>
-        )}
-      </div>
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">
+          <Dato label="Entrada" value={formatFechaOpcional(quote?.fecha_entrada, quote?.fecha_salida)} />
+          <Dato label="Salida" value={formatFechaOpcional(quote?.fecha_salida, quote?.fecha_entrada)} />
+          <Dato
+            label="Habitación"
+            value={formatHabitacionCorta(quote?.num_rooms, quote?.room_type_requested)}
+          />
+          <Dato label="Total" value={formatTotalOpcional(totalAmount)} mono />
+        </div>
+      </button>
     </article>
   );
 }
