@@ -3716,10 +3716,13 @@ export default function InboxApp() {
               />
             </label>
 
-            {/* `flex-wrap`: los cuatro chips con sus contadores no entran en una
-                línea con la lista en su ancho por defecto. Antes se salían del
-                panel; ahora bajan al segundo renglón y se ven todos. */}
-            <div className="flex flex-wrap gap-1.5">
+            {/* Los cuatro chips van SIEMPRE en un solo renglón. Con la lista en
+                su ancho por defecto entran justos; si el panel se angosta o un
+                contador se va a tres cifras, la fila se desliza en horizontal en
+                vez de partirse en dos. La barra de scroll se oculta —ensucia un
+                renglón tan bajo— pero el arrastre con dedo o trackpad funciona
+                igual, y `shrink-0` evita que los chips se aplasten. */}
+            <div className="ibx-scroll-x-hidden flex flex-nowrap gap-1 overflow-x-auto">
               {filterTabs.map((tab) => {
                 const active = statusFilter === tab.id;
                 /*
@@ -3737,12 +3740,12 @@ export default function InboxApp() {
                     type="button"
                     onClick={() => setStatusFilter(tab.id)}
                     aria-pressed={active}
-                    className="grotesk d-chip inline-flex items-center gap-1.5"
+                    className="grotesk d-chip inline-flex shrink-0 items-center gap-1"
                     style={{
-                      padding: "6px 10px",
+                      padding: "6px 9px",
                       borderRadius: "var(--radius-chip)",
                       border: "1px solid transparent",
-                      fontSize: 12,
+                      fontSize: 11.5,
                       fontWeight: 700,
                       whiteSpace: "nowrap",
                       background: active
@@ -3767,7 +3770,7 @@ export default function InboxApp() {
                     }}
                   >
                     {tab.label}
-                    <span className="ibx-mono" style={{ fontSize: 10.5, fontWeight: 700, opacity: active ? 0.85 : 0.7 }}>
+                    <span className="ibx-mono" style={{ fontSize: 10, fontWeight: 700, opacity: active ? 0.85 : 0.7 }}>
                       {tab.count}
                     </span>
                   </button>

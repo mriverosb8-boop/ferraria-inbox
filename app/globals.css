@@ -225,6 +225,18 @@ body {
   background: #c4b8aa;
 }
 
+/* Fila que se desliza en horizontal sin barra a la vista: los chips de filtro
+   quedan siempre en un solo renglón y, si el panel es angosto, se arrastran con
+   el dedo. La barra se oculta porque acá mide unos pocos píxeles y solo ensucia
+   un renglón de 28px de alto; el scroll táctil y con trackpad sigue igual. */
+.ibx-scroll-x-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.ibx-scroll-x-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 /* Interacciones del rediseño, ya sobre los tokens del spec (§2.1).
 
    El hover de las filas es un velo derivado de `--text-secondary` y no un color
