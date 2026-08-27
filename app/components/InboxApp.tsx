@@ -136,6 +136,24 @@ function StaffBadge({ className = "" }: { className?: string }) {
  */
 const STAFF_ROLE_FALLBACK = "Sin cargo";
 
+/**
+ * Una misma columna de la base (`cotizacion`) alimenta la propiedad y las
+ * etiquetas del huésped, y en producción llega con cosas que no son datos: el
+ * literal "true" o "false" de un mapeo viejo, y el relleno "sin propiedad
+ * indicada". Pintados tal cual hacen que la ficha diga que el hotel se llama
+ * "true" y que el huésped tiene una etiqueta que dice "true".
+ *
+ * Se filtran en el render, no en el origen: la columna la escriben el engine y
+ * n8n, y acá no se toca ningún dato.
+ */
+const RAW_PROPERTY_PLACEHOLDERS = new Set(["true", "false", "sin propiedad indicada"]);
+
+function isRealPropertyValue(value: string | null | undefined): boolean {
+  const clean = value?.trim();
+  if (!clean) return false;
+  return !RAW_PROPERTY_PLACEHOLDERS.has(clean.toLowerCase());
+}
+
 function formatBlockedAtColombia(iso: string): string {
   const parts = new Intl.DateTimeFormat("es-CO", {
     timeZone: COLOMBIA_TIME_ZONE,
@@ -2051,6 +2069,19 @@ export default function InboxApp() {
 
   const conversationHotelId = activeHotelId ?? resolvedActiveHotelId;
 
+  /**
+   * Nombre del hotel activo para la ficha del huésped.
+   *
+   * La ficha mostraba `guest.property`, que viene de la columna `cotizacion` y
+   * en producción llega con el literal "true": un dato crudo mal mapeado en un
+   * renglón que dice "Hotel". Se resuelve contra la lista de hoteles del
+   * usuario, la misma que alimenta el selector, así que es el nombre real. Si
+   * no hay match, queda `null` y el renglón no se pinta: mejor sin dato que con
+   * un dato inventado.
+   */
+  const activeHotelName =
+    availableHotels.find((hotel) => hotel.id === conversationHotelId)?.name?.trim() || null;
+
   const cancelFollowup = useCallback(
     async (conversationId: string, quoteRequestId: string, stage: string) => {
       // Remoción optimista: el círculo desaparece al instante.
@@ -3450,8 +3481,13 @@ export default function InboxApp() {
    * de la izquierda desapareció porque el punto rojo del prefijo dice lo mismo.
    *
    * No se pierde ningún dato: lo que antes vivía en el tercer renglón
-   * (temporizador de seguimiento, "Volvió sola", triage, propiedad) sigue ahí,
-   * pero solo se pinta cuando existe, que es la minoría de las filas.
+   * (temporizador de seguimiento, "Volvió sola", triage, propiedad) sigue ahí.
+   *
+   * Ese tercer renglón se reserva SIEMPRE, tenga contenido o no, y el botón
+   * lleva una altura mínima. Antes la fila crecía solo cuando había un
+   * distintivo, así que la lista quedaba escalonada: la conversación con chip se
+   * veía más alta que la de al lado y el ojo lo lee como jerarquía cuando no lo
+   * es. Ahora todas miden igual y el espacio vacío es el precio.
    */
   const renderGuestRow = (c: Conversation) => {
     const active = c.id === selectedId;
@@ -3469,14 +3505,11 @@ export default function InboxApp() {
             ? "attention"
             : "ia";
     const propertyLabel = c.guest.property.split("—")[0]?.trim();
-    const showProperty =
-      propertyLabel &&
-      !["sin propiedad indicada", "true", "false"].includes(propertyLabel.toLowerCase());
+    const showProperty = isRealPropertyValue(propertyLabel);
     const followupTimer = followupTimers.get(c.id);
     const showAutoReactivated =
       statusVariant === "ia" && c.autoReactivatedAt !== null && c.autoReactivatedAt !== undefined;
     const showTriage = c.triageEscalatedAt !== null && c.triageEscalatedAt !== undefined;
-    const hasExtras = Boolean(followupTimer || showAutoReactivated || showTriage || showProperty);
     const { emoji, rest } = splitLeadingEmoji(c.guest.name);
     return (
       <button
@@ -3488,6 +3521,10 @@ export default function InboxApp() {
         style={{
           gap: 12,
           padding: "12px 13px",
+          // Piso de altura para que ninguna fila quede diminuta aunque le
+          // falten datos. La uniformidad real la da el tercer renglón, que se
+          // reserva siempre unas líneas más abajo; esto es el respaldo.
+          minHeight: 96,
           borderRadius: "var(--radius-card)",
           // Borde del item seleccionado: terracota del spec (§2.2).
           border: `1.5px solid ${active ? "var(--accent)" : "var(--border-soft)"}`,
@@ -3542,25 +3579,26 @@ export default function InboxApp() {
               </span>
             )}
           </div>
-          {hasExtras && (
-            <div className="mt-2 flex items-center gap-2">
-              {showAutoReactivated && <AutoReactivatedBadge />}
-              {showTriage && <TriageEscalatedBadge />}
-              {showProperty && (
-                <span className="truncate" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-                  {propertyLabel}
-                </span>
-              )}
-              {followupTimer && (
-                <span className="ml-auto flex shrink-0 items-center">
-                  <FollowupTimer
-                    quoteCreatedAt={followupTimer.quoteCreatedAt}
-                    onCancel={() => cancelFollowup(c.id, followupTimer.quoteRequestId, followupTimer.stage)}
-                  />
-                </span>
-              )}
-            </div>
-          )}
+          {/* Tercer renglón SIEMPRE presente. Los 20px son el alto del elemento
+              más alto que puede caer acá (el temporizador de seguimiento), así
+              que la fila mide lo mismo con o sin distintivos. */}
+          <div className="mt-2 flex items-center gap-2" style={{ minHeight: 20 }}>
+            {showAutoReactivated && <AutoReactivatedBadge />}
+            {showTriage && <TriageEscalatedBadge />}
+            {showProperty && (
+              <span className="truncate" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                {propertyLabel}
+              </span>
+            )}
+            {followupTimer && (
+              <span className="ml-auto flex shrink-0 items-center">
+                <FollowupTimer
+                  quoteCreatedAt={followupTimer.quoteCreatedAt}
+                  onCancel={() => cancelFollowup(c.id, followupTimer.quoteRequestId, followupTimer.stage)}
+                />
+              </span>
+            )}
+          </div>
         </div>
       </button>
     );
@@ -4667,6 +4705,7 @@ export default function InboxApp() {
               }
               resolvingRequest={resolvingRequest}
               pendingAction={pendingAction}
+              activeHotelName={activeHotelName}
             />
           )}
         </aside>
@@ -4698,6 +4737,7 @@ export default function InboxApp() {
               }
               resolvingRequest={resolvingRequest}
               pendingAction={pendingAction}
+              activeHotelName={activeHotelName}
             />
           </div>
         </div>
@@ -4791,16 +4831,30 @@ export default function InboxApp() {
  * recepcionista en UTC+2 veía "19:26" sobre un mensaje de las 12:26 en Bogotá y
  * lo reportaba como dato equivocado. La operación es colombiana; la hora que se
  * muestra también.
+ *
+ * Formato corto ("26 ago, 15:42") en vez de `dateStyle: "medium"`, que metía el
+ * año y partía el renglón en dos líneas dentro del panel. El año no aporta en
+ * una bandeja donde todo pasó esta semana, y una fila de una sola línea se lee
+ * de un vistazo. Hora de 24, igual que el resto de la app.
  */
 function formatActivityIso(iso: string) {
   const date = parseWhatsappInstant(iso);
   if (!date) return "—";
   try {
-    return new Intl.DateTimeFormat("es-CO", {
+    const parts = new Intl.DateTimeFormat("es-CO", {
       timeZone: COLOMBIA_TIME_ZONE,
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(date);
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(date);
+    const day = parts.find((p) => p.type === "day")?.value ?? "";
+    const month = (parts.find((p) => p.type === "month")?.value ?? "").replace(/\.$/, "");
+    const hour = parts.find((p) => p.type === "hour")?.value ?? "";
+    const minute = parts.find((p) => p.type === "minute")?.value ?? "";
+    if (!day || !month || !hour || !minute) return "—";
+    return `${day} ${month}, ${hour}:${minute}`;
   } catch {
     return "—";
   }
@@ -5023,6 +5077,7 @@ function GuestPanelContent({
   onBlockContact,
   resolvingRequest,
   pendingAction,
+  activeHotelName,
 }: {
   conversation: Conversation;
   onTakeHuman: () => void;
@@ -5035,6 +5090,8 @@ function GuestPanelContent({
   onBlockContact: () => void;
   resolvingRequest: boolean;
   pendingAction: null | "human" | "ai" | "complete" | "reopen";
+  /** Nombre del hotel activo. `null` cuando no se pudo resolver: el renglón se omite. */
+  activeHotelName: string | null;
 }) {
   const { guest } = conversation;
   /**
@@ -5049,7 +5106,14 @@ function GuestPanelContent({
     : conversation.aiActive && conversation.controlMode === "ai"
       ? "Activa"
       : "En pausa";
-  const hasTags = guest.tags.length > 0;
+  /**
+   * Las etiquetas salen de la misma columna que la propiedad, así que arrastran
+   * los mismos literales crudos ("true", "false", el relleno). Una etiqueta que
+   * dice "true" no le dice nada a recepción y ensucia la ficha: se filtran, y
+   * si no queda ninguna de verdad la sección entera no se pinta.
+   */
+  const realTags = guest.tags.filter(isRealPropertyValue);
+  const hasTags = realTags.length > 0;
   const notesAreDefault = guest.internalNotes.startsWith("Sin notas");
   const isPendingRequest = conversation.request === "pending";
   const isClosed = conversation.operationalStatus === "closed";
@@ -5341,7 +5405,7 @@ function GuestPanelContent({
           <CockpitLabel>{isStaff ? "Contacto" : "Huésped"}</CockpitLabel>
         </div>
         <MonoRow k="Canal" v={conversation.channelLabel} />
-        <MonoRow k="Hotel" v={guest.property} />
+        {activeHotelName && <MonoRow k="Hotel" v={activeHotelName} />}
         <MonoRow k="Última actividad" v={formatActivityIso(conversation.lastActivityIso)} />
       </PanelCard>
 
@@ -5444,7 +5508,7 @@ function GuestPanelContent({
             <CockpitLabel>Etiquetas</CockpitLabel>
           </div>
           <div className="flex flex-wrap gap-2">
-            {guest.tags.map((tag) => (
+            {realTags.map((tag) => (
               <span
                 key={tag}
                 className="grotesk"

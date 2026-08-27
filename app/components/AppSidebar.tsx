@@ -620,22 +620,6 @@ export function AppSidebar({
           )}
         </div>
 
-        {/* El indicador va solo en escritorio: en la barra inferior de un
-            teléfono no hay ancho para un texto que casi siempre dice lo mismo, y
-            un punto suelto sin label no explica nada. */}
-        <p
-          className="ibx-mono hidden w-full items-start gap-1 rounded-[10px] px-1.5 py-1 text-[9.5px] font-semibold leading-[1.3] lg:flex"
-          style={{ background: status.background, color: status.color }}
-          role="status"
-        >
-          <span
-            className="mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full"
-            style={{ background: status.dot }}
-            aria-hidden
-          />
-          <span className="min-w-0 flex-1">{status.label}</span>
-        </p>
-
         <div ref={menuRef} className="flex shrink-0 items-center justify-center lg:w-full">
           <button
             type="button"
@@ -732,6 +716,22 @@ export function AppSidebar({
             </div>
           )}
         </div>
+
+        {/* El indicador va solo en escritorio: en la barra inferior de un
+            teléfono no hay ancho para un texto que casi siempre dice lo mismo, y
+            un punto suelto sin label no explica nada. */}
+        <p
+          className="ibx-mono hidden w-full items-start gap-1 rounded-[10px] px-1.5 py-1 text-[9.5px] font-semibold leading-[1.3] lg:flex"
+          style={{ background: status.background, color: status.color }}
+          role="status"
+        >
+          <span
+            className="mt-[3px] h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ background: status.dot }}
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1">{status.label}</span>
+        </p>
       </div>
     </aside>
 
