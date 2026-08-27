@@ -848,11 +848,10 @@ const ACTION_TONES: Record<ActionTone, { base: string; soft: string; deep: strin
   neutral: { base: "var(--text-secondary)", soft: "var(--bg-app)", deep: "var(--accent)", border: "var(--accent)" },
 };
 
-/** Acción con atajo del panel cockpit (Dirección D): icono + badge de atajo + etiqueta. */
+/** Acción del panel cockpit (Dirección D): icono + etiqueta. */
 function CmdAction({
   icon: Ic,
   label,
-  hint,
   busy = false,
   onClick,
   disabled = false,
@@ -860,7 +859,6 @@ function CmdAction({
 }: {
   icon: (props: SVGProps<SVGSVGElement>) => React.JSX.Element;
   label: string;
-  hint: string;
   busy?: boolean;
   onClick?: () => void;
   disabled?: boolean;
@@ -896,18 +894,6 @@ function CmdAction({
         ) : (
           <Ic className="h-[17px] w-[17px]" style={{ color: iconColor }} aria-hidden />
         )}
-        <span
-          className="ibx-mono"
-          style={{
-            fontSize: 10,
-            color: "var(--text-secondary)",
-            border: "1px solid var(--border-soft)",
-            borderRadius: 5,
-            padding: "1px 5px",
-          }}
-        >
-          {hint}
-        </span>
       </div>
       <span className="grotesk" style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.25 }}>
         {label}
@@ -5309,12 +5295,6 @@ function GuestPanelContent({
                 <Dot color={aiOn ? "var(--live)" : "var(--text-secondary)"} />
                 {aiOn ? "IA activa" : "IA en pausa"}
               </div>
-              <span
-                className="ibx-mono mt-1.5 inline-block"
-                style={{ fontSize: 10, color: "var(--text-secondary)", border: "1px solid var(--border-soft)", borderRadius: 5, padding: "1px 5px" }}
-              >
-                {aiOn ? "⌘H para tomar el control" : "⌘R para reactivarla"}
-              </span>
             </div>
             <AiToggleSwitch
               on={aiOn}
@@ -5387,7 +5367,6 @@ function GuestPanelContent({
               <CmdAction
                 icon={IconCheck}
                 label="Marcar como completado"
-                hint="⌘D"
                 tone="complete"
                 busy={pendingAction === "complete"}
                 onClick={onComplete}
@@ -5441,12 +5420,6 @@ function GuestPanelContent({
             >
               <Spark className="h-3 w-3" style={{ color: "var(--accent)" }} aria-hidden />
               Generar resumen
-              <span
-                className="ibx-mono"
-                style={{ fontSize: 10, color: "var(--text-secondary)", border: "1px solid var(--border-soft)", borderRadius: 5, padding: "1px 5px" }}
-              >
-                ⌘S
-              </span>
             </button>
           </div>
           {summaryLoading && (
@@ -5544,15 +5517,14 @@ function GuestPanelContent({
               v={guest.phone}
             />
             <MonoRow k="Estado IA" v={iaEstado} />
-            <MonoRow k="Mensajes (cargados)" v={String(conversation.messages.length)} />
-            <MonoRow k="Needs Human (BD)" v={conversation.needsHuman ? "Sí" : "No"} />
+            <MonoRow k="Mensajes" v={String(conversation.messages.length)} />
+            <MonoRow k="Requiere humano" v={conversation.needsHuman ? "Sí" : "No"} />
             <MonoRow
-              k="Request (BD)"
+              k="Solicitud"
               v={conversation.request ?? "—"}
               accent={isPendingRequest ? "var(--accent)" : undefined}
             />
-            <MonoRow k="IA activa (BD)" v={conversation.aiActive ? "Sí" : "No"} />
-            <MonoRow k="Estado (BD)" v={conversation.dbStatus ?? "—"} />
+            <MonoRow k="Estado" v={conversation.dbStatus ?? "—"} />
             <MonoRow k="Bloqueado" v={conversation.blocked ? "Sí" : "No"} />
             {conversation.blockedAt && (
               <MonoRow k="blocked_at" v={formatActivityIso(conversation.blockedAt)} />
