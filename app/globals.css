@@ -7,22 +7,27 @@
   --surface: #ffffff;
   --surface-muted: #f1ece4;
   --border: #e7dfd4;
-  --accent: #c8a97e;
+  /* Terracota del rediseño (docs/REDESIGN.md §2.2). Es EL rojo de la app:
+     no hay otro. Todo lo que se pinte de rojo sale de acá. */
+  --accent: #c7402d;
+  /* Hover sobre el rojo: overlay blanco al 10% (§2.2). No se oscurece ni se
+     cambia el tono, solo se aclara. */
+  --accent-hover: color-mix(in srgb, #ffffff 10%, var(--accent));
 
   /* ── Rediseño Inbox · Dirección D · tema CLARO ──────────────────────── */
   --ink: #211c18;
   --ink-2: #6b6259;
   --ink-3: #9c9085;
-  --bg: #ece7e0;
-  --panel: #fffdfb;
-  --panel-2: #f5f0ea;
-  --panel-3: #ece6df;
+  /* Las superficies de Dirección D (`--bg`, `--panel`, `--panel-2`, `--panel-3`
+     y `--sel`) se eliminaron: eran grises tibios que no son los del spec y toda
+     superficie migró a `--bg-app` (contenedor) o `--bg-card` (item/card), según
+     docs/REDESIGN.md §2.1. De Dirección D quedan solo tinta y líneas. */
   --line: #e8dfd5;
   --line-2: #f1ebe3;
-  --sel: #fffdfb;
-  --red: #ec5346;
-  --red-deep: #d23d31;
-  --red-soft: #fcebe8;
+  /* `--red` y `--red-deep` (el rojo naranja #ec5346 / #d23d31 de Dirección D) se
+     eliminaron: cada uso migró a `--accent`. Queda solo el tinte suave, ahora
+     derivado del terracota en vez del naranja viejo. */
+  --red-soft: #f9ecea;
   --live: #1f9d63;
   --live-soft: #e6f3ec;
   --gold: #b07d2b;
@@ -38,6 +43,29 @@
   --shadow-sm: 0 1px 2px rgba(40, 30, 20, 0.06);
   --shadow: 0 2px 8px rgba(40, 30, 20, 0.07), 0 1px 2px rgba(40, 30, 20, 0.05);
   --shadow-lg: 0 12px 36px rgba(40, 30, 20, 0.14), 0 2px 8px rgba(40, 30, 20, 0.06);
+
+  /* ── Rediseño Fase 1 · tokens del spec (docs/REDESIGN.md §2) · CLARO ───
+     Conviven con los de Dirección D de arriba: estos son los nombres que usa
+     el spec y a los que apuntan las utilidades de `@theme inline`. */
+  --bg-app: #f2eee6;
+  --bg-card: #ffffff;
+  --border-soft: #e8e2d8;
+  --sidebar: #c7402d;
+  --bubble-ai: #fbf3dc;
+  --bubble-ai-border: #efe4c8;
+  --bubble-guest: #ffffff;
+  --success-bg: #dff2e4;
+  --success-text: #2e7d4f;
+  --text-primary: #1f1d1a;
+  --text-secondary: #8a857c;
+  /* Radios: iguales en claro y oscuro, no se redefinen en `html.dark`. */
+  --radius-card: 16px;
+  --radius-chip: 10px;
+  --radius-bubble: 14px;
+
+  /* Alias heredado: `app/components/WhatsappText.tsx` lo usa en un style inline.
+     Ya no es Space Mono, apunta al mono nuevo. */
+  --font-space-mono: var(--font-jetbrains-mono);
 }
 
 /* ── Modo oscuro (Dirección D) ─────────────────────────────────────────
@@ -52,21 +80,16 @@ html.dark {
   --surface: #221d19;
   --surface-muted: #2a231e;
   --border: #3a322b;
-  --accent: #d6a24a;
+  /* Mismo terracota que en claro: el rojo de la marca no cambia con el tema. */
+  --accent: #c7402d;
 
   --ink: #f2ede7;
   --ink-2: #b8ada2;
   --ink-3: #8a8074;
-  --bg: #17130f;
-  --panel: #221d19;
-  --panel-2: #2a231e;
-  --panel-3: #332b25;
   --line: #3a322b;
   --line-2: #2c251f;
-  --sel: #2f2721;
-  --red: #f0655a;
-  --red-deep: #d8483c;
-  --red-soft: #3b201c;
+  /* Tinte oscuro derivado del terracota, no del rojo naranja viejo. */
+  --red-soft: #3e1d16;
   --live: #35b87a;
   --live-soft: #163021;
   --gold: #d6a24a;
@@ -77,14 +100,57 @@ html.dark {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 14px 40px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.5);
+
+  /* ── Rediseño Fase 1 · mismos nombres, valores oscuros ────────────────
+     Alineados con la paleta oscura de Dirección D de arriba para que el tema
+     oscuro no se rompa. Los radios no cambian: se heredan de `:root`. */
+  --bg-app: #17130f;
+  --bg-card: #221d19;
+  --border-soft: #3a322b;
+  --sidebar: #c7402d;
+  --bubble-ai: #2e2618;
+  --bubble-ai-border: #473a22;
+  --bubble-guest: #221d19;
+  --success-bg: #163021;
+  --success-text: #35b87a;
+  --text-primary: #f2ede7;
+  --text-secondary: #b8ada2;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-archivo);
-  --font-mono: var(--font-space-mono);
-  --font-grotesk: var(--font-grotesk);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  /* `.grotesk` y `font-grotesk` siguen existiendo; ahora resuelven a Inter. */
+  --font-grotesk: var(--font-inter);
+
+  /* ── Tokens del rediseño como utilidades ────────────────────────────── */
+  --color-app: var(--bg-app);
+  --color-card: var(--bg-card);
+  --color-sidebar: var(--sidebar);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-bubble-ai: var(--bubble-ai);
+  --color-bubble-ai-border: var(--bubble-ai-border);
+  --color-bubble-guest: var(--bubble-guest);
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-soft: var(--border-soft);
+
+  --radius-card: 16px;
+  --radius-chip: 10px;
+  --radius-bubble: 14px;
+}
+
+/* `--success-bg` y `--success-text` son dos colores distintos, así que no caben
+   en un solo `--color-success`: van como utilidades explícitas. */
+@utility bg-success {
+  background-color: var(--success-bg);
+}
+
+@utility text-success {
+  color: var(--success-text);
 }
 
 html {
@@ -93,18 +159,22 @@ html {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-archivo), system-ui, sans-serif;
+  /* Crema del spec (§2.1). Antes era `--background` (#f7f4ee), medio tono más
+     frío, y se notaba en los bordes de las pantallas que no llenan el alto. */
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-inter), system-ui, sans-serif;
 }
 
-/* Tipografías del rediseño (Dirección D). */
+/* Tipografías del rediseño: Inter para el sans, JetBrains Mono para el mono
+   (docs/REDESIGN.md §1). Las clases no se renombran porque las usan decenas de
+   pantallas; solo cambia la familia a la que resuelven. */
 .grotesk {
-  font-family: var(--font-grotesk), "Space Grotesk", sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
 }
 
 .ibx-mono {
-  font-family: var(--font-space-mono), "Space Mono", ui-monospace, monospace;
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
 
 /* Scrollbars discretos (Firefox + WebKit) — listas, chat, paneles */
@@ -151,28 +221,52 @@ body {
   background: #c4b8aa;
 }
 
-/* Interacciones del rediseño (Dirección D). */
+/* Fila que se desliza en horizontal sin barra a la vista: los chips de filtro
+   quedan siempre en un solo renglón y, si el panel es angosto, se arrastran con
+   el dedo. La barra se oculta porque acá mide unos pocos píxeles y solo ensucia
+   un renglón de 28px de alto; el scroll táctil y con trackpad sigue igual. */
+.ibx-scroll-x-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.ibx-scroll-x-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* Interacciones del rediseño, ya sobre los tokens del spec (§2.1).
+
+   Regla de superficie: el contenedor de la lista va en crema `--bg-app` y CADA
+   fila va en blanco `--bg-card`. Antes las filas se dejaban transparentes y solo
+   la seleccionada se pintaba de blanco, así que toda la lista se leía como un
+   bloque gris. El fondo va acá y no en un `style` inline para que el hover no
+   quede tapado: un inline le gana a esta regla, pero no al revés.
+
+   El hover es el mismo velo derivado de `--text-secondary` de siempre, ahora
+   mezclado CONTRA la card en vez de contra transparente, para que oscurezca lo
+   justo y funcione igual en claro y en oscuro. La seleccionada no cambia de
+   fondo: se distingue por el borde terracota y la sombra (§2.2). */
 .d-row {
+  background: var(--bg-card);
   transition: background 0.12s;
 }
 .d-row:hover {
-  background: var(--panel-2);
+  background: color-mix(in srgb, var(--text-secondary) 12%, var(--bg-card));
 }
 .d-row.sel {
-  background: var(--sel);
+  background: var(--bg-card);
 }
 .d-act {
   transition: background 0.12s, border-color 0.12s;
 }
 .d-act:hover {
-  background: var(--panel);
-  border-color: var(--ink-3);
+  background: var(--bg-card);
+  border-color: var(--text-secondary);
 }
 .d-soft {
   transition: background 0.12s;
 }
 .d-soft:hover {
-  background: var(--panel-2);
+  background: color-mix(in srgb, var(--text-secondary) 14%, transparent);
 }
 .d-chip {
   transition: transform 0.1s, background 0.12s;
@@ -184,6 +278,6 @@ body {
   transition: background 0.12s;
 }
 .d-prim:hover {
-  background: var(--red-deep);
+  background: var(--accent-hover);
 }
 

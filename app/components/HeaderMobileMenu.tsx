@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /** Estilo compartido de las filas del menú hamburguesa (móvil). */
 export const HEADER_MENU_ROW_CLASS =
-  "grotesk flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-semibold text-[var(--ink-2)] transition-colors hover:bg-[var(--panel-2)] disabled:opacity-50";
+  "grotesk flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-semibold text-[var(--ink-2)] transition-colors hover:bg-[var(--bg-app)] disabled:opacity-50";
 
 function IconMenu({ className }: { className?: string }) {
   return (
@@ -55,7 +55,7 @@ export function HeaderMobileMenu({
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={`inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
-          onRed ? "text-white hover:bg-white/15" : "text-[var(--ink-2)] hover:bg-[var(--panel-2)]"
+          onRed ? "text-white hover:bg-white/15" : "text-[var(--ink-2)] hover:bg-[var(--bg-app)]"
         }`}
         aria-label="Menú"
         aria-haspopup="menu"
@@ -67,7 +67,7 @@ export function HeaderMobileMenu({
         <div
           role="menu"
           onClick={() => setOpen(false)}
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-[240] w-60 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] py-1 shadow-[var(--shadow-lg)]"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-[240] w-60 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--bg-card)] py-1 shadow-[var(--shadow-lg)]"
         >
           {children}
         </div>
