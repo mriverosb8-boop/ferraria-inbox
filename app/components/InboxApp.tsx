@@ -299,9 +299,9 @@ function GuestStatusPrefix({ variant }: { variant: StatusVariant }) {
   return (
     <span
       className="grotesk inline-flex shrink-0 items-center gap-1.5"
-      style={{ fontSize: 13, fontWeight: 700, color, letterSpacing: "0.01em" }}
+      style={{ fontSize: 12.5, fontWeight: 700, color, letterSpacing: "0.01em" }}
     >
-      <span aria-hidden style={{ fontSize: variant === "ia" || variant === "done" ? 12 : 9, lineHeight: 1 }}>
+      <span aria-hidden style={{ fontSize: variant === "ia" || variant === "done" ? 11.5 : 8.5, lineHeight: 1 }}>
         {glyph}
       </span>
       {label}
@@ -3616,12 +3616,16 @@ export default function InboxApp() {
         aria-current={active ? "true" : undefined}
         className={`d-row flex w-full items-center text-left${active ? " sel" : ""}`}
         style={{
-          gap: 13,
-          padding: "14px 14px",
-          // Piso de altura para que las filas de Staff midan todas lo mismo.
-          // Acá el contenido es fijo (nombre, cargo, preview), así que el piso
-          // solo cubre el caso del preview vacío.
-          minHeight: 86,
+          gap: 11,
+          padding: "9px 12px",
+          /*
+            Más baja que la de Huéspedes a propósito: acá no hay renglón de
+            estado ni de distintivos, así que igualarla a 82 sería meterle 16px
+            de aire a cada fila. Las dos listas nunca se ven a la vez —son
+            pestañas distintas—, y dentro de Staff todas las filas miden lo
+            mismo porque el contenido es fijo (nombre, cargo, preview).
+          */
+          minHeight: 66,
           borderRadius: "var(--radius-card)",
           border: `1.5px solid ${active ? "var(--accent)" : "var(--border-soft)"}`,
           // El blanco de la fila lo pone `.d-row` en globals.css, no un inline:
@@ -3630,37 +3634,37 @@ export default function InboxApp() {
           ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
         }}
       >
-        <Avatar name={c.guest.name} seed={c.guest.id} size={54} />
+        <Avatar name={c.guest.name} seed={c.guest.id} size={46} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1.5">
             <span
               className="grotesk shrink truncate"
               style={{
                 fontWeight: 700,
-                fontSize: 17,
+                fontSize: 15.5,
                 letterSpacing: "-0.01em",
                 color: "var(--text-primary)",
               }}
             >
               {(emoji ? emoji + " " : "") + rest}
             </span>
-            <span aria-hidden className="shrink-0" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+            <span aria-hidden className="shrink-0" style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>
               ·
             </span>
-            <span className="min-w-0 truncate" style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>
+            <span className="min-w-0 truncate" style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
               {STAFF_ROLE_FALLBACK}
             </span>
             {c.blocked && <BlockedBadge className="shrink-0" />}
-            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
               {c.lastMessageAt}
             </span>
           </div>
-          <div className="mt-1.5 flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-2">
             <p
               className="min-w-0 flex-1 truncate"
               style={{
                 margin: 0,
-                fontSize: 15,
+                fontSize: 14,
                 color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
                 fontWeight: hasUnread ? 600 : 400,
               }}
@@ -3669,8 +3673,8 @@ export default function InboxApp() {
             </p>
             {hasUnread && (
               <span
-                className="ibx-mono flex h-[20px] min-w-[20px] shrink-0 items-center justify-center px-1.5"
-                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}
+                className="ibx-mono flex h-[19px] min-w-[19px] shrink-0 items-center justify-center px-1.5"
+                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10.5, fontWeight: 700, lineHeight: 1 }}
                 aria-label={`${c.unreadCount} mensajes sin leer`}
               >
                 {unreadLabel}
@@ -3732,12 +3736,19 @@ export default function InboxApp() {
         aria-current={active ? "true" : undefined}
         className={`d-row flex w-full text-left${active ? " sel" : ""}`}
         style={{
-          gap: 13,
-          padding: "14px 14px",
-          // Piso de altura para que ninguna fila quede diminuta aunque le
-          // falten datos. La uniformidad real la da el renglón de distintivos, que se
-          // reserva siempre unas líneas más abajo; esto es el respaldo.
-          minHeight: 116,
+          gap: 11,
+          padding: "9px 12px",
+          /*
+            82px es el número que hace que entren siete conversaciones en un
+            portátil estándar: con ~625px de lista útil y 4px de separación,
+            7 × 86 = 602. Antes eran 116 y solo entraban cinco.
+
+            Es piso Y techo de hecho: el contenido mide 62px (tres renglones de
+            alturas fijas) más 18 de padding, así que ninguna fila lo pasa. La
+            uniformidad real la da el renglón de distintivos, que se reserva
+            siempre; esto es el respaldo.
+          */
+          minHeight: 82,
           borderRadius: "var(--radius-card)",
           // Borde del item seleccionado: terracota del spec (§2.2).
           border: `1.5px solid ${active ? "var(--accent)" : "var(--border-soft)"}`,
@@ -3747,14 +3758,16 @@ export default function InboxApp() {
           ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
         }}
       >
-        <Avatar name={c.guest.name} seed={c.guest.id} size={54} />
+        {/* El avatar ocupa 46 de los 64px de alto útil de la fila: llena la
+            card sin empujarla, que es lo que hacía el de 54. */}
+        <Avatar name={c.guest.name} seed={c.guest.id} size={46} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span
               className="grotesk truncate"
               style={{
                 fontWeight: 700,
-                fontSize: 17,
+                fontSize: 15.5,
                 letterSpacing: "-0.01em",
                 color: "var(--text-primary)",
               }}
@@ -3762,18 +3775,18 @@ export default function InboxApp() {
               {(emoji ? emoji + " " : "") + rest}
             </span>
             {c.blocked && <BlockedBadge className="shrink-0" />}
-            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
               {c.lastMessageAt}
             </span>
           </div>
           {/* El preview se lleva el renglón entero: es el texto más largo de la
               fila y el que más se corta. El estado bajó al renglón de abajo. */}
-          <div className="mt-1.5 flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-2">
             <p
               className="min-w-0 flex-1 truncate"
               style={{
                 margin: 0,
-                fontSize: 15,
+                fontSize: 14,
                 color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
                 fontWeight: hasUnread ? 600 : 400,
               }}
@@ -3782,25 +3795,34 @@ export default function InboxApp() {
             </p>
             {hasUnread && (
               <span
-                className="ibx-mono flex h-[20px] min-w-[20px] shrink-0 items-center justify-center px-1.5"
-                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}
+                className="ibx-mono flex h-[19px] min-w-[19px] shrink-0 items-center justify-center px-1.5"
+                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10.5, fontWeight: 700, lineHeight: 1 }}
                 aria-label={`${c.unreadCount} mensajes sin leer`}
               >
                 {unreadLabel}
               </span>
             )}
           </div>
-          <div className="mt-1.5 flex items-center">
+          {/* Estado y distintivos comparten renglón. Antes iban en dos, y el de
+              distintivos se reservaba entero aunque estuviera vacío: eran ~26px
+              de aire en CADA fila, que es lo que hacía que en un portátil
+              entraran cinco conversaciones donde caben siete.
+
+              El renglón sigue reservándose siempre (los 20px son el alto del
+              temporizador de seguimiento, el elemento más alto que cae acá), así
+              que todas las filas miden igual con o sin distintivos.
+
+              "Volvió sola" y "Sin atender" no pueden salir juntos: el primero
+              exige estado "IA" y el segundo fuerza "Humano". Con un distintivo a
+              la vez el renglón no se desborda, y el único que puede quedar sin
+              espacio es la propiedad, que es el dato menos crítico de los
+              cuatro: por eso es el que se corta y no los demás. */}
+          <div className="mt-1 flex min-w-0 items-center gap-2 overflow-hidden" style={{ minHeight: 20 }}>
             <GuestStatusPrefix variant={statusVariant} />
-          </div>
-          {/* Renglón de distintivos, SIEMPRE presente. Los 20px son el alto del elemento
-              más alto que puede caer acá (el temporizador de seguimiento), así
-              que la fila mide lo mismo con o sin distintivos. */}
-          <div className="mt-2 flex items-center gap-2" style={{ minHeight: 20 }}>
             {showAutoReactivated && <AutoReactivatedBadge />}
             {showTriage && <TriageEscalatedBadge />}
             {showProperty && (
-              <span className="truncate" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+              <span className="min-w-0 flex-1 truncate" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                 {propertyLabel}
               </span>
             )}
