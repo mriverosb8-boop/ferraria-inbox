@@ -72,7 +72,7 @@ type InboxPatchResponse = {
 
 /** Imágenes/PDFs más recientes que esto cargan signed-url al abrir; el resto espera clic del usuario. */
 const LAZY_MEDIA_AUTO_LOAD_MS = 24 * 60 * 60 * 1000;
-/** Composer humano: altura mínima (1 línea) y máxima (~6 líneas) antes de scroll interno. */
+/** Composer humano: altura mínima (1 línea) y máxima (~4 líneas) antes de scroll interno. */
 /**
  * Espera antes de repescar los acuses de Meta tras enviar. El webhook de status
  * llega en segundos, no al instante; 6 s cubre el caso normal sin montar un
@@ -81,7 +81,13 @@ const LAZY_MEDIA_AUTO_LOAD_MS = 24 * 60 * 60 * 1000;
 const DELIVERY_STATUS_REFETCH_MS = 6000;
 
 const COMPOSER_MIN_HEIGHT_PX = 38;
-const COMPOSER_MAX_HEIGHT_PX = 140;
+const COMPOSER_MAX_HEIGHT_PX = 104;
+/**
+ * Holgura para dar el hilo por "pegado al final". El navegador no siempre deja
+ * el scroll clavado en el píxel exacto, y sin margen el botón de "ir al final"
+ * aparecería estando ya abajo.
+ */
+const THREAD_BOTTOM_SLACK_PX = 56;
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const PDF_MIME_TYPE = "application/pdf";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -292,10 +298,10 @@ function GuestStatusPrefix({ variant }: { variant: StatusVariant }) {
   const { glyph, label, color } = GUEST_STATUS_PREFIX[variant];
   return (
     <span
-      className="grotesk inline-flex shrink-0 items-center gap-1"
-      style={{ fontSize: 11.5, fontWeight: 700, color, letterSpacing: "0.01em" }}
+      className="grotesk inline-flex shrink-0 items-center gap-1.5"
+      style={{ fontSize: 13, fontWeight: 700, color, letterSpacing: "0.01em" }}
     >
-      <span aria-hidden style={{ fontSize: variant === "ia" || variant === "done" ? 11 : 8, lineHeight: 1 }}>
+      <span aria-hidden style={{ fontSize: variant === "ia" || variant === "done" ? 12 : 9, lineHeight: 1 }}>
         {glyph}
       </span>
       {label}
@@ -878,7 +884,7 @@ function CmdAction({
       aria-busy={busy}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      className="flex flex-col items-start gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
+      className="ibx-press flex flex-col items-start gap-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
       style={{
         padding: "12px 13px",
         borderRadius: 11,
@@ -1482,10 +1488,89 @@ function formatBubbleClock(m: Message): string {
   }).format(date);
 }
 
-/** Píldora de fecha centrada que separa los días del hilo (spec 4.4). */
+/**
+ * Ventana para agrupar burbujas consecutivas del mismo remitente, al estilo
+ * WhatsApp. Cinco minutos: más corto parte tandas que se leen como una sola, y
+ * más largo pega mensajes de conversaciones distintas del mismo día.
+ */
+const BUBBLE_GROUP_WINDOW_MS = 5 * 60 * 1000;
+
+/** Una burbuja con su lugar dentro de la tanda del mismo remitente. */
+type ThreadBubbleItem = {
+  m: Message;
+  /** Abre tanda: lleva avatar, etiqueta de autor y colita. */
+  firstOfGroup: boolean;
+  /** Cierra tanda: lleva la hora. */
+  lastOfGroup: boolean;
+};
+
+/** Un día calendario del hilo, con su píldora y sus burbujas ya agrupadas. */
+type ThreadDaySection = {
+  key: string;
+  label: string;
+  items: ThreadBubbleItem[];
+};
+
+/** Milisegundos del mensaje, o `null` si la fila no trae fecha utilizable. */
+function bubbleTimeMs(m: Message): number | null {
+  const ms = getMessageDisplayDate(m as unknown as Record<string, unknown>).getTime();
+  return Number.isFinite(ms) && ms !== 0 ? ms : null;
+}
+
+/**
+ * Parte el hilo en secciones por día y marca la primera y la última burbuja de
+ * cada tanda del mismo remitente.
+ *
+ * Las secciones existen para que la píldora de fecha pueda quedar pegada arriba
+ * mientras se scrollea ese día: un `sticky` solo flota dentro de su padre, así
+ * que la píldora tiene que ser hermana de las burbujas de SU día, no de todas.
+ *
+ * Un mensaje sin fecha utilizable NO abre día nuevo (mismo criterio que tenía el
+ * render de antes) y tampoco corta una tanda: sin reloj no hay forma de decir
+ * que pasó mucho tiempo, y partir por las dudas dejaría burbujas sueltas.
+ */
+function buildThreadDays(bubbles: Message[]): ThreadDaySection[] {
+  const sections: ThreadDaySection[] = [];
+
+  for (const m of bubbles) {
+    const dayKey = messageDayKey(m);
+    let section = sections[sections.length - 1];
+
+    if (!section || (dayKey && dayKey !== section.key)) {
+      section = { key: dayKey, label: dayKey ? formatDayPillLabel(m) : "", items: [] };
+      sections.push(section);
+    }
+
+    const prev = section.items[section.items.length - 1];
+    let grouped = false;
+    if (prev && prev.m.sender === m.sender) {
+      const prevMs = bubbleTimeMs(prev.m);
+      const currentMs = bubbleTimeMs(m);
+      grouped =
+        prevMs === null || currentMs === null
+          ? true
+          : Math.abs(currentMs - prevMs) <= BUBBLE_GROUP_WINDOW_MS;
+    }
+
+    if (prev && grouped) prev.lastOfGroup = false;
+    section.items.push({ m, firstOfGroup: !grouped, lastOfGroup: true });
+  }
+
+  return sections;
+}
+
+/**
+ * Píldora de fecha centrada que separa los días del hilo (spec 4.4).
+ *
+ * Va pegada arriba del viewport mientras se scrollea ese día: en un hilo largo
+ * la recepcionista pierde de vista de qué día es lo que está leyendo, y volver
+ * a scrollear hasta encontrar la píldora es tiempo con el huésped esperando. El
+ * `sticky` lo acota la sección del día, así que cada píldora se va sola cuando
+ * empieza el día siguiente.
+ */
 function DayPill({ label }: { label: string }) {
   return (
-    <div className="flex w-full justify-center py-1.5">
+    <div className="sticky top-0 z-20 flex w-full justify-center py-1.5">
       <span
         className="ibx-mono inline-flex items-center rounded-full px-3 py-1"
         style={{
@@ -1626,12 +1711,24 @@ function MessageBubble({
   reaction,
   deliveryReceipt,
   staff = false,
+  firstOfGroup = true,
+  lastOfGroup = true,
 }: {
   m: Message;
   guestName: string;
   guestSeed: string;
   /** Hilo con el personal del hotel: cambia cómo se pintan los PDFs (spec 5.4). */
   staff?: boolean;
+  /**
+   * Abre una tanda del mismo remitente. Lleva el avatar, la etiqueta de quién
+   * habla y la colita; las de abajo van peladas y pegadas, como en WhatsApp.
+   */
+  firstOfGroup?: boolean;
+  /**
+   * Cierra la tanda. Lleva la hora: repetirla en cada burbuja de una ráfaga de
+   * cinco mensajes del mismo minuto era ruido.
+   */
+  lastOfGroup?: boolean;
   /** Emoji de la reacción vigente sobre ESTA burbuja; ver `buildThreadView`. */
   reaction?: string;
   /**
@@ -1646,6 +1743,16 @@ function MessageBubble({
   const isAgent = m.sender === "agent";
 
   const [translationOpen, setTranslationOpen] = useState(false);
+  /**
+   * Esta burbuja nació optimista, o sea que acaba de salir del compositor de
+   * ESTE navegador. Es la única que corre la animación de entrada.
+   *
+   * Se captura al montar y no se recalcula: cuando el envío se confirma el
+   * estado pasa a `confirmed`, y si la clase dependiera del estado vivo la
+   * animación se cortaría a la mitad. El historial y lo que llega por la
+   * actualización en vivo entran siempre confirmados, así que no animan.
+   */
+  const [entering] = useState(() => m.status === "pending");
   /**
    * Texto que de verdad le llegó al huésped, solo cuando el engine tradujo la
    * respuesta (`Wubby_Whatsapp.message_translated`). La burbuja sigue mostrando
@@ -1683,6 +1790,23 @@ function MessageBubble({
   const staffPdfChip = staff && mediaKind === "pdf" && hasMediaSource && !missingFile;
 
   /*
+    Colita solo en la PRIMERA burbuja de cada tanda, como WhatsApp: la muesca
+    marca dónde arranca lo que dijo alguien, y repetirla en las cinco burbujas
+    seguidas de la misma persona borra esa señal. Las de abajo van con las
+    cuatro esquinas redondeadas.
+
+    La muesca de las salientes se mudó de abajo-derecha a arriba-derecha: ahora
+    queda del mismo lado que el avatar (que también subió al primer mensaje del
+    grupo), así que las dos señales apuntan al mismo sitio.
+  */
+  const guestRadius = firstOfGroup
+    ? "4px var(--radius-bubble) var(--radius-bubble) var(--radius-bubble)"
+    : "var(--radius-bubble)";
+  const hotelRadius = firstOfGroup
+    ? "var(--radius-bubble) 4px var(--radius-bubble) var(--radius-bubble)"
+    : "var(--radius-bubble)";
+
+  /*
     Spec 4.4 y 2.3/2.5: huésped = card blanca a la izquierda, agente (IA) =
     crema amarillento con su borde a la derecha, respuesta humana = roja sólida
     con texto blanco. Radio 14 en todas, con la esquina del lado del avatar
@@ -1701,7 +1825,7 @@ function MessageBubble({
         background: "var(--bubble-guest)",
         color: "var(--text-primary)",
         border: "1px solid var(--border-soft)",
-        borderRadius: "4px var(--radius-bubble) var(--radius-bubble) var(--radius-bubble)",
+        borderRadius: guestRadius,
         boxShadow: "var(--shadow-sm)",
         ...(isHandoffCause ? { boxShadow: "inset 3px 0 0 0 var(--accent)" } : null),
       }
@@ -1710,7 +1834,7 @@ function MessageBubble({
           background: "var(--bubble-ai)",
           color: "var(--text-primary)",
           border: "1px solid var(--bubble-ai-border)",
-          borderRadius: "var(--radius-bubble) var(--radius-bubble) 4px var(--radius-bubble)",
+          borderRadius: hotelRadius,
           ...(isHandoffCause ? { boxShadow: "inset -3px 0 0 0 var(--accent)" } : null),
         }
       : {
@@ -1718,7 +1842,7 @@ function MessageBubble({
           background: "var(--accent)",
           color: "#fff",
           border: "1px solid var(--accent)",
-          borderRadius: "var(--radius-bubble) var(--radius-bubble) 4px var(--radius-bubble)",
+          borderRadius: hotelRadius,
         };
   const onRed = isAgent && !staffPdfChip;
   const metaColor = onRed ? "rgba(255,255,255,.8)" : "var(--text-secondary)";
@@ -1735,7 +1859,7 @@ function MessageBubble({
 
   return (
     <div
-      className="flex w-full min-w-0 items-end gap-2"
+      className="flex w-full min-w-0 items-start gap-2"
       style={{
         flexDirection: isUser ? "row" : "row-reverse",
         // El badge cuelga por debajo del borde: sin este hueco se solaparía con
@@ -1743,8 +1867,12 @@ function MessageBubble({
         ...(reaction ? { marginBottom: 10 } : null),
       }}
     >
-      <div className="shrink-0 self-end">
-        {isUser ? (
+      {/* El avatar solo lo lleva la primera burbuja de la tanda; las de abajo
+          dejan un hueco del mismo ancho para que la columna no se corra. Va
+          arriba y no abajo porque la colita también subió: las dos señales de
+          "acá arranca quien habla" quedan juntas. */}
+      <div className="shrink-0 self-start" style={{ width: 30 }}>
+        {!firstOfGroup ? null : isUser ? (
           <Avatar name={guestName} seed={guestSeed} size={30} />
         ) : (
           <div
@@ -1770,8 +1898,11 @@ function MessageBubble({
       >
         {/* Quién habla, en texto y no solo por el color de la burbuja: recepción
             trabaja en tablets y el color no siempre alcanza para distinguir una
-            respuesta del agente de una que escribió una persona. */}
-        {!isUser && (
+            respuesta del agente de una que escribió una persona.
+
+            Una sola vez por tanda: repetir "FerrarIA" encima de cada burbuja de
+            una respuesta partida en cuatro no agrega nada y aleja el texto. */}
+        {!isUser && firstOfGroup && (
           <span
             className="grotesk inline-flex items-center gap-1"
             style={{
@@ -1791,7 +1922,9 @@ function MessageBubble({
           </span>
         )}
         <div
-          className="relative flex w-fit min-w-0 max-w-full flex-col gap-0.5 break-words px-3.5 py-2 text-[15.5px] [overflow-wrap:anywhere]"
+          className={`relative flex w-fit min-w-0 max-w-full flex-col gap-0.5 break-words px-3.5 py-2 text-[15.5px] [overflow-wrap:anywhere] ${
+            entering ? "ibx-bubble-in" : ""
+          }`}
           style={{ lineHeight: 1.45, ...bubbleStyle }}
         >
           {reaction ? (
@@ -1919,59 +2052,72 @@ function MessageBubble({
               ) : null}
             </div>
           ) : null}
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <time className="ibx-mono min-w-0 shrink text-[10px] tabular-nums" style={{ color: metaColor }}>
-              {timeLabel}
-            </time>
-            {isOutboundHotel &&
-              // Regla dura: el doble check SOLO sale con acuse de Meta. Antes el
-              // ✓✓ se pintaba por defecto y solo significaba "la fila está en la
-              // base", así que recepción daba por entregado lo que quizá nunca
-              // llegó. Sin acuse ahora queda en ✓ ("salió"). Ver `resolveDeliveryTick`.
-              (failedReceipt ? (
-                <span
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight"
-                  style={{
-                    // Sobre la burbuja roja del agente el rojo no contrasta:
-                    // ahí el chip va en blanco, igual que el badge de handoff.
-                    background: onRed ? "rgba(255,255,255,.18)" : "var(--red-soft)",
-                    border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--accent)",
-                    color: onRed ? "#fff" : "var(--accent)",
-                  }}
-                  title={describeDeliveryFailure(failedReceipt)}
-                >
-                  <IconCircleX className="h-3 w-3 shrink-0" aria-hidden />
-                  <span>No entregado</span>
+          {/*
+            Hora y acuse: por defecto solo en la última burbuja de la tanda, que
+            es la regla de WhatsApp y lo que saca el ruido de una ráfaga de cinco
+            mensajes del mismo minuto.
+
+            La excepción es dura y no se negocia: si el mensaje falló o todavía
+            está saliendo, la fila se pinta SIEMPRE, esté donde esté dentro del
+            grupo. Un "No entregado" escondido por una regla de estética es
+            exactamente lo que hace que recepción dé por atendido a un huésped
+            que nunca recibió nada.
+          */}
+          {(lastOfGroup || deliveryTick === "failed" || deliveryTick === "pending") && (
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+              <time className="ibx-mono min-w-0 shrink text-[10px] tabular-nums" style={{ color: metaColor }}>
+                {timeLabel}
+              </time>
+              {isOutboundHotel &&
+                // Regla dura: el doble check SOLO sale con acuse de Meta. Antes el
+                // ✓✓ se pintaba por defecto y solo significaba "la fila está en la
+                // base", así que recepción daba por entregado lo que quizá nunca
+                // llegó. Sin acuse ahora queda en ✓ ("salió"). Ver `resolveDeliveryTick`.
+                (failedReceipt ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold leading-tight"
+                    style={{
+                      // Sobre la burbuja roja del agente el rojo no contrasta:
+                      // ahí el chip va en blanco, igual que el badge de handoff.
+                      background: onRed ? "rgba(255,255,255,.18)" : "var(--red-soft)",
+                      border: onRed ? "1px solid rgba(255,255,255,.3)" : "1px solid var(--accent)",
+                      color: onRed ? "#fff" : "var(--accent)",
+                    }}
+                    title={describeDeliveryFailure(failedReceipt)}
+                  >
+                    <IconCircleX className="h-3 w-3 shrink-0" aria-hidden />
+                    <span>No entregado</span>
+                  </span>
+                ) : deliveryTick === "pending" ? (
+                  <IconClock className="h-3 w-3 shrink-0" style={{ color: metaColor }} aria-label="Enviando" />
+                ) : deliveryTick === "sent" ? (
+                  <IconCheck className="h-3.5 w-3.5 shrink-0" style={{ color: metaColor }} aria-label="Enviado" />
+                ) : (
+                  <IconCheckCheck
+                    className="h-3.5 w-[18px] shrink-0"
+                    // Azul solo en `read`, la misma convención de WhatsApp que
+                    // recepción ya trae aprendida: no hay que explicarle nada.
+                    // Sobre la burbuja roja el azul no contrasta, así que ahí el
+                    // "leído" se marca con blanco pleno contra el blanco atenuado
+                    // de `delivered`.
+                    style={{
+                      color:
+                        deliveryTick === "read"
+                          ? onRed
+                            ? "#fff"
+                            : "var(--blue-read)"
+                          : metaColor,
+                    }}
+                    aria-label={deliveryTick === "read" ? "Leído por el huésped" : "Entregado"}
+                  />
+                ))}
+              {isAi && m.aiMeta && (
+                <span className="ibx-mono max-w-full break-words text-[10px] tabular-nums" style={{ color: "var(--text-secondary)" }}>
+                  {m.aiMeta.latencyMs} ms · {m.aiMeta.tokens} tok
                 </span>
-              ) : deliveryTick === "pending" ? (
-                <IconClock className="h-3 w-3 shrink-0" style={{ color: metaColor }} aria-label="Enviando" />
-              ) : deliveryTick === "sent" ? (
-                <IconCheck className="h-3.5 w-3.5 shrink-0" style={{ color: metaColor }} aria-label="Enviado" />
-              ) : (
-                <IconCheckCheck
-                  className="h-3.5 w-[18px] shrink-0"
-                  // Azul solo en `read`, la misma convención de WhatsApp que
-                  // recepción ya trae aprendida: no hay que explicarle nada.
-                  // Sobre la burbuja roja el azul no contrasta, así que ahí el
-                  // "leído" se marca con blanco pleno contra el blanco atenuado
-                  // de `delivered`.
-                  style={{
-                    color:
-                      deliveryTick === "read"
-                        ? onRed
-                          ? "#fff"
-                          : "var(--blue-read)"
-                        : metaColor,
-                  }}
-                  aria-label={deliveryTick === "read" ? "Leído por el huésped" : "Entregado"}
-                />
-              ))}
-            {isAi && m.aiMeta && (
-              <span className="ibx-mono max-w-full break-words text-[10px] tabular-nums" style={{ color: "var(--text-secondary)" }}>
-                {m.aiMeta.latencyMs} ms · {m.aiMeta.tokens} tok
-              </span>
-            )}
-          </div>
+              )}
+            </div>
+          )}
           {/*
             Motivo del fallo en texto plano bajo el chip. Va SIEMPRE visible y no
             en el tooltip porque recepción atiende de afán y muchas veces desde
@@ -2483,6 +2629,13 @@ export default function InboxApp() {
   );
 
   /**
+   * El hilo partido en días y con las tandas del mismo remitente ya marcadas.
+   * Es lo único que consume el render: la agrupación no se recalcula por
+   * burbuja.
+   */
+  const threadDays = useMemo(() => buildThreadDays(threadBubbles), [threadBubbles]);
+
+  /**
    * Gate del hilo: mientras la conversación seleccionada no tenga historial
    * autoritativo se muestra skeleton en lugar de pintar el array provisional
    * que vino embebido en `GET /api/inbox`. Al depender solo de un dato de
@@ -2632,17 +2785,83 @@ export default function InboxApp() {
   );
 
   const scrollToBottom = useCallback(() => {
-    scrollEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // El scroll suave también es movimiento: bajo `prefers-reduced-motion` va
+    // instantáneo, igual que las animaciones del hilo.
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    scrollEndRef.current?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "end",
+    });
   }, []);
 
-  useLayoutEffect(() => {
-    scrollEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [selectedId, selected?.messages.length]);
+  /**
+   * Se está mirando el final del hilo. Vive en un ref y no en estado porque lo
+   * leen los efectos de mensaje nuevo, y un estado los volvería a disparar en
+   * cada scroll.
+   */
+  const atBottomRef = useRef(true);
+  /** Cuántas burbujas se habían visto: la diferencia son los mensajes nuevos. */
+  const seenBubbleCountRef = useRef(0);
+  const [showJumpToEnd, setShowJumpToEnd] = useState(false);
+  const [missedCount, setMissedCount] = useState(0);
 
+  const handleThreadScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const el = event.currentTarget;
+    // Margen de 56px: el navegador no siempre deja el scroll clavado en el
+    // píxel exacto del final, y sin holgura el botón aparecería solo.
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= THREAD_BOTTOM_SLACK_PX;
+    atBottomRef.current = atBottom;
+    setShowJumpToEnd(!atBottom);
+    if (atBottom) setMissedCount(0);
+  }, []);
+
+  const jumpToEnd = useCallback(() => {
+    atBottomRef.current = true;
+    setShowJumpToEnd(false);
+    setMissedCount(0);
+    scrollToBottom();
+  }, [scrollToBottom]);
+
+  // Abrir otra conversación siempre cae al final, sin animación y sin
+  // condiciones: es un hilo distinto, no hay posición previa que respetar.
+  useLayoutEffect(() => {
+    atBottomRef.current = true;
+    setShowJumpToEnd(false);
+    setMissedCount(0);
+    seenBubbleCountRef.current = 0;
+    scrollEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [selectedId]);
+
+  /*
+    Mensaje nuevo en el hilo abierto.
+
+    Si la recepcionista ya estaba abajo, baja sola y suave. Si estaba leyendo
+    más arriba NO se le mueve la pantalla: se le cuenta lo que entró y el botón
+    flotante se lo ofrece. Antes bajaba siempre, así que leer una conversación
+    larga mientras el huésped escribía era imposible.
+  */
   useEffect(() => {
-    const t = setTimeout(() => scrollToBottom(), 100);
+    const count = threadBubbles.length;
+    const previous = seenBubbleCountRef.current;
+    seenBubbleCountRef.current = count;
+    if (count <= previous) return;
+
+    if (!atBottomRef.current) {
+      setMissedCount((n) => n + (count - previous));
+      setShowJumpToEnd(true);
+      return;
+    }
+
+    scrollToBottom();
+    // Segundo empujón: las imágenes y los audios terminan de medir un tick
+    // después, y sin esto la última burbuja queda medio cortada.
+    const t = setTimeout(() => {
+      if (atBottomRef.current) scrollToBottom();
+    }, 100);
     return () => clearTimeout(t);
-  }, [selected?.messages.length, scrollToBottom]);
+  }, [threadBubbles.length, scrollToBottom]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -3395,10 +3614,14 @@ export default function InboxApp() {
         type="button"
         onClick={() => openChat(c.id)}
         aria-current={active ? "true" : undefined}
-        className={`d-row flex w-full text-left${active ? " sel" : ""}`}
+        className={`d-row flex w-full items-center text-left${active ? " sel" : ""}`}
         style={{
-          gap: 12,
-          padding: "12px 13px",
+          gap: 13,
+          padding: "14px 14px",
+          // Piso de altura para que las filas de Staff midan todas lo mismo.
+          // Acá el contenido es fijo (nombre, cargo, preview), así que el piso
+          // solo cubre el caso del preview vacío.
+          minHeight: 86,
           borderRadius: "var(--radius-card)",
           border: `1.5px solid ${active ? "var(--accent)" : "var(--border-soft)"}`,
           // El blanco de la fila lo pone `.d-row` en globals.css, no un inline:
@@ -3407,37 +3630,37 @@ export default function InboxApp() {
           ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
         }}
       >
-        <Avatar name={c.guest.name} seed={c.guest.id} size={46} />
+        <Avatar name={c.guest.name} seed={c.guest.id} size={54} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1.5">
             <span
               className="grotesk shrink truncate"
               style={{
                 fontWeight: 700,
-                fontSize: 16,
+                fontSize: 17,
                 letterSpacing: "-0.01em",
                 color: "var(--text-primary)",
               }}
             >
               {(emoji ? emoji + " " : "") + rest}
             </span>
-            <span aria-hidden className="shrink-0" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+            <span aria-hidden className="shrink-0" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
               ·
             </span>
-            <span className="min-w-0 truncate" style={{ fontSize: 12.5, color: "var(--text-secondary)" }}>
+            <span className="min-w-0 truncate" style={{ fontSize: 13.5, color: "var(--text-secondary)" }}>
               {STAFF_ROLE_FALLBACK}
             </span>
             {c.blocked && <BlockedBadge className="shrink-0" />}
-            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
               {c.lastMessageAt}
             </span>
           </div>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1.5 flex items-center gap-2">
             <p
               className="min-w-0 flex-1 truncate"
               style={{
                 margin: 0,
-                fontSize: 14,
+                fontSize: 15,
                 color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
                 fontWeight: hasUnread ? 600 : 400,
               }}
@@ -3446,8 +3669,8 @@ export default function InboxApp() {
             </p>
             {hasUnread && (
               <span
-                className="ibx-mono flex h-[18px] min-w-[18px] shrink-0 items-center justify-center px-1"
-                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
+                className="ibx-mono flex h-[20px] min-w-[20px] shrink-0 items-center justify-center px-1.5"
+                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}
                 aria-label={`${c.unreadCount} mensajes sin leer`}
               >
                 {unreadLabel}
@@ -3509,12 +3732,12 @@ export default function InboxApp() {
         aria-current={active ? "true" : undefined}
         className={`d-row flex w-full text-left${active ? " sel" : ""}`}
         style={{
-          gap: 12,
-          padding: "12px 13px",
+          gap: 13,
+          padding: "14px 14px",
           // Piso de altura para que ninguna fila quede diminuta aunque le
           // falten datos. La uniformidad real la da el renglón de distintivos, que se
           // reserva siempre unas líneas más abajo; esto es el respaldo.
-          minHeight: 96,
+          minHeight: 116,
           borderRadius: "var(--radius-card)",
           // Borde del item seleccionado: terracota del spec (§2.2).
           border: `1.5px solid ${active ? "var(--accent)" : "var(--border-soft)"}`,
@@ -3524,14 +3747,14 @@ export default function InboxApp() {
           ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
         }}
       >
-        <Avatar name={c.guest.name} seed={c.guest.id} size={46} />
+        <Avatar name={c.guest.name} seed={c.guest.id} size={54} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span
               className="grotesk truncate"
               style={{
                 fontWeight: 700,
-                fontSize: 16,
+                fontSize: 17,
                 letterSpacing: "-0.01em",
                 color: "var(--text-primary)",
               }}
@@ -3539,18 +3762,18 @@ export default function InboxApp() {
               {(emoji ? emoji + " " : "") + rest}
             </span>
             {c.blocked && <BlockedBadge className="shrink-0" />}
-            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 13, color: "var(--text-secondary)" }}>
               {c.lastMessageAt}
             </span>
           </div>
           {/* El preview se lleva el renglón entero: es el texto más largo de la
               fila y el que más se corta. El estado bajó al renglón de abajo. */}
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1.5 flex items-center gap-2">
             <p
               className="min-w-0 flex-1 truncate"
               style={{
                 margin: 0,
-                fontSize: 14,
+                fontSize: 15,
                 color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
                 fontWeight: hasUnread ? 600 : 400,
               }}
@@ -3559,15 +3782,15 @@ export default function InboxApp() {
             </p>
             {hasUnread && (
               <span
-                className="ibx-mono flex h-[18px] min-w-[18px] shrink-0 items-center justify-center px-1"
-                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 10, fontWeight: 700, lineHeight: 1 }}
+                className="ibx-mono flex h-[20px] min-w-[20px] shrink-0 items-center justify-center px-1.5"
+                style={{ borderRadius: 999, background: "var(--accent)", color: "#fff", fontSize: 11, fontWeight: 700, lineHeight: 1 }}
                 aria-label={`${c.unreadCount} mensajes sin leer`}
               >
                 {unreadLabel}
               </span>
             )}
           </div>
-          <div className="mt-1 flex items-center">
+          <div className="mt-1.5 flex items-center">
             <GuestStatusPrefix variant={statusVariant} />
           </div>
           {/* Renglón de distintivos, SIEMPRE presente. Los 20px son el alto del elemento
@@ -3872,7 +4095,7 @@ export default function InboxApp() {
                 <button
                   type="button"
                   onClick={() => openStartConversation()}
-                  className="grotesk inline-flex shrink-0 items-center rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-2 text-[13px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
+                  className="ibx-press grotesk inline-flex shrink-0 items-center rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-2 text-[13px] font-bold text-white hover:bg-[var(--accent-hover)]"
                   title="Comenzar una conversación nueva con un huésped"
                 >
                   Nueva
@@ -4222,7 +4445,8 @@ export default function InboxApp() {
                             type="button"
                             onClick={() => void renameGuest()}
                             disabled={savingName}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
+                            aria-busy={savingName}
+                            className="ibx-press flex h-8 w-8 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
                             style={{ background: "var(--accent)", color: "#fff" }}
                             aria-label="Guardar nombre"
                             title="Guardar"
@@ -4237,7 +4461,7 @@ export default function InboxApp() {
                             type="button"
                             onClick={cancelEditingName}
                             disabled={savingName}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
+                            className="ibx-press flex h-8 w-8 shrink-0 items-center justify-center rounded-full disabled:opacity-50"
                             style={{ background: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border-soft)" }}
                             aria-label="Cancelar edición"
                             title="Cancelar"
@@ -4258,15 +4482,18 @@ export default function InboxApp() {
                             arriba queda solo el nombre, la pastilla y la acción
                             principal. */}
                         {!selectedIsStaff && (
+                          /* Más grande que antes (36px de caja, icono de 21):
+                             era el único botón del encabezado que no llegaba al
+                             objetivo táctil cómodo, y en tablet se fallaba. */
                           <button
                             type="button"
                             onClick={startEditingName}
-                            className="d-soft flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                            className="d-soft flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
                             style={{ color: "var(--text-secondary)" }}
                             aria-label="Editar nombre del huésped"
                             title="Editar nombre"
                           >
-                            <IconPencil className="h-[18px] w-[18px]" />
+                            <IconPencil className="h-[21px] w-[21px]" />
                           </button>
                         )}
                         {/* Que la recepcionista sepa con quién habla antes de escribir. */}
@@ -4395,54 +4622,123 @@ export default function InboxApp() {
               </div>
 
               <div
+                onScroll={handleThreadScroll}
                 className="ibx-scroll min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-3 sm:px-5 lg:px-6"
                 style={{ background: "var(--bg-app)" }}
               >
-                <div className="w-full min-w-0 space-y-2.5">
+                <div className="w-full min-w-0">
                   {threadLoading ? (
                     <InboxThreadSkeleton />
                   ) : (
-                    (() => {
-                      /*
-                        Las píldoras de fecha se intercalan acá y no dentro de
-                        `MessageBubble` porque separan DOS burbujas: la burbuja
-                        sola no sabe cuál vino antes. `lastDayKey` arranca vacío,
-                        así que la primera con fecha utilizable siempre abre día.
-                      */
-                      let lastDayKey = "";
-                      return threadBubbles.map((m) => {
-                        const dayKey = messageDayKey(m);
-                        const opensDay = Boolean(dayKey) && dayKey !== lastDayKey;
-                        if (opensDay) lastDayKey = dayKey;
-                        return (
-                          <div key={m.id} className="w-full min-w-0 space-y-2.5">
-                            {opensDay && <DayPill label={formatDayPillLabel(m)} />}
+                    /*
+                      Las píldoras de fecha viven en su sección y no dentro de
+                      `MessageBubble`: separan DOS burbujas (la burbuja sola no
+                      sabe cuál vino antes) y además tienen que poder quedarse
+                      pegadas arriba mientras se scrollea su día, y un `sticky`
+                      solo flota dentro de su padre.
+                    */
+                    threadDays.map((day, dayIndex) => (
+                      <section key={`${day.key}-${dayIndex}`} className="w-full min-w-0">
+                        {day.label && <DayPill label={day.label} />}
+                        {day.items.map(({ m, firstOfGroup, lastOfGroup }) => (
+                          <div
+                            /*
+                              La `key` es el id del optimista cuando lo hay, no
+                              el id de la fila: así la burbuja recién enviada NO
+                              se remonta cuando el envío se confirma y le cambia
+                              el id, que era lo que hacía parpadear el mensaje.
+                            */
+                            key={m.clientTempId ?? m.id}
+                            /*
+                              Las burbujas de una misma tanda van casi pegadas
+                              (3px) y las tandas se separan como antes (10px):
+                              es lo que hace que se lean como un bloque de lo que
+                              dijo una persona, en vez de como cinco mensajes
+                              sueltos.
+                            */
+                            className={`w-full min-w-0 ${firstOfGroup ? "mt-2.5" : "mt-[3px]"}`}
+                          >
                             <MessageBubble
                               m={m}
                               guestName={selected.guest.name}
                               guestSeed={selected.guest.id}
                               staff={selectedIsStaff}
+                              firstOfGroup={firstOfGroup}
+                              lastOfGroup={lastOfGroup}
                               reaction={reactionByMessageId.get(m.id)}
                               deliveryReceipt={
                                 m.wamid ? deliveryReceipts.get(m.wamid) : undefined
                               }
                             />
                           </div>
-                        );
-                      });
-                    })()
+                        ))}
+                      </section>
+                    ))
                   )}
                   {/* Cierre de la conversación: es un hecho del hilo, no una
                       barra de sistema pegada al encabezado, así que va al final
                       del historial como evento centrado (spec 4.4). */}
                   {conversationClosed && !threadLoading && (
-                    <SystemEvent label="Conversación cerrada · reábrela desde la ficha si necesitas seguir el hilo" />
+                    <div className="mt-2.5">
+                      <SystemEvent label="Conversación cerrada · reábrela desde la ficha si necesitas seguir el hilo" />
+                    </div>
                   )}
                   <div ref={scrollEndRef} className="h-px w-full shrink-0" aria-hidden />
                 </div>
               </div>
 
               <div className="relative z-20 w-full min-w-0 max-w-full shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-[26px] sm:pb-5">
+                {/*
+                  "Ir al final": aparece apenas el hilo deja de estar pegado
+                  abajo, y con contador cuando entraron mensajes mientras se leía
+                  más arriba.
+
+                  Lleva la palabra y no solo la flecha: recepción trabaja en
+                  tablets, donde no hay hover que explique un dibujo, y un icono
+                  suelto no dice a dónde lleva.
+                */}
+                {showJumpToEnd && !threadLoading && (
+                  <button
+                    type="button"
+                    onClick={jumpToEnd}
+                    className="ibx-fab-in ibx-press grotesk absolute right-4 z-30 inline-flex items-center gap-2 sm:right-[30px]"
+                    style={{
+                      top: -52,
+                      height: 38,
+                      padding: "0 14px",
+                      borderRadius: 999,
+                      border: "1px solid var(--border-soft)",
+                      background: "var(--bg-card)",
+                      color: "var(--text-primary)",
+                      boxShadow: "var(--shadow-lg)",
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                    }}
+                    aria-label={
+                      missedCount > 0
+                        ? `Ir al final del hilo · ${missedCount} mensajes nuevos`
+                        : "Ir al final del hilo"
+                    }
+                  >
+                    <IconChevronDown className="h-4 w-4 shrink-0" aria-hidden />
+                    Ir al final
+                    {missedCount > 0 && (
+                      <span
+                        className="ibx-mono inline-flex h-[19px] min-w-[19px] items-center justify-center px-1.5"
+                        style={{
+                          borderRadius: 999,
+                          background: "var(--accent)",
+                          color: "#fff",
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {missedCount > 99 ? "99+" : missedCount}
+                      </span>
+                    )}
+                  </button>
+                )}
                 {/* Encima del composer NO va ninguna botonera (spec 4.5): esas
                     acciones —tomar control, reactivar la IA, completar, reabrir,
                     resolver el asunto— viven todas en la ficha de la derecha, que
@@ -4546,7 +4842,7 @@ export default function InboxApp() {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={inputDisabled || sendingMedia}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition hover:bg-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-35"
+                    className="ibx-press flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-35"
                     style={{ background: "transparent", color: "var(--text-secondary)" }}
                     aria-label="Adjuntar archivo"
                     title="Adjuntar archivo"
@@ -4590,6 +4886,7 @@ export default function InboxApp() {
                     type="button"
                     onClick={() => void sendMessage()}
                     disabled={(!draft.trim() && !selectedFile) || inputDisabled || sendingMedia}
+                    aria-busy={sendingMedia}
                     className="d-prim flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-35"
                     style={{ background: "var(--accent)", color: "#fff", border: "none" }}
                     aria-label="Enviar"
@@ -4622,7 +4919,7 @@ export default function InboxApp() {
                           onClick={() => void sendStaffContactTemplate()}
                           disabled={sendingStaffTemplate || !conversationHotelId}
                           aria-busy={sendingStaffTemplate}
-                          className="grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="ibx-press grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
                           style={{ background: "var(--staff)" }}
                         >
                           {sendingStaffTemplate && <Spinner className="h-4 w-4 animate-spin" />}
@@ -4632,7 +4929,7 @@ export default function InboxApp() {
                         <button
                           type="button"
                           onClick={() => openStartConversation(selectedPhoneDigits)}
-                          className="grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--border-soft)]"
+                          className="ibx-press grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold shadow-sm hover:bg-[var(--border-soft)]"
                           style={{
                             border: "1px solid var(--border-soft)",
                             background: "var(--bg-card)",
@@ -4775,10 +5072,12 @@ export default function InboxApp() {
               <button
                 type="button"
                 disabled={moderationInProgress}
+                aria-busy={moderationInProgress}
                 onClick={() => void applyConversationModeration(moderationDialogAction)}
-                className="d-prim grotesk rounded-lg px-3 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
+                className="d-prim grotesk inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
                 style={{ background: "var(--accent)", border: "none" }}
               >
+                {moderationInProgress && <Spinner className="h-4 w-4 animate-spin" />}
                 {moderationInProgress
                   ? moderationDialogAction === "block"
                     ? "Bloqueando…"
@@ -4972,7 +5271,12 @@ function AiToggleSwitch({
       aria-busy={busy}
       disabled={disabled}
       onClick={onToggle}
-      className="relative inline-flex shrink-0 items-center transition disabled:cursor-not-allowed disabled:opacity-50"
+      /* En un interruptor no cabe un spinner sin taparlo entero, así que el
+         "estoy resolviendo" lo dice el latido: la misma señal de "no lo vuelvas
+         a tocar", y ya viene deshabilitado. */
+      className={`ibx-press relative inline-flex shrink-0 items-center disabled:cursor-not-allowed disabled:opacity-50 ${
+        busy ? "ibx-pulse" : ""
+      }`}
       style={{
         width: 44,
         height: 25,
@@ -5421,15 +5725,28 @@ function GuestPanelContent({
         <PanelCard className="shrink-0">
           <div className="mb-3 flex items-center gap-2">
             <CockpitLabel>Resumen</CockpitLabel>
+            {/* El estado en curso va TAMBIÉN en el botón, no solo en la caja de
+                abajo: el botón queda arriba del panel y es lo que la
+                recepcionista sigue mirando después de apretarlo. */}
             <button
               type="button"
               onClick={() => void createChatSummary()}
               disabled={summaryLoading}
+              aria-busy={summaryLoading}
               className="d-act grotesk ml-auto inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-60"
               style={{ padding: "5px 10px", border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--accent)", borderRadius: "var(--radius-chip)", fontSize: 11.5, fontWeight: 700 }}
             >
-              <Spark className="h-3 w-3" style={{ color: "var(--accent)" }} aria-hidden />
-              Generar resumen
+              {summaryLoading ? (
+                <>
+                  <Spinner className="h-3 w-3 animate-spin" />
+                  Generando…
+                </>
+              ) : (
+                <>
+                  <Spark className="h-3 w-3" style={{ color: "var(--accent)" }} aria-hidden />
+                  Generar resumen
+                </>
+              )}
             </button>
           </div>
           {summaryLoading && (
