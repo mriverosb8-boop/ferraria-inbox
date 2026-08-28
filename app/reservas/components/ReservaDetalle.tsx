@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode, SVGProps } from "react";
+import { Spinner } from "@/app/components/Spinner";
 import { avatarFlatColors, initials } from "@/lib/avatar";
 import {
   SIN_DATO,
@@ -20,6 +21,12 @@ type Props = {
   reserva: Reserva | null;
   processed: boolean;
   actionDisabled: boolean;
+  /**
+   * Esta reserva está resolviendo una acción contra el servidor. Enciende el
+   * spinner del botón que se apretó: sin esto los tres botones solo se apagaban
+   * y recepción no podía distinguir "está enviando" de "se congeló".
+   */
+  busy?: boolean;
   onBack: () => void;
   onComplete: (reserva: Reserva) => void;
   onCopy: (text: string) => void;
@@ -148,6 +155,7 @@ export function ReservaDetalle({
   reserva,
   processed,
   actionDisabled,
+  busy = false,
   onBack,
   onComplete,
   onCopy,
@@ -178,7 +186,7 @@ export function ReservaDetalle({
         <button
           type="button"
           onClick={onBack}
-          className="flex min-h-[40px] shrink-0 items-center gap-2 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3 text-[13px] font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-app)]"
+          className="ibx-press flex min-h-[40px] shrink-0 items-center gap-2 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3 text-[13px] font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-app)]"
         >
           <IconArrowLeft className="h-4 w-4" aria-hidden />
           Volver a la lista
@@ -252,21 +260,34 @@ export function ReservaDetalle({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-2 pb-1">
+        {/* Acción principal de cada pestaña: es la que lleva el spinner. Mientras
+            resuelve cambia también la palabra ("Completando…"), porque un icono
+            que gira sin texto no dice qué está pasando. */}
         {!processed && (
           <button
             type="button"
             onClick={() => onComplete(reserva)}
             disabled={actionDisabled}
-            className="grotesk inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] bg-[var(--accent)] px-4 text-[13.5px] font-bold text-white shadow-sm transition hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+            aria-busy={busy}
+            className="ibx-press grotesk inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] bg-[var(--accent)] px-4 text-[13.5px] font-bold text-white shadow-sm hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <IconCheck className="h-4 w-4" aria-hidden />
-            Completar
+            {busy ? (
+              <>
+                <Spinner className="h-4 w-4 animate-spin" />
+                Completando…
+              </>
+            ) : (
+              <>
+                <IconCheck className="h-4 w-4" aria-hidden />
+                Completar
+              </>
+            )}
           </button>
         )}
         <button
           type="button"
           onClick={() => onCopy(buildOperaClipboardText(reserva))}
-          className="grotesk inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 text-[13.5px] font-semibold text-[var(--text-primary)] shadow-sm transition hover:bg-[var(--bg-app)]"
+          className="ibx-press grotesk inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 text-[13.5px] font-semibold text-[var(--text-primary)] shadow-sm hover:bg-[var(--bg-app)]"
         >
           <IconCopy className="h-4 w-4" aria-hidden />
           Copiar datos
@@ -276,18 +297,30 @@ export function ReservaDetalle({
             type="button"
             onClick={() => onReopen(reserva)}
             disabled={actionDisabled}
-            className="grotesk inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-card)] disabled:cursor-not-allowed disabled:opacity-50"
+            aria-busy={busy}
+            className="ibx-press grotesk inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-card)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <IconUndo className="h-4 w-4" aria-hidden />
-            Volver a pendientes
+            {busy ? (
+              <>
+                <Spinner className="h-4 w-4 animate-spin" />
+                Devolviendo…
+              </>
+            ) : (
+              <>
+                <IconUndo className="h-4 w-4" aria-hidden />
+                Volver a pendientes
+              </>
+            )}
           </button>
         )}
+        {/* Rechazar no lleva spinner: abre el diálogo de motivo, y el estado del
+            envío se lee ahí adentro, que es donde está mirando la recepcionista. */}
         {!processed && (
           <button
             type="button"
             onClick={() => onReject(reserva)}
             disabled={actionDisabled}
-            className="grotesk ml-auto inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold text-[var(--accent)] transition hover:bg-[var(--red-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="ibx-press grotesk ml-auto inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold text-[var(--accent)] hover:bg-[var(--red-soft)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <IconBan className="h-4 w-4" aria-hidden />
             Rechazar

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Spinner } from "@/app/components/Spinner";
 import { formatCOT } from "../lib/formatters";
 import type { Reserva } from "../lib/types";
 
@@ -50,7 +51,7 @@ export function RejectModal({ reserva, submitting, onClose, onConfirm }: Props) 
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="grotesk min-h-[42px] rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 text-[13.5px] font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="ibx-press grotesk min-h-[42px] rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 text-[13.5px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancelar
           </button>
@@ -58,9 +59,11 @@ export function RejectModal({ reserva, submitting, onClose, onConfirm }: Props) 
             type="button"
             onClick={() => onConfirm(reason.trim())}
             disabled={!canSubmit}
-            className="grotesk min-h-[42px] rounded-[var(--radius-chip)] bg-[var(--accent)] px-4 text-[13.5px] font-bold text-white shadow-sm transition hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+            aria-busy={submitting}
+            className="ibx-press grotesk inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] bg-[var(--accent)] px-4 text-[13.5px] font-bold text-white shadow-sm hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {submitting ? "Rechazando..." : "Rechazar reserva"}
+            {submitting && <Spinner className="h-4 w-4 animate-spin" />}
+            {submitting ? "Rechazando…" : "Rechazar reserva"}
           </button>
         </div>
       </div>

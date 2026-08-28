@@ -62,13 +62,18 @@ export function TabsHeader({
             type="button"
             onClick={onRefresh}
             disabled={refreshing}
+            aria-busy={refreshing}
             aria-label="Actualizar reservas"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] text-[var(--text-secondary)] transition hover:bg-[var(--bg-app)] hover:text-[var(--text-primary)] disabled:opacity-50"
+            /* `ibx-refresh-hover` gira la ruedita mientras el mouse está encima,
+               igual que el botón de refrescar de la bandeja. Mientras refresca
+               de verdad el icono se cambia por el spinner, así que el guiño del
+               hover no se confunde nunca con "estoy cargando". */
+            className="ibx-press ibx-refresh-hover flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-app)] hover:text-[var(--text-primary)] disabled:opacity-50"
           >
             {refreshing ? (
               <Spinner className="h-4 w-4 animate-spin" />
             ) : (
-              <IconRefresh className="h-4 w-4" aria-hidden />
+              <IconRefresh className="ibx-refresh-icon h-4 w-4" aria-hidden />
             )}
           </button>
         )}
@@ -88,7 +93,7 @@ export function TabsHeader({
               role="tab"
               aria-selected={active}
               onClick={() => onChange(tab.id)}
-              className={`grotesk flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[13px] font-semibold transition ${
+              className={`ibx-press grotesk flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-[8px] px-3 text-[13px] font-semibold ${
                 active
                   ? "bg-[var(--bg-card)] text-[var(--accent)] shadow-sm"
                   : "text-[var(--text-secondary)] hover:bg-[var(--bg-card)]/60 hover:text-[var(--text-primary)]"

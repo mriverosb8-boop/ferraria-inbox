@@ -148,6 +148,12 @@ export default function ReservasPage() {
   };
 
   const detalleAbierto = Boolean(selectedReserva);
+  /**
+   * La reserva abierta está resolviendo una acción contra el servidor. Es lo que
+   * enciende el spinner del botón que se apretó: antes las acciones solo se
+   * apagaban y no había forma de distinguir "está enviando" de "se congeló".
+   */
+  const detalleBusy = Boolean(selectedReserva && busyId === selectedReserva.id);
   const actionDisabled =
     Boolean(selectedReserva && busyId === selectedReserva.id) ||
     Boolean(selectedReserva && activeTab === "pendientes" && selectedReserva.status !== "pendiente");
@@ -200,6 +206,7 @@ export default function ReservasPage() {
               reserva={selectedReserva}
               processed={activeTab === "procesadas"}
               actionDisabled={actionDisabled}
+              busy={detalleBusy}
               onBack={() => setSelectedReserva(null)}
               onComplete={(item) => void handleComplete(item)}
               onCopy={(text) => void handleCopy(text)}
@@ -286,7 +293,12 @@ export default function ReservasPage() {
                   </p>
                 </div>
               ) : (
-                <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+                /* Una card por fila, a todo el ancho de la lista. Las tres
+                   columnas de antes achicaban cada tarjeta hasta que las fechas
+                   y el total se cortaban, y recepción barre esta lista de arriba
+                   abajo: leer un renglón por reserva es más rápido que saltar
+                   entre tres columnas. */
+                <div className="flex flex-col gap-2.5">
                   {filteredReservas.map((reserva) => (
                     <ReservaCard
                       key={reserva.id}
