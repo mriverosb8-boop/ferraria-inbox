@@ -10,13 +10,44 @@ import {
   formatTotalOpcional,
   getQuoteTaxAmounts,
 } from "../lib/formatters";
-import type { Reserva } from "../lib/types";
+import type { Reserva, ReservaStatus } from "../lib/types";
 
 type Props = {
   reserva: Reserva;
   selected: boolean;
   onSelect: (reserva: Reserva) => void;
 };
+
+/**
+ * Estado real de la reserva, siempre a la vista y en texto.
+ *
+ * No depende de la pestaña abierta: recepción trabaja desde tablets, donde no
+ * hay hover, y necesita saber de un vistazo si la reserva ya está en el PMS
+ * sin abrir el detalle ni fijarse en qué pestaña está parada.
+ */
+function EstadoBadge({ status }: { status: ReservaStatus }) {
+  const estilos: Record<ReservaStatus, { label: string; className: string }> = {
+    pendiente: {
+      label: "Pendiente",
+      className: "bg-[var(--gold-soft)] text-[var(--gold)]",
+    },
+    completada: {
+      label: "Procesada",
+      className: "bg-[var(--success-bg)] text-[var(--success-text)]",
+    },
+    rechazada: {
+      label: "Rechazada",
+      className: "bg-[var(--red-soft)] text-[var(--accent)]",
+    },
+  };
+  const { label, className } = estilos[status];
+
+  return (
+    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${className}`}>
+      {label}
+    </span>
+  );
+}
 
 function Dato({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   const vacio = value === SIN_DATO;
@@ -76,17 +107,7 @@ export function ReservaCard({ reserva, selected, onSelect }: Props) {
               {cot} · {formatTiempoRelativo(reserva.created_at)}
             </p>
           </div>
-          {reserva.status !== "pendiente" && (
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
-                reserva.status === "rechazada"
-                  ? "bg-[var(--red-soft)] text-[var(--accent)]"
-                  : "bg-[var(--success-bg)] text-[var(--success-text)]"
-              }`}
-            >
-              {reserva.status === "rechazada" ? "Rechazada" : "Completada"}
-            </span>
-          )}
+          <EstadoBadge status={reserva.status} />
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5">

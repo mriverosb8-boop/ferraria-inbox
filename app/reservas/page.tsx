@@ -182,125 +182,124 @@ export default function ReservasPage() {
         </div>
       )}
 
-      {/* Tres columnas del rediseño (docs/REDESIGN.md §3): lista, detalle y chat.
-          Debajo de `xl` no caben las tres, así que la lista se queda sola y el
-          detalle con su chat se abren encima; el `xl:contents` hace que esos dos
-          vuelvan a ser columnas de la grilla cuando hay ancho de sobra.
-
-          Abajo de `xl` ese contenedor es el único que scrollea y sus dos hijos
-          van uno debajo del otro sin encogerse (`max-xl:shrink-0` en cada uno):
-          primero el detalle completo y después el chat. Si se los deja encoger,
-          el chat se le monta encima al detalle y tapa el titular y las stat
-          cards. */}
-      <main className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 sm:p-4 xl:grid-cols-[minmax(320px,360px)_minmax(0,1fr)_minmax(300px,360px)] xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden xl:p-5">
-        {/* La columna de la lista es CONTENEDOR, así que va en crema: las
-            `ReservaCard` de adentro son las que van en blanco y se levantan del
-            fondo (docs/REDESIGN.md §2.1). En blanco sobre blanco las cards solo
-            se distinguían por el borde y la lista entera se leía como un bloque
-            plano. */}
-        <section className="flex min-h-0 flex-col rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-app)] xl:overflow-hidden">
-          <TabsHeader
-            activeTab={activeTab}
-            pendingCount={pendingCount}
-            processedCount={procesadas.length}
-            refreshing={refreshing}
-            onChange={setActiveTab}
-            onRefresh={handleRefresh}
-          />
-
-          <div className="shrink-0 space-y-2.5 border-b border-[var(--border-soft)] px-4 py-3">
-            <input
-              type="search"
-              inputMode="tel"
-              autoComplete="off"
-              value={phoneQuery}
-              onChange={(event) => setPhoneQuery(event.target.value)}
-              placeholder="Buscar por teléfono…"
-              aria-label="Buscar reservas por teléfono"
-              className="w-full rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] transition focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+      {/* Una sola cosa a la vez, en todos los tamaños: o la lista a ancho
+          completo, o el detalle de la reserva elegida. Las tres columnas fijas
+          del rediseño original (lista angosta, detalle, chat) dejaban la lista
+          en una tira de 360 px aunque hubiera pantalla de sobra, y recepción
+          barre la lista mucho más seguido de lo que abre una reserva. */}
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-3 sm:p-4 xl:p-5">
+        {detalleAbierto ? (
+          /* Abajo de `xl` este contenedor es el único que scrollea y sus dos
+             hijos van uno debajo del otro sin encogerse (`max-xl:shrink-0` en
+             cada uno): primero el detalle completo y después el chat. Si se los
+             deja encoger, el chat se le monta encima al detalle y tapa el
+             titular y las stat cards. Desde `xl` van lado a lado y cada uno
+             scrollea por su cuenta. */
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto scrollbar-app xl:flex-row xl:gap-4 xl:overflow-hidden">
+            <ReservaDetalle
+              reserva={selectedReserva}
+              processed={activeTab === "procesadas"}
+              actionDisabled={actionDisabled}
+              onBack={() => setSelectedReserva(null)}
+              onComplete={(item) => void handleComplete(item)}
+              onCopy={(text) => void handleCopy(text)}
+              onReject={setRejectingReserva}
+              onReopen={(item) => void handleReopen(item)}
+            />
+            {/* La `key` por reserva remonta el panel: así el chat vuelve a
+                arrancar plegado en el teléfono cada vez que se elige otra. */}
+            <ChatPanel key={selectedReserva?.id ?? "sin-reserva"} reserva={selectedReserva} />
+          </div>
+        ) : (
+          /* La lista es CONTENEDOR, así que va en crema: las `ReservaCard` de
+              adentro son las que van en blanco y se levantan del fondo
+              (docs/REDESIGN.md §2.1). En blanco sobre blanco las cards solo se
+              distinguían por el borde y la lista entera se leía como un bloque
+              plano. */
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-app)]">
+            <TabsHeader
+              activeTab={activeTab}
+              pendingCount={pendingCount}
+              processedCount={procesadas.length}
+              refreshing={refreshing}
+              onChange={setActiveTab}
+              onRefresh={handleRefresh}
             />
 
-            {availableHotels.length >= 2 && (
-              <div className="relative">
-                <span
-                  className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px]"
-                  aria-hidden
-                >
-                  🏨
-                </span>
-                <select
-                  id="reservas-active-hotel"
-                  aria-label="Hotel activo"
-                  value={scopedHotelId ?? ""}
-                  onChange={(event) => {
-                    const nextHotelId = event.target.value;
-                    setActiveHotelId(nextHotelId);
-                    writeStoredActiveHotelId(nextHotelId);
-                    setSelectedReserva(null);
-                  }}
-                  className="w-full cursor-pointer appearance-none rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] py-2.5 pl-10 pr-10 text-[13.5px] font-semibold text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
-                  style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238a857c'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
-                    backgroundRepeat: "no-repeat",
-                    backgroundPosition: "right 0.75rem center",
-                    backgroundSize: "1rem",
-                  }}
-                >
-                  {availableHotels.map((hotel) => (
-                    <option key={hotel.id} value={hotel.id}>
-                      {hotel.name}
-                    </option>
+            {/* Con la lista a ancho completo el buscador y el hotel entran en la
+                misma línea desde `sm`; en el teléfono siguen apilados. */}
+            <div className="flex shrink-0 flex-col gap-2.5 border-b border-[var(--border-soft)] px-4 py-3 sm:flex-row sm:items-center">
+              <input
+                type="search"
+                inputMode="tel"
+                autoComplete="off"
+                value={phoneQuery}
+                onChange={(event) => setPhoneQuery(event.target.value)}
+                placeholder="Buscar por teléfono…"
+                aria-label="Buscar reservas por teléfono"
+                className="w-full rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] transition focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 sm:min-w-0 sm:flex-1"
+              />
+
+              {availableHotels.length >= 2 && (
+                <div className="relative sm:w-[280px] sm:shrink-0">
+                  <span
+                    className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px]"
+                    aria-hidden
+                  >
+                    🏨
+                  </span>
+                  <select
+                    id="reservas-active-hotel"
+                    aria-label="Hotel activo"
+                    value={scopedHotelId ?? ""}
+                    onChange={(event) => {
+                      const nextHotelId = event.target.value;
+                      setActiveHotelId(nextHotelId);
+                      writeStoredActiveHotelId(nextHotelId);
+                      setSelectedReserva(null);
+                    }}
+                    className="w-full cursor-pointer appearance-none rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] py-2.5 pl-10 pr-10 text-[13.5px] font-semibold text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
+                    style={{
+                      backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238a857c'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`,
+                      backgroundRepeat: "no-repeat",
+                      backgroundPosition: "right 0.75rem center",
+                      backgroundSize: "1rem",
+                    }}
+                  >
+                    {availableHotels.map((hotel) => (
+                      <option key={hotel.id} value={hotel.id}>
+                        {hotel.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 scrollbar-app">
+              {loading ? (
+                <p className="py-12 text-center text-sm text-[var(--text-secondary)]">Cargando reservas...</p>
+              ) : filteredReservas.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <p className="max-w-[260px] text-[13.5px] leading-relaxed text-[var(--text-secondary)]">
+                    {phoneQueryDigits && visibleReservas.length > 0 ? noPhoneMatchMessage : emptyMessage}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredReservas.map((reserva) => (
+                    <ReservaCard
+                      key={reserva.id}
+                      reserva={reserva}
+                      selected={selectedReserva?.id === reserva.id && selectedStillVisible}
+                      onSelect={setSelectedReserva}
+                    />
                   ))}
-                </select>
-              </div>
-            )}
-          </div>
-
-          <div className="p-3 scrollbar-app xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
-            {loading ? (
-              <p className="py-12 text-center text-sm text-[var(--text-secondary)]">Cargando reservas...</p>
-            ) : filteredReservas.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <p className="max-w-[260px] text-[13.5px] leading-relaxed text-[var(--text-secondary)]">
-                  {phoneQueryDigits && visibleReservas.length > 0 ? noPhoneMatchMessage : emptyMessage}
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-2.5">
-                {filteredReservas.map((reserva) => (
-                  <ReservaCard
-                    key={reserva.id}
-                    reserva={reserva}
-                    selected={selectedReserva?.id === reserva.id && selectedStillVisible}
-                    onSelect={setSelectedReserva}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-
-        <div
-          className={`${
-            detalleAbierto
-              ? "fixed inset-0 z-[100] flex flex-col gap-3 overflow-y-auto bg-[var(--bg-app)] p-3 pt-[max(0.75rem,env(safe-area-inset-top))] max-lg:pb-[calc(62px+env(safe-area-inset-bottom,0px))] scrollbar-app"
-              : "hidden"
-          } xl:static xl:z-auto xl:contents xl:overflow-visible xl:bg-transparent xl:p-0`}
-        >
-          <ReservaDetalle
-            reserva={selectedReserva}
-            processed={activeTab === "procesadas"}
-            actionDisabled={actionDisabled}
-            onBack={() => setSelectedReserva(null)}
-            onComplete={(item) => void handleComplete(item)}
-            onCopy={(text) => void handleCopy(text)}
-            onReject={setRejectingReserva}
-            onReopen={(item) => void handleReopen(item)}
-          />
-          {/* La `key` por reserva remonta el panel: así el chat vuelve a
-              arrancar plegado en el teléfono cada vez que se elige otra. */}
-          <ChatPanel key={selectedReserva?.id ?? "sin-reserva"} reserva={selectedReserva} />
-        </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
       </main>
 
       <RejectModal

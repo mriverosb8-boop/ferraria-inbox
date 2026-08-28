@@ -82,15 +82,9 @@ export function ChatPanel({ reserva }: Props) {
     list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
   }, [messages.length, reserva?.id, chatAbierto]);
 
-  if (!reserva) {
-    return (
-      <aside className="hidden min-h-0 flex-col items-center justify-center rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] p-5 shadow-sm xl:flex">
-        <p className="max-w-[240px] text-center text-[13px] leading-relaxed text-[var(--text-secondary)]">
-          Acá vas a ver el chat de WhatsApp de la reserva que elijas.
-        </p>
-      </aside>
-    );
-  }
+  // Sin reserva no hay chat que mostrar: este panel ya no es una columna fija al
+  // lado de la lista, vive dentro del detalle de la reserva abierta.
+  if (!reserva) return null;
 
   const guestName = reserva.titular_nombre || conversation?.guest.name || "Huésped";
   const avatar = avatarFlatColors(reserva.id);
@@ -101,7 +95,10 @@ export function ChatPanel({ reserva }: Props) {
     // de arriba nunca quede aplastado ni tapado) y la conversación tiene su
     // propio tope de alto, para que el botón de "Abrir en Huéspedes" siga
     // quedando al final de todo y a la vista.
-    <aside className="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] shadow-sm max-xl:shrink-0 xl:h-full xl:min-h-0">
+    //
+    // Desde `xl` el chat se para al lado del detalle con ancho fijo y toma toda
+    // la altura del área de la reserva abierta.
+    <aside className="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] shadow-sm max-xl:shrink-0 xl:h-full xl:min-h-0 xl:w-[360px] xl:shrink-0">
       <header className="flex min-h-14 shrink-0 items-center gap-2.5 border-b border-[var(--border-soft)] px-4 py-3">
         <span
           className="ibx-mono flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-[12px] font-bold"

@@ -154,15 +154,10 @@ export function ReservaDetalle({
   onReject,
   onReopen,
 }: Props) {
-  if (!reserva) {
-    return (
-      <section className="hidden min-h-0 items-center justify-center xl:flex">
-        <p className="max-w-[280px] text-center text-[13.5px] leading-relaxed text-[var(--text-secondary)]">
-          Elegí una reserva de la lista para ver el detalle y pasarla al PMS.
-        </p>
-      </section>
-    );
-  }
+  // Sin reserva no hay nada que mostrar: el detalle ya no es una columna fija
+  // al lado de la lista, se abre encima de ella y solo existe mientras haya una
+  // reserva elegida.
+  if (!reserva) return null;
 
   const quote = reserva.quote_requests;
   const nombre = reserva.titular_nombre || "Titular sin nombre";
@@ -176,13 +171,14 @@ export function ReservaDetalle({
     // `shrink-0` abajo de `xl`: el contenedor del detalle es una columna flex
     // con scroll y sin esto el navegador comprimía esta sección para meter el
     // chat en pantalla, así que el titular y las cuatro stat cards quedaban
-    // debajo del chat en vez de arriba.
-    <section className="flex min-h-0 flex-col gap-3.5 max-xl:shrink-0 xl:overflow-y-auto xl:pr-1 scrollbar-app">
+    // debajo del chat en vez de arriba. Desde `xl` el detalle y el chat quedan
+    // lado a lado y esta sección toma el ancho sobrante con su propio scroll.
+    <section className="flex min-h-0 flex-col gap-3.5 max-xl:shrink-0 xl:min-w-0 xl:flex-1 xl:overflow-y-auto xl:pr-1 scrollbar-app">
       <header className="flex flex-wrap items-start gap-3">
         <button
           type="button"
           onClick={onBack}
-          className="flex min-h-[40px] shrink-0 items-center gap-2 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3 text-[13px] font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-app)] xl:hidden"
+          className="flex min-h-[40px] shrink-0 items-center gap-2 rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-3 text-[13px] font-semibold text-[var(--text-primary)] transition hover:bg-[var(--bg-app)]"
         >
           <IconArrowLeft className="h-4 w-4" aria-hidden />
           Volver a la lista
