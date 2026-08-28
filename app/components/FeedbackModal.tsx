@@ -87,11 +87,11 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
       />
       <div
         className="absolute left-1/2 top-1/2 flex max-h-[calc(100dvh-2rem)] w-[min(calc(100vw-2rem),28rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-3xl"
-        style={{ border: "1px solid var(--line)", background: "var(--panel)", boxShadow: "var(--shadow-lg)" }}
+        style={{ border: "1px solid var(--line)", background: "var(--bg-card)", boxShadow: "var(--shadow-lg)" }}
       >
         <div
           className="px-5 py-4"
-          style={{ background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 62%, #fb5142 100%)" }}
+          style={{ background: "var(--accent)" }}
         >
           <p className="text-[11px] font-semibold uppercase tracking-wider text-white/80">FerrarIA</p>
           <h2 id="feedback-title" className="grotesk mt-1 text-lg font-bold tracking-tight text-white">
@@ -118,8 +118,8 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
                     className="grotesk flex-1 rounded-xl px-3 py-2 text-[13px] font-semibold transition"
                     style={
                       active
-                        ? { border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }
-                        : { border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink-2)" }
+                        ? { border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }
+                        : { border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink-2)" }
                     }
                     aria-pressed={active}
                   >
@@ -145,7 +145,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
                     className="flex h-9 w-9 items-center justify-center rounded-lg text-[15px] transition"
                     style={{
                       border: `1px solid ${active ? "var(--gold)" : "var(--line)"}`,
-                      background: active ? "var(--gold-soft)" : "var(--panel-2)",
+                      background: active ? "var(--gold-soft)" : "var(--bg-card)",
                       color: active ? "var(--gold)" : "var(--ink-3)",
                     }}
                     aria-label={`${value} de 5`}
@@ -171,8 +171,8 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
               }}
               maxLength={MESSAGE_MAX_LENGTH}
               placeholder="Escribe aquí tu comentario…"
-              className="min-h-28 w-full resize-none rounded-xl px-3.5 py-3 text-[14px] shadow-sm outline-none transition focus:ring-2 focus:ring-[var(--red)]/25"
-              style={{ border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--ink)" }}
+              className="min-h-28 w-full resize-none rounded-xl px-3.5 py-3 text-[14px] shadow-sm outline-none transition focus:ring-2 focus:ring-[var(--accent)]/25"
+              style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink)" }}
               disabled={submitting}
             />
             <p className="mt-1 text-right text-[11px]" style={{ color: "var(--ink-3)" }}>
@@ -183,7 +183,7 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
           {error && (
             <p
               className="rounded-lg px-3 py-2 text-[12px]"
-              style={{ border: "1px solid var(--red)", background: "var(--red-soft)", color: "var(--red-deep)" }}
+              style={{ border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" }}
             >
               {error}
             </p>
@@ -194,8 +194,8 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
               type="button"
               onClick={handleClose}
               disabled={submitting}
-              className="rounded-xl px-4 py-2.5 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--panel-3)] disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ border: "1px solid var(--line)", background: "var(--panel)", color: "var(--ink-2)" }}
+              className="rounded-xl px-4 py-2.5 text-[13px] font-semibold shadow-sm transition hover:bg-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-60"
+              style={{ border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink-2)" }}
             >
               Cancelar
             </button>
@@ -205,8 +205,8 @@ export function FeedbackModal({ open, activeHotelId, onClose, onSuccess }: Feedb
               aria-busy={submitting}
               className="grotesk rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white shadow-md transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
               style={{
-                background: "linear-gradient(100deg, var(--red-deep) 0%, var(--red) 100%)",
-                boxShadow: "0 6px 16px -6px rgba(196,43,32,.5)",
+                background: "linear-gradient(100deg, var(--accent) 0%, var(--accent) 100%)",
+                boxShadow: "0 6px 16px -6px color-mix(in srgb, var(--accent) 50%, transparent)",
               }}
             >
               {submitting ? "Enviando…" : "Enviar feedback"}

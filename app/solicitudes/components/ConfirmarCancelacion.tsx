@@ -29,23 +29,23 @@ export function ConfirmarCancelacion({
 
   return (
     <div
-      className="fixed inset-0 z-[500] flex items-center justify-center bg-[var(--ink)]/35 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[500] flex items-center justify-center bg-[var(--text-primary)]/35 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-md rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-5 shadow-2xl shadow-[var(--ink)]/15 ring-1 ring-black/[0.04]">
-        <h2 className="grotesk text-lg font-bold tracking-tight text-[var(--ink)]">
+      <div className="w-full max-w-md rounded-[var(--radius-card)] border border-[var(--border-soft)] bg-[var(--bg-card)] p-5 shadow-2xl">
+        <h2 className="grotesk text-[17px] font-bold tracking-tight text-[var(--text-primary)]">
           ¿Cancelar esta solicitud?
         </h2>
-        <p className="mt-2 text-[14px] font-semibold text-[var(--ink)]">
+        <p className="mt-2 text-[14px] font-semibold text-[var(--text-primary)]">
           {categoria} · {habitacion ? `Habitación ${habitacion}` : "Sin habitación"}
         </p>
         {ticket.descripcion?.trim() && (
-          <p className="mt-1 text-[14px] leading-relaxed text-[var(--ink-2)]">
+          <p className="mt-1 text-[14px] leading-relaxed text-[var(--text-secondary)]">
             {ticket.descripcion.trim()}
           </p>
         )}
-        <p className="mt-3 text-[13px] leading-relaxed text-[var(--ink-2)]">
+        <p className="mt-3 text-[13px] leading-relaxed text-[var(--text-secondary)]">
           Cancelarla significa que no se va a atender. No se puede reabrir: si después hay que
           hacerla, toca crear una solicitud nueva. El huésped no recibe ningún aviso automático.
         </p>
@@ -54,7 +54,7 @@ export function ConfirmarCancelacion({
             type="button"
             onClick={onCerrar}
             disabled={enviando}
-            className="min-h-[44px] rounded-xl border border-[var(--line)] bg-[var(--panel)] px-4 py-2.5 text-[14px] font-semibold text-[var(--ink-2)] transition hover:bg-[var(--panel-3)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-[44px] rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 py-2.5 text-[14px] font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--bg-app)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             No, dejarla como está
           </button>
@@ -62,7 +62,7 @@ export function ConfirmarCancelacion({
             type="button"
             onClick={onConfirmar}
             disabled={enviando}
-            className="min-h-[44px] rounded-xl bg-rose-600 px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm ring-1 ring-rose-700/30 transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-[44px] rounded-[var(--radius-chip)] bg-[var(--accent)] px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {enviando ? "Cancelando..." : "Sí, cancelar la solicitud"}
           </button>

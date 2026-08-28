@@ -44,7 +44,11 @@ export function ThemeToggle({
   variant = "bar",
 }: {
   className?: string;
-  variant?: "bar" | "menu";
+  /**
+   * `bar` barra roja · `menu` fila de menú (un solo botón que alterna) ·
+   * `opciones` las dos opciones visibles a la vez, para el menú de usuario.
+   */
+  variant?: "bar" | "menu" | "opciones";
 }) {
   const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, getThemeServerSnapshot);
 
@@ -52,6 +56,49 @@ export function ThemeToggle({
 
   const isDark = theme === "dark";
   const label = isDark ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
+
+  if (variant === "opciones") {
+    // Las dos opciones a la vista y la activa marcada: en una tablet sin hover
+    // un botón que solo dice "Oscuro" no deja claro si ese es el tema puesto o
+    // el que se va a poner.
+    const optionBase =
+      "grotesk inline-flex flex-1 items-center justify-center gap-1.5 rounded-[10px] px-2 py-1.5 text-[12.5px] font-semibold transition-colors";
+    const optionOn = { border: "1px solid var(--accent)", background: "var(--red-soft)", color: "var(--accent)" };
+    const optionOff = { border: "1px solid var(--line)", background: "var(--bg-card)", color: "var(--ink-2)" };
+
+    return (
+      <div className={`px-3.5 py-2.5 ${className}`}>
+        <p
+          className="ibx-mono mb-1.5 text-[10.5px] font-bold uppercase tracking-wider"
+          style={{ color: "var(--ink-3)" }}
+        >
+          Tema
+        </p>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setTheme("light")}
+            className={optionBase}
+            style={isDark ? optionOff : optionOn}
+            aria-pressed={!isDark}
+          >
+            <IconSun className="h-4 w-4 shrink-0" aria-hidden />
+            Claro
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme("dark")}
+            className={optionBase}
+            style={isDark ? optionOn : optionOff}
+            aria-pressed={isDark}
+          >
+            <IconMoon className="h-4 w-4 shrink-0" aria-hidden />
+            Oscuro
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (variant === "menu") {
     return (
