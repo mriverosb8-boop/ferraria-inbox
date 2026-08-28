@@ -54,7 +54,7 @@ export function TabsHeader({
             Reservas
           </h1>
           <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--text-secondary)]">
-            Capturadas por WhatsApp Flows, listas para subir al PMS.
+            Capturadas por WhatsApp, listas para subir al PMS.
           </p>
         </div>
         {onRefresh && (
