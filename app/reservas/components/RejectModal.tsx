@@ -37,7 +37,7 @@ export function RejectModal({ reserva, submitting, onClose, onConfirm }: Props) 
           </span>
         </h2>
         <p className="mt-2 text-[13px] leading-relaxed text-[var(--text-secondary)]">
-          La reserva queda marcada como rechazada. Contá el motivo:
+          La reserva queda marcada como rechazada. Cuenta el motivo:
         </p>
         <textarea
           value={reason}

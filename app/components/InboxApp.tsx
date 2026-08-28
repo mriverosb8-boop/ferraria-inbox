@@ -4367,7 +4367,7 @@ export default function InboxApp() {
                     className="px-5 py-2.5 text-[12px] leading-relaxed"
                     style={{ color: "var(--text-secondary)", borderBottom: "1px solid var(--border-soft)" }}
                   >
-                    Mostrando los resultados más recientes. Si no está el que buscás, afiná el
+                    Mostrando los resultados más recientes. Si no está el que buscas, afina el
                     término.
                   </p>
                 )}
