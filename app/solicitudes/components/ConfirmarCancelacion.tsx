@@ -1,5 +1,6 @@
 "use client";
 
+import { Spinner } from "@/app/components/Spinner";
 import {
   CATEGORIA_LABEL,
   normalizeArea,
@@ -54,7 +55,7 @@ export function ConfirmarCancelacion({
             type="button"
             onClick={onCerrar}
             disabled={enviando}
-            className="min-h-[44px] rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 py-2.5 text-[14px] font-semibold text-[var(--text-secondary)] transition hover:bg-[var(--bg-app)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="ibx-press min-h-[44px] rounded-[var(--radius-chip)] border border-[var(--border-soft)] bg-[var(--bg-card)] px-4 py-2.5 text-[14px] font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-app)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             No, dejarla como está
           </button>
@@ -62,9 +63,11 @@ export function ConfirmarCancelacion({
             type="button"
             onClick={onConfirmar}
             disabled={enviando}
-            className="min-h-[44px] rounded-[var(--radius-chip)] bg-[var(--accent)] px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+            aria-busy={enviando}
+            className="ibx-press inline-flex min-h-[44px] items-center gap-2 rounded-[var(--radius-chip)] bg-[var(--accent)] px-4 py-2.5 text-[14px] font-semibold text-white shadow-sm hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {enviando ? "Cancelando..." : "Sí, cancelar la solicitud"}
+            {enviando && <Spinner className="h-4 w-4 animate-spin" />}
+            {enviando ? "Cancelando…" : "Sí, cancelar la solicitud"}
           </button>
         </div>
       </div>

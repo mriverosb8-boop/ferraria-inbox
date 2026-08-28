@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 /** Estilo compartido de las filas del menú hamburguesa (móvil). */
 export const HEADER_MENU_ROW_CLASS =
-  "grotesk flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-semibold text-[var(--ink-2)] transition-colors hover:bg-[var(--bg-app)] disabled:opacity-50";
+  "ibx-press grotesk flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-semibold text-[var(--ink-2)] hover:bg-[var(--bg-app)] disabled:opacity-50";
 
 function IconMenu({ className }: { className?: string }) {
   return (

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import type { SVGProps } from "react";
+import { useState, type SVGProps } from "react";
+import { Spinner } from "@/app/components/Spinner";
 import {
   CATEGORIA_LABEL,
   ESTADO_LABEL,
@@ -49,7 +50,10 @@ const ESTADO_PUNTO: Readonly<Record<TicketEstado, string>> = {
 };
 
 const BOTON_BASE =
-  "grotesk inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50";
+  "ibx-press grotesk inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold disabled:cursor-not-allowed disabled:opacity-50";
+
+/** Cuál de los tres botones de la card se apretó, para saber dónde va el spinner. */
+type AccionEnCurso = "tomar" | "resolver" | "cancelar" | null;
 
 function IconPersona(props: SVGProps<SVGSVGElement>) {
   return (
@@ -96,6 +100,22 @@ export function TicketCard({
   onCambiarEstado: (ticket: ServiceTicket, estado: TicketEstado) => void;
   onPedirCancelacion: (ticket: ServiceTicket) => void;
 }) {
+  /**
+   * `ocupado` viene de arriba y solo dice "esta solicitud está resolviendo
+   * algo", no CUÁL de los tres botones se apretó. Eso se recuerda acá, que es
+   * el único lugar que lo sabe, para que el spinner salga en el botón que la
+   * recepcionista tocó y no en los tres a la vez.
+   */
+  const [accionPedida, setAccionPedida] = useState<AccionEnCurso>(null);
+
+  /*
+    Se deriva en vez de limpiarse con un efecto: apenas `ocupado` vuelve a
+    false el spinner se apaga solo, salga bien o falle la acción. Guardarlo en
+    estado y limpiarlo aparte dejaría el botón girando para siempre el día que
+    la petición falle.
+  */
+  const accionEnCurso: AccionEnCurso = ocupado ? accionPedida : null;
+
   const estado = estadoDe(ticket);
   const area = normalizeArea(ticket.categoria);
   const categoria = CATEGORIA_LABEL[area];
@@ -171,11 +191,24 @@ export function TicketCard({
           <button
             type="button"
             disabled={ocupado}
-            onClick={() => onCambiarEstado(ticket, "en_curso")}
+            aria-busy={accionEnCurso === "tomar"}
+            onClick={() => {
+              setAccionPedida("tomar");
+              onCambiarEstado(ticket, "en_curso");
+            }}
             className={`${BOTON_BASE} border border-[var(--border-soft)] bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-app)]`}
           >
-            <IconPersona className="h-4 w-4" aria-hidden />
-            Tomar
+            {accionEnCurso === "tomar" ? (
+              <>
+                <Spinner className="h-4 w-4 animate-spin" />
+                Tomando…
+              </>
+            ) : (
+              <>
+                <IconPersona className="h-4 w-4" aria-hidden />
+                Tomar
+              </>
+            )}
           </button>
         )}
 
@@ -183,19 +216,37 @@ export function TicketCard({
           <button
             type="button"
             disabled={ocupado}
-            onClick={() => onCambiarEstado(ticket, "resuelto")}
+            aria-busy={accionEnCurso === "resolver"}
+            onClick={() => {
+              setAccionPedida("resolver");
+              onCambiarEstado(ticket, "resuelto");
+            }}
             className={`${BOTON_BASE} bg-[var(--accent)] text-white shadow-sm hover:bg-[var(--accent-hover)]`}
           >
-            <IconCheck className="h-4 w-4" aria-hidden />
-            Resolver
+            {accionEnCurso === "resolver" ? (
+              <>
+                <Spinner className="h-4 w-4 animate-spin" />
+                Resolviendo…
+              </>
+            ) : (
+              <>
+                <IconCheck className="h-4 w-4" aria-hidden />
+                Resolver
+              </>
+            )}
           </button>
         )}
 
+        {/* Cancelar abre la confirmación, no manda nada: por eso no lleva
+            spinner. El estado del envío se lee dentro del diálogo. */}
         {puedeCancelar && (
           <button
             type="button"
             disabled={ocupado}
-            onClick={() => onPedirCancelacion(ticket)}
+            onClick={() => {
+              setAccionPedida("cancelar");
+              onPedirCancelacion(ticket);
+            }}
             className={`${BOTON_BASE} bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-app)] hover:text-[var(--text-primary)]`}
           >
             Cancelar
@@ -214,7 +265,7 @@ export function TicketCard({
         {ticket.conversation_id && (
           <Link
             href={`/?conversationId=${encodeURIComponent(ticket.conversation_id)}`}
-            className="grotesk ml-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-chip)] px-3 text-[13.5px] font-semibold text-[var(--accent)] transition hover:bg-[var(--red-soft)]"
+            className="ibx-press grotesk ml-auto inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-chip)] px-3 text-[13.5px] font-semibold text-[var(--accent)] hover:bg-[var(--red-soft)]"
           >
             <IconChat className="h-4 w-4" aria-hidden />
             Ver conversación

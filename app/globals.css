@@ -320,3 +320,170 @@ body {
   }
 }
 
+
+/* ── Feedback de click universal (microinteracciones) ──────────────────
+   Regla de la tanda: TODO interactivo tiene que responder al dedo y al mouse.
+   El hover ya lo ponían `.d-*`; lo que faltaba era el `:active`, que es el que
+   confirma "sí, te leí el toque" en una tablet, donde no hay hover ninguno.
+
+   El hundido va por `transform` y no por color: se lee igual sobre el crema,
+   sobre el blanco y sobre el terracota, y no pelea con los colores de estado.
+   Las filas se hunden menos que los botones porque son anchas y un 4% ahí ya
+   se nota como un salto. */
+.d-row,
+.d-act,
+.d-soft,
+.d-chip,
+.d-prim,
+.ibx-press {
+  transition: background 0.12s, border-color 0.12s, color 0.12s, box-shadow 0.12s,
+    transform 0.08s ease-out;
+}
+
+.ibx-press:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.d-row:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.d-act:active:not(:disabled),
+.d-soft:active:not(:disabled),
+.d-chip:active:not(:disabled),
+.d-prim:active:not(:disabled),
+.ibx-press:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+/* Un botón deshabilitado (o en pleno envío) no se ilumina ni se hunde: si
+   respondiera al toque, recepción volvería a apretarlo creyendo que no pasó
+   nada. */
+.d-row:disabled:hover,
+.d-act:disabled:hover,
+.d-soft:disabled:hover,
+.d-chip:disabled:hover,
+.d-prim:disabled:hover,
+.ibx-press:disabled:hover {
+  filter: none;
+  transform: none;
+}
+
+.d-row:disabled,
+.d-act:disabled,
+.d-soft:disabled,
+.d-chip:disabled,
+.d-prim:disabled,
+.ibx-press:disabled {
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .d-row,
+  .d-act,
+  .d-soft,
+  .d-chip,
+  .d-prim,
+  .ibx-press {
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+
+  .d-row:active:not(:disabled),
+  .d-act:active:not(:disabled),
+  .d-soft:active:not(:disabled),
+  .d-chip:active:not(:disabled),
+  .d-prim:active:not(:disabled),
+  .ibx-press:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Latido para las acciones que están resolviendo y no tienen dónde meter un
+   spinner (el interruptor de la IA, por ejemplo). Es la MISMA señal que el
+   spinner: "esto está en curso, no lo vuelvas a tocar". */
+@keyframes ibx-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+.ibx-pulse {
+  animation: ibx-pulse 1.05s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibx-pulse {
+    animation: none;
+    opacity: 0.65;
+  }
+}
+
+/* Card que se levanta al pasar el mouse: sombra más marcada, borde con más
+   contraste y dos píxeles de elevación. Se usa en las tarjetas anchas de
+   Reservas, donde el hover discreto de una fila de lista se quedaba corto. */
+.ibx-lift {
+  transition: box-shadow 0.14s ease-out, border-color 0.14s, transform 0.12s ease-out;
+}
+.ibx-lift:hover:not(:disabled) {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+.ibx-lift:active:not(:disabled) {
+  transform: translateY(0) scale(0.995);
+  box-shadow: var(--shadow-sm);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibx-lift:hover:not(:disabled),
+  .ibx-lift:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ── Chat estilo WhatsApp ──────────────────────────────────────────────
+   La burbuja recién enviada emerge desde el compositor: sube unos píxeles,
+   crece del 94% al 100% y aparece. Dura menos de 200 ms a propósito — es un
+   acuse de "salió", no una animación para mirar. Solo la corren las burbujas
+   optimistas (las que acaban de salir de este navegador): el historial y lo que
+   llega por la actualización en vivo entran sin animación. */
+@keyframes ibx-bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.ibx-bubble-in {
+  animation: ibx-bubble-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: bottom right;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibx-bubble-in {
+    animation: none;
+  }
+}
+
+/* Botón flotante "Ir al final": entra desde abajo cuando el hilo deja de estar
+   pegado al final. */
+@keyframes ibx-fab-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.ibx-fab-in {
+  animation: ibx-fab-in 160ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibx-fab-in {
+    animation: none;
+  }
+}

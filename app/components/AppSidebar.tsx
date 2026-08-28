@@ -17,6 +17,7 @@ import { FeedbackModal } from "./FeedbackModal";
 import { HEADER_MENU_ROW_CLASS } from "./HeaderMobileMenu";
 import { HelpModal } from "./HelpModal";
 import { LogoutButton } from "./LogoutButton";
+import { Spinner } from "./Spinner";
 import { ThemeToggle } from "./ThemeToggle";
 
 /** Vista client-side de la página de conversaciones. NO son rutas. */
@@ -466,6 +467,12 @@ export function AppSidebar({
   // matiz —no están llegando avisos— y eso es lo que dice la diagonal. El
   // matiz se lee en el panel, en los estados que lo abren.
   const notifMuted = push.status !== "subscribed";
+  /**
+   * El navegador está resolviendo el permiso. Es el único estado de la campana
+   * en el que tocarla no hace nada, así que también es el único que la apaga y
+   * le pone spinner.
+   */
+  const notifBusy = push.status === "subscribing";
 
   /**
    * Un toque en la campana.
@@ -496,7 +503,7 @@ export function AppSidebar({
   };
 
   const itemBase =
-    "grotesk relative flex select-none flex-col items-center justify-center gap-1 rounded-[12px] px-1 py-2 text-[10.5px] font-semibold leading-none transition max-lg:min-w-0 max-lg:flex-1 lg:w-full lg:py-2.5";
+    "ibx-press grotesk relative flex select-none flex-col items-center justify-center gap-1 rounded-[12px] px-1 py-2 text-[10.5px] font-semibold leading-none max-lg:min-w-0 max-lg:flex-1 lg:w-full lg:py-2.5";
   // Hover sobre el rojo: overlay blanco al 10%. No se oscurece el terracota.
   const itemInactive = "text-white/85 hover:bg-white/10";
   const itemActive = "bg-white shadow-sm";
@@ -580,16 +587,26 @@ export function AppSidebar({
             36px, no un texto, y es el único acceso al estado del permiso en
             móvil. */}
         <div ref={notifRef} className="flex shrink-0 items-center justify-center lg:w-full">
+          {/* Mientras el navegador resuelve el permiso la campana se cambia por
+              el spinner y queda deshabilitada: prender las notificaciones tarda
+              lo que tarde el diálogo del sistema, y sin señal la recepcionista
+              vuelve a tocar la campana creyendo que no pasó nada. */}
           <button
             type="button"
             onClick={onBellClick}
-            className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition hover:bg-white/25"
+            disabled={notifBusy}
+            aria-busy={notifBusy}
+            className="ibx-press relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-white/25 disabled:cursor-wait disabled:opacity-70"
             style={{ background: "rgba(255,255,255,.18)", color: "#fff", border: "1px solid rgba(255,255,255,.3)" }}
             aria-haspopup="dialog"
             aria-expanded={notifOpen}
-            aria-label={`Notificaciones: ${notif.short}`}
+            aria-label={notifBusy ? "Activando notificaciones…" : `Notificaciones: ${notif.short}`}
           >
-            <IconBell className="h-[18px] w-[18px]" muted={notifMuted} />
+            {notifBusy ? (
+              <Spinner className="h-[18px] w-[18px] animate-spin" />
+            ) : (
+              <IconBell className="h-[18px] w-[18px]" muted={notifMuted} />
+            )}
           </button>
 
           {notifOpen && (
@@ -624,14 +641,17 @@ export function AppSidebar({
                       setNotifOpen(false);
                     }
                   }}
-                  className="grotesk mt-3 w-full rounded-[var(--radius-chip)] px-3 py-2 text-[13px] font-bold transition-colors"
+                  disabled={notifBusy}
+                  aria-busy={notifBusy}
+                  className="ibx-press grotesk mt-3 inline-flex w-full items-center justify-center gap-2 rounded-[var(--radius-chip)] px-3 py-2 text-[13px] font-bold disabled:cursor-wait disabled:opacity-70"
                   style={
                     push.status === "subscribed"
                       ? { border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-primary)" }
                       : { background: "var(--accent)", color: "#fff" }
                   }
                 >
-                  {notif.action}
+                  {notifBusy && <Spinner className="h-4 w-4 animate-spin" />}
+                  {notifBusy ? "Activando…" : notif.action}
                 </button>
               )}
             </div>
@@ -645,7 +665,7 @@ export function AppSidebar({
               setNotifOpen(false);
               setMenuOpen((value) => !value);
             }}
-            className="grotesk relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold uppercase transition hover:bg-white/25"
+            className="ibx-press grotesk relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold uppercase hover:bg-white/25"
             style={{ background: "rgba(255,255,255,.18)", color: "#fff", border: "1px solid rgba(255,255,255,.3)" }}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
