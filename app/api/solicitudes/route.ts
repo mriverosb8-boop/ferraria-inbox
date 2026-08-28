@@ -295,7 +295,7 @@ export async function PATCH(request: Request) {
     }
     if (!data) {
       return NextResponse.json(
-        { error: "Otra persona cambió esta solicitud. Actualizá la lista.", conflicto: true },
+        { error: "Otra persona cambió esta solicitud. Actualiza la lista.", conflicto: true },
         { status: 409 }
       );
     }

@@ -263,7 +263,7 @@ export function SolicitudesScreen() {
                 Tu usuario todavía no tiene acceso a las solicitudes
               </p>
               <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-[var(--text-secondary)]">
-                Pedile a un administrador que revise tu perfil y el hotel al que estás asignado.
+                Pídele a un administrador que revise tu perfil y el hotel al que estás asignado.
               </p>
             </div>
           )}
