@@ -305,3 +305,18 @@ body {
   }
 }
 
+/* Ruedita del botón de recargar la lista: gira en bucle mientras el mouse está
+   encima. Es un guiño, no información — mientras la lista se está refrescando
+   de verdad el botón cambia al spinner de carga de siempre, así que el giro del
+   hover nunca se confunde con "estoy cargando". `linear` e infinito para que no
+   tenga arranque ni frenada: quien no pase el mouse no se pierde nada, y bajo
+   `prefers-reduced-motion` no gira. */
+.ibx-refresh-hover:hover .ibx-refresh-icon {
+  animation: ibx-brand-spin 1600ms linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibx-refresh-hover:hover .ibx-refresh-icon {
+    animation: none;
+  }
+}
+

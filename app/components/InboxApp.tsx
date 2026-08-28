@@ -265,19 +265,22 @@ function Dot({ size = 7, color }: { size?: number; color: string }) {
  * vida del agente y en un hilo con el personal el agente no interviene.
  */
 
-/** Glifo, palabra y color de cada estado en el prefijo del preview (spec 4.3). */
+/** Glifo, palabra y color de cada estado, bajo el preview de la fila (spec 4.3). */
 const GUEST_STATUS_PREFIX: Record<StatusVariant, { glyph: string; label: string; color: string }> = {
   pending: { glyph: "●", label: "Pendiente", color: "var(--accent)" },
   attention: { glyph: "●", label: "Atención", color: "var(--accent)" },
   human: { glyph: "●", label: "Humano", color: "var(--gold)" },
-  ia: { glyph: "✦", label: "IA activa", color: "var(--live)" },
-  done: { glyph: "✓", label: "Hecha", color: "var(--text-secondary)" },
+  ia: { glyph: "✦", label: "IA", color: "var(--live)" },
+  done: { glyph: "✓", label: "Completada", color: "var(--text-secondary)" },
 };
 
 /**
- * Prefijo de estado de la fila de Huéspedes: va pegado al preview del último
- * mensaje, en la misma línea, y reemplaza a la pastilla `StatusToken` que antes
+ * Estado de la fila de Huéspedes: va en su propio renglón, justo debajo del
+ * preview del último mensaje, y reemplaza a la pastilla `StatusToken` que antes
  * ocupaba un renglón entero de la fila.
+ *
+ * Tiene renglón propio porque compartirlo con el preview le comía el ancho al
+ * texto del mensaje, que es lo que la recepcionista viene a leer.
  *
  * Lleva la palabra al lado del glifo a propósito. El spec del rediseño pide el
  * símbolo (● / ✦ / ✓), pero recepción trabaja en tablets sin hover: un glifo
@@ -3404,14 +3407,14 @@ export default function InboxApp() {
           ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
         }}
       >
-        <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
+        <Avatar name={c.guest.name} seed={c.guest.id} size={46} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1.5">
             <span
               className="grotesk shrink truncate"
               style={{
                 fontWeight: 700,
-                fontSize: 14.5,
+                fontSize: 16,
                 letterSpacing: "-0.01em",
                 color: "var(--text-primary)",
               }}
@@ -3425,7 +3428,7 @@ export default function InboxApp() {
               {STAFF_ROLE_FALLBACK}
             </span>
             {c.blocked && <BlockedBadge className="shrink-0" />}
-            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
               {c.lastMessageAt}
             </span>
           </div>
@@ -3434,7 +3437,7 @@ export default function InboxApp() {
               className="min-w-0 flex-1 truncate"
               style={{
                 margin: 0,
-                fontSize: 13,
+                fontSize: 14,
                 color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
                 fontWeight: hasUnread ? 600 : 400,
               }}
@@ -3462,14 +3465,15 @@ export default function InboxApp() {
    * lugar: acá el estado del agente, allá el cargo de la persona. Comparten la
    * card (mismo padding, mismo borde rojo al seleccionar) y nada más.
    *
-   * Dos renglones: el estado es el prefijo del preview, la fila seleccionada se
-   * convierte en una card blanca con borde rojo sobre el crema, y la barra roja
-   * de la izquierda desapareció porque el punto rojo del prefijo dice lo mismo.
+   * Nombre y hora arriba, preview solo en su renglón, estado debajo. La fila
+   * seleccionada se convierte en una card blanca con borde rojo sobre el crema,
+   * y la barra roja de la izquierda desapareció porque el punto de color del
+   * estado dice lo mismo.
    *
-   * No se pierde ningún dato: lo que antes vivía en el tercer renglón
+   * No se pierde ningún dato: lo que antes vivía en el último renglón
    * (temporizador de seguimiento, "Volvió sola", triage, propiedad) sigue ahí.
    *
-   * Ese tercer renglón se reserva SIEMPRE, tenga contenido o no, y el botón
+   * Ese último renglón se reserva SIEMPRE, tenga contenido o no, y el botón
    * lleva una altura mínima. Antes la fila crecía solo cuando había un
    * distintivo, así que la lista quedaba escalonada: la conversación con chip se
    * veía más alta que la de al lado y el ojo lo lee como jerarquía cuando no lo
@@ -3508,7 +3512,7 @@ export default function InboxApp() {
           gap: 12,
           padding: "12px 13px",
           // Piso de altura para que ninguna fila quede diminuta aunque le
-          // falten datos. La uniformidad real la da el tercer renglón, que se
+          // falten datos. La uniformidad real la da el renglón de distintivos, que se
           // reserva siempre unas líneas más abajo; esto es el respaldo.
           minHeight: 96,
           borderRadius: "var(--radius-card)",
@@ -3520,14 +3524,14 @@ export default function InboxApp() {
           ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
         }}
       >
-        <Avatar name={c.guest.name} seed={c.guest.id} size={42} />
+        <Avatar name={c.guest.name} seed={c.guest.id} size={46} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span
               className="grotesk truncate"
               style={{
                 fontWeight: 700,
-                fontSize: 14.5,
+                fontSize: 16,
                 letterSpacing: "-0.01em",
                 color: "var(--text-primary)",
               }}
@@ -3535,20 +3539,18 @@ export default function InboxApp() {
               {(emoji ? emoji + " " : "") + rest}
             </span>
             {c.blocked && <BlockedBadge className="shrink-0" />}
-            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+            <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
               {c.lastMessageAt}
             </span>
           </div>
-          <div className="mt-1 flex items-center gap-1.5">
-            <GuestStatusPrefix variant={statusVariant} />
-            <span aria-hidden style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-              ·
-            </span>
+          {/* El preview se lleva el renglón entero: es el texto más largo de la
+              fila y el que más se corta. El estado bajó al renglón de abajo. */}
+          <div className="mt-1 flex items-center gap-2">
             <p
               className="min-w-0 flex-1 truncate"
               style={{
                 margin: 0,
-                fontSize: 13,
+                fontSize: 14,
                 color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
                 fontWeight: hasUnread ? 600 : 400,
               }}
@@ -3565,7 +3567,10 @@ export default function InboxApp() {
               </span>
             )}
           </div>
-          {/* Tercer renglón SIEMPRE presente. Los 20px son el alto del elemento
+          <div className="mt-1 flex items-center">
+            <GuestStatusPrefix variant={statusVariant} />
+          </div>
+          {/* Renglón de distintivos, SIEMPRE presente. Los 20px son el alto del elemento
               más alto que puede caer acá (el temporizador de seguimiento), así
               que la fila mide lo mismo con o sin distintivos. */}
           <div className="mt-2 flex items-center gap-2" style={{ minHeight: 20 }}>
@@ -3839,7 +3844,7 @@ export default function InboxApp() {
                 type="button"
                 onClick={() => void handleRefresh()}
                 disabled={refreshing}
-                className="d-act ml-auto flex h-8 w-8 shrink-0 items-center justify-center disabled:opacity-50"
+                className="d-act ibx-refresh-hover ml-auto flex h-8 w-8 shrink-0 items-center justify-center disabled:opacity-50"
                 style={{
                   borderRadius: 10,
                   border: "1px solid var(--border-soft)",
@@ -3854,7 +3859,7 @@ export default function InboxApp() {
                 {refreshing ? (
                   <Spinner className="h-4 w-4 animate-spin" />
                 ) : (
-                  <IconRefresh className="h-4 w-4" aria-hidden />
+                  <IconRefresh className="ibx-refresh-icon h-4 w-4" aria-hidden />
                 )}
               </button>
               {/* Acá vivía el menú "…". Su única entrada era el interruptor de
@@ -4256,12 +4261,12 @@ export default function InboxApp() {
                           <button
                             type="button"
                             onClick={startEditingName}
-                            className="d-soft flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+                            className="d-soft flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
                             style={{ color: "var(--text-secondary)" }}
                             aria-label="Editar nombre del huésped"
                             title="Editar nombre"
                           >
-                            <IconPencil className="h-4 w-4" />
+                            <IconPencil className="h-[18px] w-[18px]" />
                           </button>
                         )}
                         {/* Que la recepcionista sepa con quién habla antes de escribir. */}
@@ -4363,8 +4368,11 @@ export default function InboxApp() {
                       onClick={() =>
                         setModerationDialogAction(selected.blocked ? "unblock" : "block")
                       }
-                      className="d-soft grotesk inline-flex h-9 shrink-0 items-center gap-1.5 px-2.5"
-                      style={{ borderRadius: 999, border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-secondary)", fontSize: 11.5, fontWeight: 600 }}
+                      /* El fondo de reposo va como clase y no inline: un
+                         `background` inline le gana al `:hover` de `d-soft` y
+                         dejaba el botón sin sombreado al pasar el mouse. */
+                      className="d-soft grotesk inline-flex h-9 shrink-0 items-center gap-1.5 bg-[var(--bg-card)] px-2.5"
+                      style={{ borderRadius: 999, border: "1px solid var(--border-soft)", color: "var(--text-secondary)", fontSize: 11.5, fontWeight: 600 }}
                       title={selected.blocked ? "Desbloquear conversación" : "Bloquear conversación"}
                     >
                       <IconBlock className="h-4 w-4" />
@@ -5322,8 +5330,10 @@ function GuestPanelContent({
             onClick={onReopen}
             disabled={actionsBusy}
             aria-busy={pendingAction === "reopen"}
-            className="d-prim grotesk flex w-full items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ padding: 12, borderRadius: 11, border: "none", background: "var(--accent)", color: "#fff", fontSize: 14, fontWeight: 700 }}
+            /* Mismo motivo que en "Bloquear": el rojo de reposo va como clase
+               para que el `:hover` de `d-prim` pueda pintarse encima. */
+            className="d-prim grotesk flex w-full items-center justify-center gap-2 bg-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ padding: 12, borderRadius: 11, border: "none", color: "#fff", fontSize: 14, fontWeight: 700 }}
           >
             {pendingAction === "reopen" ? (
               <>
