@@ -23,8 +23,8 @@ type Props = {
   actionDisabled: boolean;
   /**
    * Esta reserva está resolviendo una acción contra el servidor. Enciende el
-   * spinner del botón que se apretó: sin esto los tres botones solo se apagaban
-   * y recepción no podía distinguir "está enviando" de "se congeló".
+   * spinner de "Completar": las otras dos acciones pasan por un diálogo, y el
+   * estado del envío se lee ahí adentro.
    */
   busy?: boolean;
   onBack: () => void;
@@ -292,25 +292,25 @@ export function ReservaDetalle({
           <IconCopy className="h-4 w-4" aria-hidden />
           Copiar datos
         </button>
+        {/* Al extremo derecho y en rojo, en el mismo lugar que ocupa "Rechazar"
+            en las pendientes: es la acción que le cambia el estado a una reserva
+            ya procesada, no una forma de salir del detalle.
+
+            Antes quedaba pegado a "Copiar datos" y a un cuerpo de distancia de
+            "Volver a la lista" del encabezado. Dos botones que empiezan con
+            "Volver", uno que solo cierra el detalle y otro que revierte trabajo
+            hecho: el clic equivocado devolvía a pendientes una reserva ya
+            subida al PMS. Tampoco lleva spinner, porque el estado del envío se
+            lee dentro de la confirmación. */}
         {processed && (
           <button
             type="button"
             onClick={() => onReopen(reserva)}
             disabled={actionDisabled}
-            aria-busy={busy}
-            className="ibx-press grotesk inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-card)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="ibx-press grotesk ml-auto inline-flex min-h-[42px] items-center gap-2 rounded-[var(--radius-chip)] px-4 text-[13.5px] font-semibold text-[var(--accent)] hover:bg-[var(--red-soft)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? (
-              <>
-                <Spinner className="h-4 w-4 animate-spin" />
-                Devolviendo…
-              </>
-            ) : (
-              <>
-                <IconUndo className="h-4 w-4" aria-hidden />
-                Volver a pendientes
-              </>
-            )}
+            <IconUndo className="h-4 w-4" aria-hidden />
+            Volver a pendientes
           </button>
         )}
         {/* Rechazar no lleva spinner: abre el diálogo de motivo, y el estado del

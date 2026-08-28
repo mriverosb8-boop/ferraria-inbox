@@ -8,6 +8,7 @@ import { ChatPanel } from "./components/ChatPanel";
 import { RejectModal } from "./components/RejectModal";
 import { ReservaCard } from "./components/ReservaCard";
 import { ReservaDetalle } from "./components/ReservaDetalle";
+import { ReopenModal } from "./components/ReopenModal";
 import { TabsHeader } from "./components/TabsHeader";
 import { useReservas } from "./hooks/useReservas";
 import { formatCOT } from "./lib/formatters";
@@ -25,6 +26,12 @@ export default function ReservasPage() {
   const [phoneQuery, setPhoneQuery] = useState("");
   const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null);
   const [rejectingReserva, setRejectingReserva] = useState<Reserva | null>(null);
+  /**
+   * Reserva esperando que confirmen la vuelta a pendientes. Igual que el
+   * rechazo: el botón del detalle solo abre el diálogo, y quien ejecuta es el
+   * "Sí" de adentro.
+   */
+  const [reopeningReserva, setReopeningReserva] = useState<Reserva | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -132,7 +139,9 @@ export default function ReservasPage() {
     }
   };
 
-  const handleReopen = async (reserva: Reserva) => {
+  const handleReopen = async () => {
+    if (!reopeningReserva) return;
+    const reserva = reopeningReserva;
     setBusyId(reserva.id);
     try {
       await reopenReserva(reserva.id);
@@ -140,6 +149,7 @@ export default function ReservasPage() {
       // detalle que ya no corresponde a ninguna tarjeta de la lista visible.
       if (selectedReserva?.id === reserva.id) setSelectedReserva(null);
       addToast(`Reserva ${formatCOT(reserva.quote_request_id)} devuelta a pendientes`);
+      setReopeningReserva(null);
     } catch (e) {
       addToast(e instanceof Error ? e.message : "No se pudo devolver la reserva a pendientes", "error");
     } finally {
@@ -211,7 +221,7 @@ export default function ReservasPage() {
               onComplete={(item) => void handleComplete(item)}
               onCopy={(text) => void handleCopy(text)}
               onReject={setRejectingReserva}
-              onReopen={(item) => void handleReopen(item)}
+              onReopen={setReopeningReserva}
             />
             {/* La `key` por reserva remonta el panel: así el chat vuelve a
                 arrancar plegado en el teléfono cada vez que se elige otra. */}
@@ -320,6 +330,13 @@ export default function ReservasPage() {
         submitting={Boolean(busyId && busyId === rejectingReserva?.id)}
         onClose={() => setRejectingReserva(null)}
         onConfirm={(reason) => void handleReject(reason)}
+      />
+
+      <ReopenModal
+        reserva={reopeningReserva}
+        submitting={Boolean(busyId && busyId === reopeningReserva?.id)}
+        onClose={() => setReopeningReserva(null)}
+        onConfirm={() => void handleReopen()}
       />
     </div>
     </AppShell>
