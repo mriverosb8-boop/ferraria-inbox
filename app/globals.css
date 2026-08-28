@@ -281,3 +281,27 @@ body {
   background: var(--accent-hover);
 }
 
+/* Guiño del logo del sidebar: una vuelta completa al pasar el mouse. Es un
+   detalle, no información — la clase solo se aplica donde el sidebar pinta la
+   marca, nunca en el login, y no comunica ningún estado.
+
+   `ease-in-out` y una sola vuelta: arranca y frena suave, sin rebote ni
+   sobregiro. Bajo `prefers-reduced-motion` no gira: el logo queda quieto y no
+   se pierde nada, porque no había nada que leer ahí. */
+@keyframes ibx-brand-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ibx-brand-wink:hover {
+  animation: ibx-brand-spin 600ms ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibx-brand-wink:hover {
+    animation: none;
+  }
+}
+

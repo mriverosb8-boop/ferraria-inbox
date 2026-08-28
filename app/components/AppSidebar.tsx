@@ -110,7 +110,13 @@ function IconClipboard({ className }: { className?: string }) {
   );
 }
 
-function IconBell({ className }: { className?: string }) {
+/**
+ * Campana del sidebar. Con `muted` lleva una diagonal encima: es la forma de
+ * ver de un vistazo, sin abrir nada, que este dispositivo no está recibiendo
+ * avisos. Reemplaza al badge numérico que se pintaba antes, que decía "hay algo
+ * que atender" sin decir qué.
+ */
+function IconBell({ className, muted = false }: { className?: string; muted?: boolean }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} className={className} aria-hidden>
       <path
@@ -119,6 +125,7 @@ function IconBell({ className }: { className?: string }) {
         d="M18 8.4a6 6 0 10-12 0c0 4.2-1.5 5.4-1.5 5.4h15S18 12.6 18 8.4z"
       />
       <path strokeLinecap="round" strokeLinejoin="round" d="M13.7 17.8a2 2 0 01-3.4 0" />
+      {muted && <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 4.5l15 15" />}
     </svg>
   );
 }
@@ -132,64 +139,56 @@ function IconBell({ className }: { className?: string }) {
  * dentro del panel: el motivo nunca vive en un `title`, porque en una tablet de
  * recepción no hay hover que lo revele.
  *
- * `aviso: true` marca los estados en los que hay algo que decirle a la persona
- * (activarlas, desbloquearlas, instalar la app, reintentar). Esos son los que
- * pintan badge. Si están activadas —o si el equipo simplemente no las
- * soporta— no hay nada que hacer y el badge no se pinta, con el mismo criterio
- * de las entradas de navegación: un número permanente entrena a ignorarlo.
+ * El panel ya no se abre en todos los estados: en `idle` y `subscribed` la
+ * campana prende y apaga los avisos de una, sin pasos intermedios. Estos
+ * textos siguen acá porque `short` alimenta el `aria-label` en todos los
+ * estados, y `title`/`detail`/`action` se leen en los que sí abren panel.
  */
 const NOTIF_COPY: Record<
   PushStatus,
-  { short: string; title: string; detail: string; action: string | null; aviso: boolean }
+  { short: string; title: string; detail: string; action: string | null }
 > = {
   subscribed: {
     short: "activadas",
     title: "Notificaciones activadas",
     detail: "Te avisamos en este dispositivo cuando entre un mensaje nuevo, aunque tengás la bandeja cerrada.",
     action: "Desactivar notificaciones",
-    aviso: false,
   },
   idle: {
     short: "apagadas",
     title: "Notificaciones apagadas",
     detail: "Activalas y te avisamos en este dispositivo cuando entre un mensaje nuevo.",
     action: "Activar notificaciones",
-    aviso: true,
   },
   subscribing: {
     short: "activando",
     title: "Activando…",
     detail: "Aceptá el permiso que te está pidiendo el navegador.",
     action: null,
-    aviso: false,
   },
   denied: {
     short: "bloqueadas",
     title: "Notificaciones bloqueadas",
     detail: "Este navegador tiene bloqueados los avisos de la bandeja. Habilitalos en la configuración del sitio y volvé a entrar.",
     action: null,
-    aviso: true,
   },
   "ios-needs-install": {
     short: "hay que instalar la app",
     title: "Instalá la app para recibir avisos",
     detail: "En iPhone y iPad los avisos solo llegan con la bandeja agregada a la pantalla de inicio: tocá Compartir y después “Agregar a inicio”.",
     action: null,
-    aviso: true,
   },
   unsupported: {
     short: "no disponibles",
     title: "Notificaciones no disponibles",
     detail: "Este navegador no puede mostrar avisos. Abrí la bandeja desde Chrome o Safari actualizado.",
     action: null,
-    aviso: false,
   },
   error: {
     short: "no se pudieron activar",
     title: "No se pudieron activar",
     detail: "Algo falló al activar los avisos en este dispositivo.",
     action: "Reintentar",
-    aviso: true,
   },
 };
 
@@ -462,10 +461,39 @@ export function AppSidebar({
           };
 
   const notif = NOTIF_COPY[push.status];
-  // Badge de la campana. Es siempre 1 porque lo que se avisa es un solo asunto
-  // —cómo están las notificaciones de este dispositivo—, y desaparece apenas
-  // queda resuelto.
-  const notifAvisos = notif.aviso ? 1 : 0;
+  // La campana está "apagada" en todo lo que no sea `subscribed`: bloqueadas,
+  // sin permiso todavía, o el navegador no puede. Desde la barra da igual el
+  // matiz —no están llegando avisos— y eso es lo que dice la diagonal. El
+  // matiz se lee en el panel, en los estados que lo abren.
+  const notifMuted = push.status !== "subscribed";
+
+  /**
+   * Un toque en la campana.
+   *
+   * Cuando el navegador SÍ puede resolverlo, no hay pantalla intermedia: en
+   * `idle` dispara el pedido de permiso y en `subscribed` desactiva. El panel
+   * queda solo para los estados donde tocar de nuevo no cambia nada y hay que
+   * explicar por qué (`denied`, `ios-needs-install`, `unsupported`) y para
+   * `error`, donde el motivo del fallo tiene que leerse en pantalla.
+   *
+   * En `subscribing` el botón no hace nada: el permiso ya está pedido y el
+   * navegador está esperando respuesta.
+   */
+  const onBellClick = () => {
+    setMenuOpen(false);
+    if (push.status === "subscribing") return;
+    if (push.status === "idle") {
+      setNotifOpen(false);
+      void push.enable();
+      return;
+    }
+    if (push.status === "subscribed") {
+      setNotifOpen(false);
+      void push.disable();
+      return;
+    }
+    setNotifOpen((value) => !value);
+  };
 
   const itemBase =
     "grotesk relative flex select-none flex-col items-center justify-center gap-1 rounded-[12px] px-1 py-2 text-[10.5px] font-semibold leading-none transition max-lg:min-w-0 max-lg:flex-1 lg:w-full lg:py-2.5";
@@ -480,8 +508,10 @@ export function AppSidebar({
       className={`flex shrink-0 items-center ${hideMobileNav ? "max-lg:hidden" : ""} max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-[200] max-lg:h-[calc(62px+env(safe-area-inset-bottom,0px))] max-lg:flex-row max-lg:gap-2 max-lg:px-3 max-lg:pb-[env(safe-area-inset-bottom,0px)] lg:h-full lg:w-[90px] lg:flex-col lg:gap-3 lg:overflow-hidden lg:px-2 lg:py-3`}
       style={{ background: "var(--sidebar)" }}
     >
+      {/* La clase del guiño va acá y no dentro de `BrandHeaderMark`: la misma
+          marca se usa en el login, donde el logo tiene que quedarse quieto. */}
       <div className="hidden shrink-0 lg:block">
-        <BrandHeaderMark size="sm" />
+        <BrandHeaderMark size="sm" className="ibx-brand-wink" />
       </div>
 
       <nav
@@ -552,26 +582,14 @@ export function AppSidebar({
         <div ref={notifRef} className="flex shrink-0 items-center justify-center lg:w-full">
           <button
             type="button"
-            onClick={() => {
-              setMenuOpen(false);
-              setNotifOpen((value) => !value);
-            }}
+            onClick={onBellClick}
             className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition hover:bg-white/25"
             style={{ background: "rgba(255,255,255,.18)", color: "#fff", border: "1px solid rgba(255,255,255,.3)" }}
             aria-haspopup="dialog"
             aria-expanded={notifOpen}
             aria-label={`Notificaciones: ${notif.short}`}
           >
-            <IconBell className="h-[18px] w-[18px]" />
-            {notifAvisos > 0 && (
-              <span
-                className="ibx-mono absolute -right-1 -top-1 rounded-md px-1 py-0.5 text-[9.5px] font-semibold"
-                style={{ background: "#fff", color: "var(--sidebar)", boxShadow: "0 0 0 2px var(--sidebar)" }}
-                aria-hidden
-              >
-                {notifAvisos}
-              </span>
-            )}
+            <IconBell className="h-[18px] w-[18px]" muted={notifMuted} />
           </button>
 
           {notifOpen && (
