@@ -88,6 +88,33 @@ const COMPOSER_MAX_HEIGHT_PX = 104;
  * aparecería estando ya abajo.
  */
 const THREAD_BOTTOM_SLACK_PX = 56;
+
+/**
+ * Forma de las filas de la lista de conversaciones, compartida por Huéspedes y
+ * Staff para que las dos bandejas se lean como la misma app.
+ *
+ * Van deliberadamente MÁS cuadradas que el resto de las cards del rediseño
+ * (`--radius-card`, 16px): con 16 y filas de 82px de alto la esquina se comía
+ * medio renglón y la lista entera se leía como una pila de burbujas en vez de
+ * como una lista. El token global no se toca porque lo usan las cards de
+ * Reservas, Solicitudes y los paneles, que sí son cards de verdad.
+ */
+const CONVERSATION_ROW_RADIUS_PX = 8;
+/** Borde de 1px, no 1.5: a este tamaño el trazo grueso engorda cada fila. */
+const CONVERSATION_ROW_BORDER_PX = 1;
+/**
+ * Fila seleccionada: barra terracota pegada al canto izquierdo, más la sombra
+ * suave de siempre.
+ *
+ * La barra existe porque con el radio chico y el borde de 1px el rectángulo
+ * rojo solo no pesa lo suficiente para encontrar de un vistazo cuál es el chat
+ * abierto. No es la barra de estado que el rediseño eliminó de la fila de
+ * Huéspedes: aquella decía "esta conversación necesita atención" y competía con
+ * el punto de color; esta dice "esta es la que tienes abierta" y solo puede
+ * haber una en toda la lista.
+ */
+const CONVERSATION_ROW_SELECTED_SHADOW =
+  "inset 3px 0 0 0 var(--accent), var(--shadow-sm)";
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const PDF_MIME_TYPE = "application/pdf";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -3617,21 +3644,24 @@ export default function InboxApp() {
         className={`d-row flex w-full items-center text-left${active ? " sel" : ""}`}
         style={{
           gap: 11,
-          padding: "9px 12px",
+          padding: "7px 12px",
           /*
             Más baja que la de Huéspedes a propósito: acá no hay renglón de
             estado ni de distintivos, así que igualarla a 82 sería meterle 16px
             de aire a cada fila. Las dos listas nunca se ven a la vez —son
             pestañas distintas—, y dentro de Staff todas las filas miden lo
-            mismo porque el contenido es fijo (nombre, cargo, preview).
+            mismo: el avatar de 46 más el padding da 62, por debajo de este
+            piso, así que manda el piso y ninguna fila se sale.
           */
           minHeight: 66,
-          borderRadius: "var(--radius-card)",
-          border: `1.5px solid ${active ? "var(--accent)" : "var(--border-soft)"}`,
+          borderRadius: CONVERSATION_ROW_RADIUS_PX,
+          border: `${CONVERSATION_ROW_BORDER_PX}px solid ${
+            active ? "var(--accent)" : "var(--border-soft)"
+          }`,
           // El blanco de la fila lo pone `.d-row` en globals.css, no un inline:
           // así el hover sigue funcionando. Acá solo va lo que distingue a la
-          // seleccionada: borde terracota y sombra.
-          ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
+          // seleccionada: borde terracota, barra izquierda y sombra.
+          ...(active ? { boxShadow: CONVERSATION_ROW_SELECTED_SHADOW } : null),
         }}
       >
         <Avatar name={c.guest.name} seed={c.guest.id} size={46} />
@@ -3659,7 +3689,7 @@ export default function InboxApp() {
               {c.lastMessageAt}
             </span>
           </div>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-2" style={{ minHeight: 19 }}>
             <p
               className="min-w-0 flex-1 truncate"
               style={{
@@ -3737,25 +3767,33 @@ export default function InboxApp() {
         className={`d-row flex w-full text-left${active ? " sel" : ""}`}
         style={{
           gap: 11,
-          padding: "9px 12px",
+          /*
+            7px arriba y abajo, no 9: con 9 el contenido sumaba 66 y empujaba la
+            fila a 86px, así que el `minHeight` de 82 no ataba nada y entraban
+            seis conversaciones en vez de siete. Ahora 66 + 14 + 2 de borde da
+            exactamente 82.
+          */
+          padding: "7px 12px",
           /*
             82px es el número que hace que entren siete conversaciones en un
             portátil estándar: con ~625px de lista útil y 4px de separación,
             7 × 86 = 602. Antes eran 116 y solo entraban cinco.
 
-            Es piso Y techo de hecho: el contenido mide 62px (tres renglones de
-            alturas fijas) más 18 de padding, así que ninguna fila lo pasa. La
-            uniformidad real la da el renglón de distintivos, que se reserva
-            siempre; esto es el respaldo.
+            Todas las filas miden esto exacto, no "al menos" esto: los tres
+            renglones tienen altura reservada (el del preview por el badge de no
+            leídas, el de abajo por el temporizador de seguimiento), así que
+            ninguna fila crece ni se queda corta según los datos que traiga.
           */
           minHeight: 82,
-          borderRadius: "var(--radius-card)",
+          borderRadius: CONVERSATION_ROW_RADIUS_PX,
           // Borde del item seleccionado: terracota del spec (§2.2).
-          border: `1.5px solid ${active ? "var(--accent)" : "var(--border-soft)"}`,
+          border: `${CONVERSATION_ROW_BORDER_PX}px solid ${
+            active ? "var(--accent)" : "var(--border-soft)"
+          }`,
           // El blanco de la fila lo pone `.d-row` en globals.css, no un inline:
           // así el hover sigue funcionando (el inline le gana a la regla de
-          // hover, no al revés). Acá solo va la sombra de la seleccionada.
-          ...(active ? { boxShadow: "var(--shadow-sm)" } : null),
+          // hover, no al revés). Acá solo va lo de la seleccionada.
+          ...(active ? { boxShadow: CONVERSATION_ROW_SELECTED_SHADOW } : null),
         }}
       >
         {/* El avatar ocupa 46 de los 64px de alto útil de la fila: llena la
@@ -3781,7 +3819,7 @@ export default function InboxApp() {
           </div>
           {/* El preview se lleva el renglón entero: es el texto más largo de la
               fila y el que más se corta. El estado bajó al renglón de abajo. */}
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 flex items-center gap-2" style={{ minHeight: 19 }}>
             <p
               className="min-w-0 flex-1 truncate"
               style={{
@@ -4317,7 +4355,7 @@ export default function InboxApp() {
                   </button>
                 </div>
               ) : (
-                <div className="flex flex-col gap-1 px-2.5 py-2.5">
+                <div className="flex flex-col gap-1 px-1.5 py-1.5">
                   {staffConversations.map(renderStaffRow)}
                 </div>
               )
@@ -4393,7 +4431,7 @@ export default function InboxApp() {
                     término.
                   </p>
                 )}
-                <div className="flex flex-col gap-1 px-2.5 py-2.5">
+                <div className="flex flex-col gap-1 px-1.5 py-1.5">
                   {guestConversations.map(renderGuestRow)}
                 </div>
               </>
