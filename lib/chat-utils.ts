@@ -1075,7 +1075,11 @@ export function buildMessageFromWubbyRow(
   // el remitente no es él, la columna se ignora aunque venga poblada, para no
   // atribuirle a la casa un texto que nunca escribió.
   const inboundTranslation = sender === "user" ? readInboundTranslation(row) : undefined;
-  const inboundDetectedLang = inboundTranslation ? readInboundDetectedLang(row) : undefined;
+  // El idioma detectado se lee AUNQUE no haya traducción: es lo que decide el
+  // default del selector del composer, y sirve igual si el engine detectó
+  // inglés pero no llegó a traducir. La marca de la burbuja sí exige la
+  // traducción, así que esto no pinta nada de más.
+  const inboundDetectedLang = sender === "user" ? readInboundDetectedLang(row) : undefined;
   const clientTempIdRaw = readStringField(row, "client_temp_id", "clientTempId");
   const clientTempId = clientTempIdRaw?.trim() || undefined;
 

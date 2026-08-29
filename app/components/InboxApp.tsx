@@ -31,7 +31,15 @@ import {
   type ConversationDbRow,
 } from "@/lib/conversation-schema";
 import { resolveDeliveryFailureReason } from "@/lib/delivery-failure-copy";
-import { describeInboundTranslationLabel } from "@/lib/language-names";
+import {
+  COMPOSER_LANGUAGE_OPTIONS,
+  DEFAULT_COMPOSER_LANGUAGE,
+  describeInboundTranslationLabel,
+  describeLanguage,
+  languageOptionLabel,
+  languageShortLabel,
+  normalizeLanguageCode,
+} from "@/lib/language-names";
 import {
   COLOMBIA_TIME_ZONE,
   isReplyBlockedByMetaPolicy,
@@ -2405,6 +2413,22 @@ export default function InboxApp() {
    */
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [sendWarning, setSendWarning] = useState<string | null>(null);
+  /**
+   * Idioma de SALIDA elegido a mano, por conversación. La asesora siempre
+   * escribe en español; esto decide en qué idioma lo recibe el huésped.
+   *
+   * Va por `conversationId` y no en una sola variable porque cambiar de chat no
+   * puede arrastrar el idioma del anterior: mandarle alemán a un huésped
+   * colombiano porque el chat de antes estaba en alemán sería un desastre
+   * silencioso. Sin entrada acá manda el idioma detectado del huésped.
+   */
+  const [composerLangByConv, setComposerLangByConv] = useState<Record<string, string>>({});
+  /**
+   * Hoteles que el engine rechazó con `translation_not_supported` (todavía
+   * responden por n8n). Se recuerda en memoria para no volver a ofrecer un
+   * selector que ya sabemos que no funciona en esa sesión.
+   */
+  const [translationUnsupportedHotels, setTranslationUnsupportedHotels] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
@@ -2654,6 +2678,51 @@ export default function InboxApp() {
   );
 
   const replyBlockedByMeta = useMemo(() => isConversationReplyBlocked(selected), [selected]);
+
+  /**
+   * Idioma del huésped: el último `inbound_detected_lang` no nulo del hilo. Es
+   * el default del selector, así que responderle a un huésped que escribe en
+   * inglés sale en inglés sin que la asesora tenga que acordarse de cambiarlo.
+   * Sin ninguna traducción entrante devuelve `null` y todo queda en español.
+   */
+  const guestDetectedLang = useMemo(() => {
+    if (!selected) return null;
+    for (let i = selected.messages.length - 1; i >= 0; i -= 1) {
+      const m = selected.messages[i];
+      if (m.sender !== "user") continue;
+      const code = normalizeLanguageCode(m.inboundDetectedLang);
+      if (code) return code;
+    }
+    return null;
+  }, [selected]);
+
+  /**
+   * La traducción de salida solo existe en los hoteles que ya responden por el
+   * engine. En los que siguen en n8n el engine contesta 400 y no envía nada, así
+   * que el selector ni se ofrece: prometer un botón que va a fallar es peor que
+   * no tenerlo. `translationUnsupportedHotels` es el respaldo por si el engine
+   * lo rechaza igual.
+   */
+  const translationSupported =
+    Boolean(engineEnabled) &&
+    !(conversationHotelId && translationUnsupportedHotels.includes(conversationHotelId));
+
+  /** Idioma elegido a mano; si no hay, el del huésped; si tampoco, español. */
+  const composerLang = translationSupported
+    ? (selectedId ? composerLangByConv[selectedId] : null) ??
+      guestDetectedLang ??
+      DEFAULT_COMPOSER_LANGUAGE
+    : DEFAULT_COMPOSER_LANGUAGE;
+
+  /**
+   * Opciones del menú: la lista corta más el idioma del huésped si resultó ser
+   * uno de afuera (coreano, árabe…). Sin esto el `<select>` se quedaría con un
+   * valor que no está entre sus opciones y se vería vacío.
+   */
+  const composerLangOptions = useMemo(() => {
+    const base = [...COMPOSER_LANGUAGE_OPTIONS] as string[];
+    return base.includes(composerLang) ? base : [...base, composerLang];
+  }, [composerLang]);
 
   /** Teléfono del hilo abierto en dígitos, listo para enviar plantillas. */
   const selectedPhoneDigits = useMemo(
@@ -3243,6 +3312,44 @@ export default function InboxApp() {
     setSendWarning(null);
     setActionError(null);
 
+    /**
+     * Idioma de salida de ESTE envío. En español no viaja nada y el camino es
+     * idéntico al de siempre. Se congela acá para que un cambio de chat o del
+     * selector a mitad de vuelo no altere lo que ya se mandó.
+     */
+    const outgoingLang = composerLang;
+
+    /**
+     * Deshace el optimista cuando el engine garantiza que el mensaje NO salió
+     * (falla la traducción, que ocurre ANTES de mandarlo a Meta). Le devuelve el
+     * texto a la asesora para que reintente o lo mande en español; nunca se
+     * reenvía solo.
+     */
+    const rollbackUnsentMessage = () => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === selectedId
+            ? {
+                ...c,
+                messages: c.messages.filter((m) => m.clientTempId !== clientTempId),
+                // El hilo vuelve a como estaba: nada salió, así que tampoco hubo
+                // respuesta humana que cambie el control de la conversación.
+                lastMessagePreview: selectedConv!.lastMessagePreview,
+                lastMessageAt: selectedConv!.lastMessageAt,
+                lastActivityIso: selectedConv!.lastActivityIso,
+                controlMode: selectedConv!.controlMode,
+                needsHuman: selectedConv!.needsHuman,
+                aiActive: selectedConv!.aiActive,
+                dbStatus: selectedConv!.dbStatus,
+                operationalStatus: selectedConv!.operationalStatus,
+              }
+            : c
+        )
+      );
+      // Si ya empezó a escribir otra cosa no se le pisa lo nuevo.
+      setDraft((prev) => (prev.trim() ? prev : text));
+    };
+
     try {
       const res = await fetch("/api/send-human-message", {
         method: "POST",
@@ -3255,10 +3362,47 @@ export default function InboxApp() {
           conversationId: selectedConv!.id,
           hotelId: activeHotelId,
           clientTempId,
+          // Con español no viaja el campo: cero cambio de comportamiento.
+          ...(outgoingLang !== DEFAULT_COMPOSER_LANGUAGE ? { targetLang: outgoingLang } : {}),
         }),
       });
-      const j = (await res.json().catch(() => ({}))) as { error?: string; skipped?: boolean };
+      const j = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        skipped?: boolean;
+        code?: string;
+        notSent?: boolean;
+      };
       if (!res.ok) {
+        if (j.notSent) {
+          // El engine falló ANTES de enviar: la burbuja se retira y el texto
+          // vuelve al composer. Es el único caso en el que reintentar no puede
+          // duplicarle el mensaje al huésped.
+          rollbackUnsentMessage();
+          if (j.code === "translation_not_supported") {
+            // Hotel todavía en n8n: se esconde el selector y se vuelve a español
+            // para que el próximo intento salga derecho.
+            if (conversationHotelId) {
+              setTranslationUnsupportedHotels((prev) =>
+                prev.includes(conversationHotelId) ? prev : [...prev, conversationHotelId]
+              );
+            }
+            if (selectedId) {
+              setComposerLangByConv((prev) => ({
+                ...prev,
+                [selectedId]: DEFAULT_COMPOSER_LANGUAGE,
+              }));
+            }
+            setSendWarning(
+              "En este hotel todavía no se puede enviar traducido. Tu mensaje no se envió: quedó en el composer para que lo mandes en español."
+            );
+          } else {
+            setSendWarning(
+              j.error ??
+                "No se pudo traducir el mensaje, así que no se envió. Reintenta o mándalo en español."
+            );
+          }
+          return;
+        }
         if (j.skipped) {
           setSendWarning(
             "ENGINE_HUMAN_REPLY_URL / INBOX_SHARED_SECRET no están definidas: el mensaje solo se muestra en la UI hasta que configures el engine."
@@ -4943,6 +5087,32 @@ export default function InboxApp() {
                       </span>
                     </p>
                   )}
+                {/*
+                  Enviar en otro idioma es una decisión grande, así que se dice
+                  con todas las letras encima del composer y no solo con el chip:
+                  sale únicamente cuando el idioma NO es español, que es el caso
+                  excepcional.
+                */}
+                {translationSupported &&
+                  composerLang !== DEFAULT_COMPOSER_LANGUAGE &&
+                  !inputDisabled && (
+                    <p
+                      className="mb-2 flex w-full min-w-0 items-start gap-1.5 px-1 text-[11.5px] leading-snug [overflow-wrap:anywhere]"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
+                      <IconGlobe className="mt-[2px] h-3 w-3 shrink-0" style={{ color: "var(--gold)" }} aria-hidden />
+                      <span>
+                        {selectedFile
+                          ? // La traducción solo aplica al camino de texto: el
+                            // adjunto va por otro endpoint y su caption sale tal
+                            // cual. Se dice, no se esconde.
+                            "Los adjuntos salen sin traducir: el caption le llega al huésped en español"
+                          : `Escribes en español y al huésped le llega en ${
+                              describeLanguage(composerLang) ?? languageShortLabel(composerLang)
+                            }`}
+                      </span>
+                    </p>
+                  )}
                 <div
                   className={`flex w-full min-w-0 max-w-full items-center gap-2 ${inputDisabled ? "opacity-[0.55]" : ""} transition-opacity`}
                   style={{ padding: "5px 6px 5px 14px", borderRadius: 999, background: "var(--bg-card)", border: "1px solid var(--border-soft)", boxShadow: "var(--shadow)" }}
@@ -4999,6 +5169,51 @@ export default function InboxApp() {
                     className="min-h-[2.25rem] min-w-0 flex-1 resize-none touch-manipulation border-none bg-transparent py-2 text-[15px] leading-snug outline-none placeholder:text-[var(--text-secondary)] disabled:cursor-not-allowed lg:text-[14px]"
                     style={{ color: "var(--text-primary)" }}
                   />
+                  {/*
+                    Selector de idioma de salida. Es un `<select>` nativo puesto
+                    transparente encima del chip: en el celular abre la rueda del
+                    sistema —sin overlays propios, que es de donde salieron los
+                    bugs del rediseño— y en escritorio el menú del navegador.
+                    Solo se ofrece donde la traducción de verdad funciona.
+                  */}
+                  {translationSupported && (
+                    <div
+                      className="relative flex h-8 shrink-0 items-center gap-1 rounded-full px-2"
+                      style={{
+                        border: "1px solid var(--border-soft)",
+                        background:
+                          composerLang === DEFAULT_COMPOSER_LANGUAGE
+                            ? "transparent"
+                            : "var(--gold-soft)",
+                        color:
+                          composerLang === DEFAULT_COMPOSER_LANGUAGE
+                            ? "var(--text-secondary)"
+                            : "var(--text-primary)",
+                      }}
+                    >
+                      <IconGlobe className="h-3.5 w-3.5 shrink-0 opacity-85" aria-hidden />
+                      <span className="grotesk text-[11px] font-bold leading-none" aria-hidden>
+                        {languageShortLabel(composerLang)}
+                      </span>
+                      <IconChevronDown className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+                      <select
+                        value={composerLang}
+                        onChange={(e) => {
+                          if (!selectedId) return;
+                          setComposerLangByConv((prev) => ({ ...prev, [selectedId]: e.target.value }));
+                        }}
+                        disabled={inputDisabled || sendingMedia}
+                        aria-label="Idioma en que se le envía al huésped"
+                        className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0 disabled:cursor-not-allowed"
+                      >
+                        {composerLangOptions.map((code) => (
+                          <option key={code} value={code}>
+                            {languageOptionLabel(code)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => void sendMessage()}

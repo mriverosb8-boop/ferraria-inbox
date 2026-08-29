@@ -2,9 +2,39 @@ import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
 import { assertConversationInHotel, requireActiveHotel } from "@/lib/auth/require-hotel";
 import { attachWamidByClientTempId, extractWamid } from "@/lib/outbound-wamid";
+import { DEFAULT_COMPOSER_LANGUAGE, normalizeLanguageCode } from "@/lib/language-names";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * Errores del engine que garantizan que el mensaje NO salió al huésped: la
+ * traducción se hace ANTES de mandarlo a Meta, así que si falla ahí no hay nada
+ * enviado. Son los únicos casos en los que la bandeja puede devolverle el texto
+ * a la asesora para reintentar sin riesgo de mandar el mensaje dos veces.
+ *
+ * Contrato de `POST /inbox/human-reply` (ferraria-engine, `src/routes/inbox.ts`).
+ */
+const ENGINE_NOT_SENT_ERRORS = new Set([
+  // 502: el traductor no respondió, o alteró datos protegidos y se descartó.
+  "translation_failed",
+  // 400: código de idioma que no es ISO 639-1 de dos letras.
+  "invalid_target_lang",
+  // 400: llegaron dos idiomas distintos en el mismo envío.
+  "conflicting_target_lang",
+  // 400: el hotel todavía responde por n8n, donde no hay traducción.
+  "translation_not_supported",
+]);
+
+/** Copy de respaldo si el engine no manda `detail`. */
+const NOT_SENT_FALLBACK_COPY: Record<string, string> = {
+  translation_failed:
+    "No se pudo traducir el mensaje, así que no se envió. Reintenta o mándalo en español.",
+  invalid_target_lang: "El idioma destino no es válido. El mensaje no se envió.",
+  conflicting_target_lang: "Llegaron dos idiomas destino distintos. El mensaje no se envió.",
+  translation_not_supported:
+    "Este hotel todavía no soporta traducción de salida. Envía el mensaje en español.",
+};
 
 function safeJsonParse(raw: string): unknown {
   if (!raw) return null;
@@ -61,6 +91,12 @@ export async function POST(request: Request) {
       conversationId?: string;
       hotelId?: string | null;
       clientTempId?: string;
+      /**
+       * ISO 639-1 del idioma en que la asesora quiere que SALGA el mensaje. Ella
+       * siempre escribe en español: si viene otro idioma, el engine traduce
+       * antes de enviar y guarda el español en `message`.
+       */
+      targetLang?: string | null;
     };
 
     const guestPhone = body.guestPhone?.trim();
@@ -117,9 +153,20 @@ export async function POST(request: Request) {
     // 3) config de WhatsApp derivada del hotel autoritativo, nunca del cliente.
     const hotelWhatsapp = await readHotelWhatsappConfig(hotelId);
 
+    // Español = camino de siempre: el campo NO viaja y el engine hace
+    // exactamente lo mismo que antes de que existiera la traducción de salida.
+    // Un código basura tampoco viaja: se ignora en vez de gastar un 400.
+    const normalizedTargetLang = normalizeLanguageCode(body.targetLang);
+    const targetLang =
+      normalizedTargetLang && normalizedTargetLang !== DEFAULT_COMPOSER_LANGUAGE
+        ? normalizedTargetLang
+        : null;
+
     const payload = {
       guestPhone,
       message,
+      // Solo una de las dos grafías: mandar las dos es `conflicting_target_lang`.
+      ...(targetLang ? { targetLang } : {}),
       conversationId,
       hotelId,
       whatsappPhoneNumberId: hotelWhatsapp.whatsappPhoneNumberId,
@@ -142,6 +189,26 @@ export async function POST(request: Request) {
 
     if (!res.ok) {
       console.error("[send-human-message]", res.status, rawBody);
+
+      // Fallo de traducción: el engine no llegó a enviarle nada al huésped, y
+      // eso hay que decírselo a la bandeja con un código, no con texto suelto,
+      // para que pueda devolverle el mensaje a la asesora sin adivinar.
+      const engineBody = safeJsonParse(rawBody) as { error?: unknown; detail?: unknown } | null;
+      const engineError = typeof engineBody?.error === "string" ? engineBody.error : null;
+      if (engineError && ENGINE_NOT_SENT_ERRORS.has(engineError)) {
+        const detail = typeof engineBody?.detail === "string" ? engineBody.detail.trim() : "";
+        return NextResponse.json(
+          {
+            code: engineError,
+            // `notSent` es la garantía explícita: el mensaje NO salió, se puede
+            // reintentar sin duplicar.
+            notSent: true,
+            error: detail || NOT_SENT_FALLBACK_COPY[engineError],
+          },
+          { status: res.status }
+        );
+      }
+
       return NextResponse.json(
         { error: `El engine respondió ${res.status}`, detail: rawBody.slice(0, 500) },
         { status: 502 }

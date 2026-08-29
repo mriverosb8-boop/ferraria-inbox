@@ -111,3 +111,43 @@ export function describeInboundTranslationLabel(code?: string | null): string {
   const name = describeLanguage(code);
   return name ? `Traducido del ${name}` : "Traducido al español";
 }
+
+/**
+ * Normaliza un código a su raíz ISO 639-1 en minúscula (`en-US` → `en`).
+ * Devuelve `null` si no es un código utilizable.
+ */
+export function normalizeLanguageCode(code?: string | null): string | null {
+  if (typeof code !== "string") return null;
+  const base = code.trim().toLowerCase().split(/[-_]/)[0];
+  return /^[a-z]{2}$/.test(base) ? base : null;
+}
+
+/** Idioma por defecto de todo el inbox: la asesora siempre escribe en español. */
+export const DEFAULT_COMPOSER_LANGUAGE = "es";
+
+/**
+ * Idiomas ofrecidos en el selector del composer. Lista corta a propósito: son
+ * los que de verdad aparecen en los hoteles hoy, y un menú de 75 opciones en
+ * un celular es inservible. Agregar uno acá es una línea; el engine acepta
+ * cualquier ISO 639-1 válido.
+ */
+export const COMPOSER_LANGUAGE_OPTIONS = ["es", "en", "pt", "fr", "de", "it"] as const;
+
+/**
+ * Etiqueta del selector: el nombre del idioma con mayúscula inicial
+ * ("Español", "Inglés"). Si el código no está mapeado devuelve el código en
+ * mayúsculas, que es preferible a una opción en blanco.
+ */
+export function languageOptionLabel(code: string): string {
+  const name = describeLanguage(code);
+  if (!name) return code.trim().toUpperCase();
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/**
+ * Código corto que se ve en el chip del composer cuando no hay espacio para el
+ * nombre completo (móvil): `en` → "EN".
+ */
+export function languageShortLabel(code: string): string {
+  return (normalizeLanguageCode(code) ?? code).toUpperCase();
+}

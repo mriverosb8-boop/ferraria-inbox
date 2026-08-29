@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { describeInboundTranslationLabel, describeLanguage } from "./language-names.ts";
+import {
+  COMPOSER_LANGUAGE_OPTIONS,
+  DEFAULT_COMPOSER_LANGUAGE,
+  describeInboundTranslationLabel,
+  describeLanguage,
+  languageOptionLabel,
+  languageShortLabel,
+  normalizeLanguageCode,
+} from "./language-names.ts";
 
 test("mapea los códigos ISO más comunes a su nombre en español", () => {
   assert.equal(describeLanguage("en"), "inglés");
@@ -30,4 +38,28 @@ test("la marca de la burbuja nunca muestra el código crudo", () => {
   // saber que está leyendo una traducción aunque no sepamos de qué idioma.
   assert.equal(describeInboundTranslationLabel(null), "Traducido al español");
   assert.equal(describeInboundTranslationLabel("qq"), "Traducido al español");
+});
+
+test("normaliza el código a la raíz ISO 639-1 y rechaza lo que no lo es", () => {
+  assert.equal(normalizeLanguageCode("EN"), "en");
+  assert.equal(normalizeLanguageCode("en-US"), "en");
+  assert.equal(normalizeLanguageCode(" pt_BR "), "pt");
+  assert.equal(normalizeLanguageCode("ingles"), null);
+  assert.equal(normalizeLanguageCode("e"), null);
+  assert.equal(normalizeLanguageCode(""), null);
+  assert.equal(normalizeLanguageCode(null), null);
+});
+
+test("el selector ofrece español primero y nombres legibles", () => {
+  assert.equal(COMPOSER_LANGUAGE_OPTIONS[0], DEFAULT_COMPOSER_LANGUAGE);
+  assert.deepEqual([...COMPOSER_LANGUAGE_OPTIONS], ["es", "en", "pt", "fr", "de", "it"]);
+  assert.equal(languageOptionLabel("es"), "Español");
+  assert.equal(languageOptionLabel("en"), "Inglés");
+  // Un idioma fuera del mapa no deja la opción en blanco.
+  assert.equal(languageOptionLabel("qq"), "QQ");
+});
+
+test("el chip del composer muestra el código en mayúsculas", () => {
+  assert.equal(languageShortLabel("en"), "EN");
+  assert.equal(languageShortLabel("pt-BR"), "PT");
 });
