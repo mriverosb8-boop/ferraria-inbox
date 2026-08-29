@@ -295,6 +295,27 @@ function readTranslatedMessage(row: WubbyWhatsappRow): string | undefined {
   return v;
 }
 
+/**
+ * Columna `inbound_translation`: traducción al español de lo que escribió el
+ * huésped, que el engine estampa 1-2 s DESPUÉS del insert de la fila. Mismo
+ * criterio que `readTranslatedMessage`: se descartan null, vacío y la copia
+ * idéntica a `message` (traducir de español a español no aporta nada que
+ * mostrar y no debe pintar la marca).
+ */
+function readInboundTranslation(row: WubbyWhatsappRow): string | undefined {
+  const v = getRowField(row, "inbound_translation", "inboundTranslation");
+  if (typeof v !== "string") return undefined;
+  if (v.trim().length === 0) return undefined;
+  const original = typeof row.message === "string" ? row.message : "";
+  if (v.trim() === original.trim()) return undefined;
+  return v;
+}
+
+/** Columna `inbound_detected_lang`: ISO 639-1 del entrante; `undefined` = español o sin dato. */
+function readInboundDetectedLang(row: WubbyWhatsappRow): string | undefined {
+  return readStringField(row, "inbound_detected_lang", "inboundDetectedLang");
+}
+
 /** Columna `reaction_to_wamid`: solo filas de reacción; wamid del mensaje reaccionado. */
 function readReactionToWamid(row: WubbyWhatsappRow): string | undefined {
   return readStringField(row, "reaction_to_wamid", "reactionToWamid");
@@ -413,7 +434,13 @@ function resolveMessageBodyAndPreview(row: WubbyWhatsappRow): {
   const missingFile = isMediaWithoutFile(media);
   const body = messageRaw || media.mediaCaption || (hasMedia || missingFile ? "" : "(vacío)");
   const kind = resolveMediaKind(media.mediaMimeType);
+  // La lista de conversaciones se lee TODA en español: si el entrante venía en
+  // otro idioma, el preview muestra la traducción y no el original. `body`
+  // sigue siendo lo que escribió el huésped; acá solo cambia lo que se ve en la
+  // bandeja. En filas viejas o sin traducir la columna no existe y todo queda
+  // exactamente igual que antes.
   const previewRaw =
+    readInboundTranslation(row) ||
     body ||
     (missingFile
       ? "📎 Archivo no disponible"
@@ -1044,6 +1071,11 @@ export function buildMessageFromWubbyRow(
   } = media;
   const causeReqHandoff = readCauseRequest(row);
   const translatedBody = readTranslatedMessage(row);
+  // Traducción del entrante: solo tiene sentido en la burbuja del huésped. Si
+  // el remitente no es él, la columna se ignora aunque venga poblada, para no
+  // atribuirle a la casa un texto que nunca escribió.
+  const inboundTranslation = sender === "user" ? readInboundTranslation(row) : undefined;
+  const inboundDetectedLang = inboundTranslation ? readInboundDetectedLang(row) : undefined;
   const clientTempIdRaw = readStringField(row, "client_temp_id", "clientTempId");
   const clientTempId = clientTempIdRaw?.trim() || undefined;
 
@@ -1070,6 +1102,11 @@ export function buildMessageFromWubbyRow(
       // Solo se adjunta cuando hubo traducción real; sin la columna (filas
       // viejas, hoteles sin multiidioma) la burbuja queda exactamente igual.
       ...(translatedBody ? { translatedBody } : {}),
+      // El insert llega sin traducción y el UPDATE del engine la agrega 1-2 s
+      // después: `handleWubbyUpdate` reconstruye el mensaje con esta misma
+      // función, así que la burbuja se repinta sola cuando aparece.
+      ...(inboundTranslation ? { inboundTranslation } : {}),
+      ...(inboundDetectedLang ? { inboundDetectedLang } : {}),
     },
     previewRaw,
     createdAtIso: row.created_at,

@@ -32,6 +32,15 @@ export type WubbyWhatsappRow = {
    * español; `null` aquí significa que se envió ese mismo texto sin traducir.
    */
   message_translated?: string | null;
+  /**
+   * Traducción AL ESPAÑOL de un mensaje ENTRANTE del huésped, escrita por el
+   * engine 1-2 s después del insert de la fila. `null` = el original ya venía
+   * en español o no se tradujo. Es el espejo de `message_translated`: allá el
+   * español es `message`, acá el español es esta columna.
+   */
+  inbound_translation?: string | null;
+  /** ISO 639-1 del idioma detectado en el entrante. `null` = español. */
+  inbound_detected_lang?: string | null;
   /** UUID del cliente para reconciliar optimista con realtime */
   client_temp_id?: string | null;
   /**
@@ -95,6 +104,12 @@ export const WUBBY_SELECT_COLUMNS = [
   // en `WUBBY_PREVIEW_COLUMNS` a propósito: la lista previsualiza el español,
   // igual que la burbuja; el traducido solo se despliega dentro del hilo.
   "message_translated",
+  // Espejo entrante: el español del mensaje del huésped y el idioma en que lo
+  // escribió. Estas SÍ van también en `WUBBY_PREVIEW_COLUMNS`, al revés que
+  // `message_translated`: acá el traducido ES el español, así que es justo lo
+  // que la bandeja quiere previsualizar.
+  "inbound_translation",
+  "inbound_detected_lang",
 ].join(", ");
 
 /**
@@ -120,4 +135,7 @@ export const WUBBY_PREVIEW_COLUMNS = [
   "media_caption",
   "media_mime_type",
   "media_storage_path",
+  // El preview de un entrante traducido muestra el español, no el idioma del
+  // huésped: la lista se lee de un vistazo sin abrir el hilo.
+  "inbound_translation",
 ].join(", ");

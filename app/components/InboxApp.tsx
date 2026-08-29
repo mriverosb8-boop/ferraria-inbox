@@ -31,6 +31,7 @@ import {
   type ConversationDbRow,
 } from "@/lib/conversation-schema";
 import { resolveDeliveryFailureReason } from "@/lib/delivery-failure-copy";
+import { describeInboundTranslationLabel } from "@/lib/language-names";
 import {
   COLOMBIA_TIME_ZONE,
   isReplyBlockedByMetaPolicy,
@@ -1790,6 +1791,20 @@ function MessageBubble({
    */
   const translatedBody = !isUser && m.translatedBody ? m.translatedBody : null;
 
+  const [originalOpen, setOriginalOpen] = useState(false);
+  /**
+   * Traducción al español de lo que escribió el huésped
+   * (`Wubby_Whatsapp.inbound_translation`). Acá la traducción SÍ es el texto
+   * principal de la burbuja —todo lo interno se lee en español—, pero el
+   * original nunca se pierde: se abre a un toque debajo de la marca.
+   *
+   * Se acota a lo ENTRANTE: en una burbuja de la casa este campo no tendría
+   * a quién atribuirse.
+   */
+  const inboundTranslation = isUser && m.inboundTranslation ? m.inboundTranslation : null;
+  /** Texto principal: el español si hubo traducción, el mensaje tal cual si no. */
+  const displayBody = inboundTranslation ?? m.body;
+
   // Ver `isWhatsappSticker`: `cause_request` miente en las filas de sticker, así
   // que ni la etiqueta ni el borde rojo salen de ellas.
   const isHandoffCause =
@@ -2005,27 +2020,27 @@ function MessageBubble({
             mediaKind === "image" ? (
               <div className="flex max-w-full flex-col gap-2">
                 <PrivateWhatsAppImage key={m.id} message={m} />
-                {m.body ? (
+                {displayBody ? (
                   <p className="mt-2 whitespace-pre-wrap break-words">
-                    <WhatsappText text={m.body} />
+                    <WhatsappText text={displayBody} />
                   </p>
                 ) : null}
               </div>
             ) : mediaKind === "video" ? (
               <div className="flex max-w-full flex-col gap-2">
                 <PrivateWhatsAppVideo key={m.id} message={m} />
-                {m.body ? (
+                {displayBody ? (
                   <p className="mt-2 whitespace-pre-wrap break-words">
-                    <WhatsappText text={m.body} />
+                    <WhatsappText text={displayBody} />
                   </p>
                 ) : null}
               </div>
             ) : mediaKind === "audio" ? (
               <div className="flex max-w-full flex-col gap-2">
                 <PrivateWhatsAppAudio key={m.id} message={m} />
-                {m.body ? (
+                {displayBody ? (
                   <p className="mt-2 whitespace-pre-wrap break-words">
-                    <WhatsappText text={m.body} />
+                    <WhatsappText text={displayBody} />
                   </p>
                 ) : null}
               </div>
@@ -2034,9 +2049,51 @@ function MessageBubble({
             )
           ) : (
             <p className="whitespace-pre-wrap break-words">
-              <WhatsappText text={m.body} />
+              <WhatsappText text={displayBody} />
             </p>
           )}
+          {inboundTranslation ? (
+            <div className="mt-1 flex max-w-full flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => setOriginalOpen((v) => !v)}
+                aria-expanded={originalOpen}
+                aria-controls={`inbound-original-${m.id}`}
+                className="inline-flex w-fit max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-medium leading-tight transition-opacity hover:opacity-80"
+                style={{
+                  background: "var(--panel)",
+                  border: "1px solid var(--line)",
+                  color: "var(--ink-2)",
+                }}
+              >
+                <IconGlobe className="h-2.5 w-2.5 shrink-0 opacity-85" aria-hidden />
+                <span>
+                  {originalOpen
+                    ? "Ocultar original"
+                    : describeInboundTranslationLabel(m.inboundDetectedLang)}
+                </span>
+              </button>
+              {originalOpen ? (
+                <div
+                  id={`inbound-original-${m.id}`}
+                  className="max-w-full rounded-lg px-2 py-1.5"
+                  style={{ background: "var(--panel)", border: "1px solid var(--line)" }}
+                >
+                  <p
+                    className="grotesk mb-0.5 text-[9.5px] font-bold uppercase leading-tight"
+                    style={{ letterSpacing: "0.04em", color: "var(--ink-3)" }}
+                  >
+                    Como lo escribió el huésped
+                  </p>
+                  {/* `dir="auto"` deja que el navegador acomode idiomas de derecha
+                      a izquierda (árabe, hebreo) sin voltear el resto de la burbuja. */}
+                  <p dir="auto" className="whitespace-pre-wrap break-words text-[14px]">
+                    <WhatsappText text={m.body} />
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           {translatedBody ? (
             <div className="mt-1 flex max-w-full flex-col gap-1">
               <button

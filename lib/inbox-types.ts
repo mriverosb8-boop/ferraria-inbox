@@ -119,6 +119,20 @@ export interface Message {
    * hay ningún camino que reenvíe o edite este texto.
    */
   translatedBody?: string | null;
+  /**
+   * Columna `inbound_translation`: traducción AL ESPAÑOL de lo que escribió el
+   * huésped. Solo en mensajes entrantes y solo cuando el engine tradujo.
+   *
+   * Al revés que `translatedBody`, esta SÍ es la vista por defecto de la
+   * burbuja: `body` guarda el original en el idioma del huésped y nunca se
+   * pierde (se abre a un toque bajo la marca "Traducido del …").
+   */
+  inboundTranslation?: string | null;
+  /**
+   * Columna `inbound_detected_lang`: ISO 639-1 del idioma del entrante. Puede
+   * faltar aunque haya traducción; ahí la marca cae al copy genérico.
+   */
+  inboundDetectedLang?: string | null;
   aiMeta?: AiMessageMeta;
   /** UUID generado en cliente; persiste en `Wubby_Whatsapp.client_temp_id`. */
   clientTempId?: string;
