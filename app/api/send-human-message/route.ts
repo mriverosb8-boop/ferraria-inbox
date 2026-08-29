@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { requireSessionUser } from "@/lib/auth/require-user";
 import { assertConversationInHotel, requireActiveHotel } from "@/lib/auth/require-hotel";
 import { attachWamidByClientTempId, extractWamid } from "@/lib/outbound-wamid";
+import { readEngineError } from "@/lib/engine-error";
 import { DEFAULT_COMPOSER_LANGUAGE, normalizeLanguageCode } from "@/lib/language-names";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
+
+/** Lo que ve la asesora cuando el engine falla sin decir nada aprovechable. */
+const GENERIC_ENGINE_ERROR = "No se pudo enviar el mensaje por WhatsApp.";
 
 /**
  * Errores del engine que garantizan que el mensaje NO salió al huésped: la
@@ -188,7 +192,10 @@ export async function POST(request: Request) {
     const rawBody = await res.text().catch(() => "");
 
     if (!res.ok) {
-      console.error("[send-human-message]", res.status, rawBody);
+      // Nunca el cuerpo crudo: puede traer un stack del engine o el payload de
+      // Meta con el teléfono del huésped adentro, y esto se loguea en producción.
+      const engineMessage = readEngineError(safeJsonParse(rawBody), GENERIC_ENGINE_ERROR);
+      console.error("[send-human-message]", res.status, engineMessage);
 
       // Fallo de traducción: el engine no llegó a enviarle nada al huésped, y
       // eso hay que decírselo a la bandeja con un código, no con texto suelto,
@@ -209,10 +216,7 @@ export async function POST(request: Request) {
         );
       }
 
-      return NextResponse.json(
-        { error: `El engine respondió ${res.status}`, detail: rawBody.slice(0, 500) },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: engineMessage }, { status: 502 });
     }
 
     // El engine inserta la fila en `Wubby_Whatsapp` ANTES de responder y ya
