@@ -202,6 +202,9 @@ function emptyInboxResponse(availableHotels: AvailableHotel[] = [], activeHotelI
     // Sin hotel activo resuelto no hay flag que leer. `false` = la UI de staff
     // no se pinta, que es el default seguro en todos los caminos.
     engineEnabled: false,
+    // Mismo criterio: sin hotel resuelto no se ofrece enviar plantillas. El
+    // servidor las bloquea igual, así que acá el default seguro es no pintarlas.
+    templatesEnabled: false,
     total: 0,
     conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
     query: null,
@@ -249,7 +252,7 @@ export async function GET(request: Request) {
 
     const { data: hotelWaRows, error: hotelWaError } = await supabase
       .from(HOTELS_TABLE)
-      .select("id, whatsapp_number, engine_enabled")
+      .select("id, whatsapp_number, engine_enabled, templates_enabled")
       .in("id", allowedHotelIds);
 
     if (hotelWaError) {
@@ -279,6 +282,25 @@ export async function GET(request: Request) {
         String(row.id ?? "") === activeHotelId && row.engine_enabled === true
     );
 
+    /**
+     * `hotels.templates_enabled` del hotel ACTIVO. Mismo molde que el flag de
+     * arriba: una columna más en el select que ya existía, cero consultas nuevas
+     * y un booleano del hotel abierto, no un mapa por hotel.
+     *
+     * Apaga el envío manual de plantillas en la UI. Hay hoteles donde las
+     * plantillas no se pueden facturar en Meta, así que recepción no debe poder
+     * mandarlas hasta que eso se resuelva.
+     *
+     * Default `false` si la fila falta o la columna viene null: preferimos
+     * esconder el botón de más antes que ofrecer un envío que el servidor va a
+     * rechazar con 403. El gate real vive en `POST /api/send-whatsapp-template`;
+     * esto es solo UI.
+     */
+    const templatesEnabled = (hotelWaRows ?? []).some(
+      (row: { id?: unknown; templates_enabled?: unknown }) =>
+        String(row.id ?? "") === activeHotelId && row.templates_enabled === true
+    );
+
     // Camino de búsqueda. Aditivo: sin `q` nada de esto corre y el resto del
     // handler queda exactamente como estaba.
     //
@@ -298,6 +320,7 @@ export async function GET(request: Request) {
           activeHotelId,
           hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
           engineEnabled,
+          templatesEnabled,
           total: 0,
           conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
           query: searchTerm,
@@ -376,6 +399,7 @@ export async function GET(request: Request) {
         activeHotelId,
         hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
         engineEnabled,
+        templatesEnabled,
         total: hotelTotalResult.count ?? convRows.length,
         conversationsPageSize: CONVERSATIONS_PAGE_SIZE,
         // Eco del término aplicado: el cliente descarta con esto las respuestas
@@ -478,6 +502,7 @@ export async function GET(request: Request) {
       activeHotelId,
       hotelWhatsappById: hotelWhatsappMapToRecord(hotelWhatsappById),
       engineEnabled,
+      templatesEnabled,
       // Reemplaza a `truncated`, que con el tope sería `true` de forma
       // permanente y por lo tanto no informaría nada. `total` es el count real
       // del hotel: con él, `fetchedConversations < total` dice que hay recorte y

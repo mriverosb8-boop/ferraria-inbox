@@ -14,6 +14,11 @@ export const dynamic = "force-dynamic";
 
 const GENERIC_TEMPLATE_ERROR = "No se pudo enviar la plantilla";
 
+const HOTELS_TABLE = "hotels";
+
+/** Copy exacto del bloqueo por hotel. Lo muestra el toast del inbox tal cual. */
+const TEMPLATES_DISABLED_ERROR = "Envío de plantillas deshabilitado para este hotel";
+
 /**
  * Mensaje de error del engine para mostrar al usuario. Prioriza
  * `error`/`message`/`detail` del JSON (incluido el anidado de Meta
@@ -76,6 +81,39 @@ export async function POST(request: Request) {
     }
     if (!activeHotelId) {
       return NextResponse.json({ error: "activeHotelId es obligatorio" }, { status: 400 });
+    }
+
+    /**
+     * Gate por hotel: hay hoteles donde las plantillas no se pueden facturar en
+     * Meta, así que el envío manual queda cerrado hasta que eso se resuelva.
+     *
+     * Va DESPUÉS de auth y del gate de hotel —primero se comprueba que el
+     * usuario tenga derecho a este hotel, y recién ahí qué permite el hotel— y
+     * ANTES de tocar el engine: nada sale si el flag está apagado.
+     *
+     * Obligatorio aunque la UI esconda el botón: el front es una comodidad, no
+     * un candado. Filtra por `hotel_id` en el query, sin apoyarse en RLS.
+     *
+     * Solo un `true` explícito deja pasar. Fila ausente o columna null caen del
+     * lado cerrado, que acá es el barato: un envío de más no se puede deshacer.
+     */
+    const { data: hotelFlagRow, error: hotelFlagError } = await supabase
+      .from(HOTELS_TABLE)
+      .select("templates_enabled")
+      .eq("id", activeHotelId)
+      .maybeSingle();
+
+    if (hotelFlagError) {
+      // Sin PII: solo el code de Supabase.
+      console.error(
+        "[send-whatsapp-template] templates_enabled",
+        hotelFlagError.code ?? "sin_code"
+      );
+      return NextResponse.json({ error: GENERIC_TEMPLATE_ERROR }, { status: 502 });
+    }
+
+    if (hotelFlagRow?.templates_enabled !== true) {
+      return NextResponse.json({ error: TEMPLATES_DISABLED_ERROR }, { status: 403 });
     }
 
     if (!templateName) {

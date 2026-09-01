@@ -2321,6 +2321,7 @@ export default function InboxApp() {
     availableHotels,
     activeHotelId: resolvedActiveHotelId,
     engineEnabled,
+    templatesEnabled,
   } = useConversations({ activeConversationId: selectedId, activeHotelId });
   const { followups: followupTimers, removeFollowup } = useFollowupTimers();
 
@@ -5346,8 +5347,16 @@ export default function InboxApp() {
                       · Staff  → plantilla fija, un clic, sin elegir nada.
                       · Huésped → el modal de siempre, con el número ya puesto.
                       Sin teléfono utilizable no hay a dónde enviar: no se pinta nada.
+
+                      `templatesEnabled` es el gate del hotel: hay hoteles donde
+                      las plantillas no se pueden facturar en Meta y recepción no
+                      debe poder mandarlas. Arranca en `false` hasta que el
+                      servidor responda, así que mientras el hotel no cargó
+                      tampoco se pinta. Es gate de UI: el candado real está en
+                      `POST /api/send-whatsapp-template`.
                     */}
-                    {selectedPhoneDigits &&
+                    {templatesEnabled &&
+                      selectedPhoneDigits &&
                       (selected.isStaff ? (
                         <button
                           type="button"

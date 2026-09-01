@@ -33,6 +33,11 @@ type InboxResponse = {
    * para ellos. Ausente = `false`.
    */
   engineEnabled?: boolean;
+  /**
+   * `hotels.templates_enabled` del hotel activo. En `false` la UI no ofrece
+   * enviar plantillas a mano. Ausente = `false`.
+   */
+  templatesEnabled?: boolean;
   error?: string;
 };
 
@@ -90,6 +95,13 @@ export function useConversations(options?: UseConversationsOptions) {
    * registrar contactos en un hotel donde la IA de n8n les responde igual.
    */
   const [engineEnabled, setEngineEnabled] = useState(false);
+  /**
+   * Igual que el de arriba, arranca en `false`: hasta que el servidor confirme
+   * que el hotel permite plantillas, no se pinta ningún botón para enviarlas.
+   * El costo de esperar un instante es que el botón aparece tarde; el de asumir
+   * que sí es ofrecer un envío que el servidor rechaza con 403.
+   */
+  const [templatesEnabled, setTemplatesEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [urgentHandoffBannerVisible, setUrgentHandoffBannerVisible] = useState(false);
@@ -195,6 +207,7 @@ export function useConversations(options?: UseConversationsOptions) {
       // cambiar de hotel, lista y flag cambian juntos y no hay un frame con las
       // conversaciones nuevas y el flag del hotel anterior.
       setEngineEnabled(json.engineEnabled === true);
+      setTemplatesEnabled(json.templatesEnabled === true);
       setError(null);
       // Único punto donde se sella: acá el GET ya respondió y se aplicó. Un
       // fetch abortado o fallido cae al catch y no cuenta como reciente.
@@ -329,5 +342,6 @@ export function useConversations(options?: UseConversationsOptions) {
     availableHotels,
     activeHotelId: resolvedActiveHotelId,
     engineEnabled,
+    templatesEnabled,
   };
 }
