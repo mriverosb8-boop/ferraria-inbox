@@ -50,6 +50,7 @@ import { STAFF_CONTACT_TEMPLATE_NAME } from "@/lib/staff-contacts";
 import { sendWhatsappTemplate } from "@/lib/send-whatsapp-template";
 import { tiempoTranscurrido } from "@/lib/service-tickets";
 import { normalizeColombianWhatsappNumber } from "@/lib/whatsapp-templates";
+import { useAgentTyping } from "@/hooks/useAgentTyping";
 import { useConversations } from "@/hooks/useConversations";
 import { useFollowupTimers } from "@/hooks/useFollowupTimers";
 import { useInboxConversationMessages } from "@/hooks/useInboxConversationMessages";
@@ -1642,6 +1643,61 @@ function SystemEvent({ label }: { label: string }) {
   );
 }
 
+/** Un solo literal para el hilo y para la lista: no pueden desincronizarse. */
+const AGENT_TYPING_LABEL = "El agente está escribiendo…";
+
+/**
+ * Burbuja de "escribiendo" del agente, al final del hilo. Copia la anatomía de
+ * una burbuja de IA (fila invertida, chip del agente a la derecha, crema con su
+ * borde) para que se lea como el mensaje que está por llegar y no como un
+ * cartel del sistema.
+ *
+ * Los tres puntos son decorativos; lo que anuncia el lector de pantalla es el
+ * texto de `sr-only`, en `aria-live="polite"` para que no interrumpa lo que la
+ * recepcionista esté leyendo.
+ */
+function AgentTypingBubble() {
+  return (
+    <div
+      className="mt-2.5 flex w-full min-w-0 items-start gap-2"
+      style={{ flexDirection: "row-reverse" }}
+    >
+      <div className="shrink-0 self-start" style={{ width: 30 }}>
+        <div
+          className="grid place-items-center"
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: "var(--radius-chip)",
+            background: "var(--bubble-ai)",
+            border: "1px solid var(--bubble-ai-border)",
+          }}
+        >
+          <Spark className="h-4 w-4" style={{ color: "var(--gold)" }} aria-hidden />
+        </div>
+      </div>
+      <div
+        className="inline-flex items-center gap-1.5"
+        role="status"
+        aria-live="polite"
+        style={{
+          background: "var(--bubble-ai)",
+          border: "1px solid var(--bubble-ai-border)",
+          // Misma muesca arriba-derecha que la primera burbuja de una tanda
+          // saliente: el "escribiendo" siempre abre lo que el agente va a decir.
+          borderRadius: "var(--radius-bubble) 4px var(--radius-bubble) var(--radius-bubble)",
+          padding: "11px 14px",
+        }}
+      >
+        <span className="sr-only">{AGENT_TYPING_LABEL}</span>
+        <span className="ibx-typing-dot" aria-hidden />
+        <span className="ibx-typing-dot" aria-hidden />
+        <span className="ibx-typing-dot" aria-hidden />
+      </div>
+    </div>
+  );
+}
+
 /**
  * Menú "…" del encabezado del chat (spec 5.3). Guarda las acciones secundarias
  * para que arriba quede a la vista solo la principal ("✓ Completado").
@@ -2297,6 +2353,13 @@ export default function InboxApp() {
   const conversationHotelId = activeHotelId ?? resolvedActiveHotelId;
 
   /**
+   * "El agente está escribiendo…". Señal efímera por Broadcast, una suscripción
+   * por hotel: no toca la base ni el estado de conversaciones, así que un
+   * evento perdido no deja rastro — el mensaje real entra igual por Realtime.
+   */
+  const { isTyping: isAgentTypingTo } = useAgentTyping(conversationHotelId);
+
+  /**
    * Nombre del hotel activo para la ficha del huésped.
    *
    * La ficha mostraba `guest.property`, que viene de la columna `cotizacion` y
@@ -2937,6 +3000,15 @@ export default function InboxApp() {
     [searchScoped]
   );
 
+  /**
+   * El agente está redactando la respuesta del huésped que está abierto en
+   * pantalla. Se compara por teléfono, no por conversación: el evento viene del
+   * engine, que conoce el número pero no el id de la fila de la bandeja.
+   */
+  const selectedGuestTyping = Boolean(
+    selected && isAgentTypingTo(selected.guestPhone || selected.guest.phone)
+  );
+
   const scrollToBottom = useCallback(() => {
     // El scroll suave también es movimiento: bajo `prefers-reduced-motion` va
     // instantáneo, igual que las animaciones del hilo.
@@ -3015,6 +3087,20 @@ export default function InboxApp() {
     }, 100);
     return () => clearTimeout(t);
   }, [threadBubbles.length, scrollToBottom]);
+
+  /*
+    El "escribiendo" también crece el hilo: si no bajara, la burbuja de los
+    puntos aparecería tapada justo cuando informa algo.
+
+    A diferencia del mensaje nuevo, cuando la recepcionista está leyendo más
+    arriba NO se le cuenta ni se le enciende el botón flotante: no es contenido
+    que se haya perdido, es un aviso pasajero.
+  */
+  useEffect(() => {
+    if (!selectedGuestTyping) return;
+    if (!atBottomRef.current) return;
+    scrollToBottom();
+  }, [selectedGuestTyping, scrollToBottom]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -3959,6 +4045,12 @@ export default function InboxApp() {
       statusVariant === "ia" && c.autoReactivatedAt !== null && c.autoReactivatedAt !== undefined;
     const showTriage = c.triageEscalatedAt !== null && c.triageEscalatedAt !== undefined;
     const { emoji, rest } = splitLeadingEmoji(c.guest.name);
+    /*
+      Mientras el agente redacta, el preview deja de mostrar el último mensaje y
+      muestra el aviso. Es sustitución, no un renglón extra: la fila tiene alto
+      fijo (82px) y agregarle una línea rompería que entren siete en pantalla.
+    */
+    const rowTyping = isAgentTypingTo(c.guestPhone || c.guest.phone);
     return (
       <button
         key={c.id}
@@ -4026,11 +4118,18 @@ export default function InboxApp() {
               style={{
                 margin: 0,
                 fontSize: 14,
-                color: hasUnread ? "var(--text-primary)" : "var(--text-secondary)",
-                fontWeight: hasUnread ? 600 : 400,
+                color: rowTyping
+                  ? "var(--accent)"
+                  : hasUnread
+                    ? "var(--text-primary)"
+                    : "var(--text-secondary)",
+                // La itálica en terracota ya distingue el aviso; la negrita de
+                // "no leídas" se apaga mientras dura para no competir con ella.
+                fontWeight: !rowTyping && hasUnread ? 600 : 400,
+                fontStyle: rowTyping ? "italic" : "normal",
               }}
             >
-              {stripWhatsappMarkup(c.lastMessagePreview)}
+              {rowTyping ? AGENT_TYPING_LABEL : stripWhatsappMarkup(c.lastMessagePreview)}
             </p>
             {hasUnread && (
               <span
@@ -4944,6 +5043,10 @@ export default function InboxApp() {
                       <SystemEvent label="Conversación cerrada · reábrela desde la ficha si necesitas seguir el hilo" />
                     </div>
                   )}
+                  {/* Va después del historial y antes del ancla de scroll: es
+                      lo último del hilo mientras dure, y desaparece solo cuando
+                      llega el mensaje de verdad (o a los 30s de failsafe). */}
+                  {selectedGuestTyping && !threadLoading && <AgentTypingBubble />}
                   <div ref={scrollEndRef} className="h-px w-full shrink-0" aria-hidden />
                 </div>
               </div>

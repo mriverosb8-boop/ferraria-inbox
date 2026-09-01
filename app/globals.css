@@ -467,6 +467,46 @@ body {
   }
 }
 
+/* "El agente está escribiendo…": tres puntos que rebotan por turnos dentro de
+   la burbuja del agente. Sin librería: son tres spans con el mismo keyframe y
+   el arranque corrido 160 ms entre uno y otro.
+
+   El ciclo es largo a propósito (1.2 s): el indicador puede quedarse en
+   pantalla medio minuto y una animación rápida cansa la vista de quien está
+   atendiendo. Bajo `prefers-reduced-motion` los puntos se quedan quietos —
+   siguen visibles, que es lo que informa; lo que se apaga es el movimiento. */
+@keyframes ibx-typing-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+.ibx-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--text-secondary);
+  animation: ibx-typing-dot 1200ms ease-in-out infinite;
+}
+.ibx-typing-dot:nth-child(2) {
+  animation-delay: 160ms;
+}
+.ibx-typing-dot:nth-child(3) {
+  animation-delay: 320ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibx-typing-dot {
+    animation: none;
+    opacity: 0.55;
+  }
+}
+
 /* Botón flotante "Ir al final": entra desde abajo cuando el hilo deja de estar
    pegado al final. */
 @keyframes ibx-fab-in {
