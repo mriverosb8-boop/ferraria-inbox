@@ -4451,8 +4451,15 @@ export default function InboxApp() {
                   el menú quedó vacío y se fue con ella. */}
               {/* Acción principal de la sección: abrir un hilo nuevo. Vive acá,
                   al lado de la lista que va a recibirlo, y por eso el botón
-                  equivalente del encabezado rojo se oculta en esta vista. */}
-              {!staffViewActive && (
+                  equivalente del encabezado rojo se oculta en esta vista.
+
+                  Abrir un hilo nuevo siempre termina en una plantilla, así que
+                  cae bajo el mismo gate `templatesEnabled` que los botones del
+                  composer: hotel sin plantillas facturables —o hotel que
+                  todavía no cargó, porque arranca en `false`— no pinta el
+                  botón. Es gate de UI: el candado real está en
+                  `POST /api/send-whatsapp-template`. */}
+              {templatesEnabled && !staffViewActive && (
                 <button
                   type="button"
                   onClick={() => openStartConversation()}
@@ -4483,15 +4490,18 @@ export default function InboxApp() {
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   {/* "Comenzar conversación" solo existe en Staff: en Huéspedes
-                      la misma acción es el botón rojo "Nueva" del encabezado. */}
-                  <button
-                    type="button"
-                    onClick={() => openStartConversation()}
-                    className="grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
-                  >
-                    <IconCompose className="h-4 w-4 shrink-0" aria-hidden />
-                    Comenzar conversación
-                  </button>
+                      la misma acción es el botón rojo "Nueva" del encabezado.
+                      Misma acción, mismo gate `templatesEnabled`. */}
+                  {templatesEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => openStartConversation()}
+                      className="grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
+                    >
+                      <IconCompose className="h-4 w-4 shrink-0" aria-hidden />
+                      Comenzar conversación
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setStaffContactsOpen(true)}
