@@ -2293,6 +2293,26 @@ function MessageBubble({
   );
 }
 
+/**
+ * Hotel con `templates_enabled = false`: las plantillas no se pueden facturar
+ * en Meta. Los botones que terminan en plantilla NO se ocultan —recepcion
+ * necesita ver que la accion existe y que hoy no esta disponible, si desaparece
+ * parece que la bandeja se rompio— sino que quedan deshabilitados con este
+ * aviso al lado. Va como texto visible, no como tooltip: en tablet no hay hover.
+ */
+const TEMPLATES_DISABLED_NOTE = "Envío de plantillas temporalmente inhabilitado";
+
+function TemplatesDisabledNote({ className = "" }: { className?: string }) {
+  return (
+    <p
+      className={`grotesk leading-snug ${className}`}
+      style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-secondary)" }}
+    >
+      {TEMPLATES_DISABLED_NOTE}
+    </p>
+  );
+}
+
 export default function InboxApp() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [requestedConversationId, setRequestedConversationId] = useState<string | null>(null);
@@ -2323,6 +2343,17 @@ export default function InboxApp() {
     engineEnabled,
     templatesEnabled,
   } = useConversations({ activeConversationId: selectedId, activeHotelId });
+  /**
+   * Gate de UI de las plantillas. El candado real vive en
+   * `POST /api/send-whatsapp-template`; aca solo se apaga el boton.
+   */
+  const templatesDisabled = !templatesEnabled;
+  /**
+   * `templatesEnabled` arranca en `false` y solo se sabe cuando responde
+   * `GET /api/inbox`. Mientras carga el boton ya se ve deshabilitado, pero el
+   * aviso se calla: decir "inhabilitado" antes de saberlo seria mentir.
+   */
+  const showTemplatesDisabledNote = templatesDisabled && !loading;
   const { followups: followupTimers, removeFollowup } = useFollowupTimers();
 
   /**
@@ -4456,20 +4487,30 @@ export default function InboxApp() {
                   Abrir un hilo nuevo siempre termina en una plantilla, así que
                   cae bajo el mismo gate `templatesEnabled` que los botones del
                   composer: hotel sin plantillas facturables —o hotel que
-                  todavía no cargó, porque arranca en `false`— no pinta el
-                  botón. Es gate de UI: el candado real está en
-                  `POST /api/send-whatsapp-template`. */}
-              {templatesEnabled && !staffViewActive && (
+                  todavía no cargó, porque arranca en `false`— lo deja
+                  deshabilitado, no lo esconde. */}
+              {!staffViewActive && (
                 <button
                   type="button"
                   onClick={() => openStartConversation()}
-                  className="ibx-press grotesk inline-flex shrink-0 items-center rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-2 text-[13px] font-bold text-white hover:bg-[var(--accent-hover)]"
-                  title="Comenzar una conversación nueva con un huésped"
+                  disabled={templatesDisabled}
+                  aria-disabled={templatesDisabled}
+                  className="ibx-press grotesk inline-flex shrink-0 items-center rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-2 text-[13px] font-bold text-white enabled:hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+                  title={
+                    templatesDisabled
+                      ? TEMPLATES_DISABLED_NOTE
+                      : "Comenzar una conversación nueva con un huésped"
+                  }
                 >
                   Nueva
                 </button>
               )}
             </div>
+            {/* Una sola vez por zona: el aviso cuelga del renglon del boton, no
+                de cada boton. */}
+            {!staffViewActive && showTemplatesDisabledNote && (
+              <TemplatesDisabledNote className="-mt-2 mb-3" />
+            )}
             {/* Buscador y chips son de la vista Huéspedes. En Staff no se
                 pintan por decisión explícita: son decenas de contactos, entran
                 de un scroll, y los estados operativos no aplican a un hilo con
@@ -4492,16 +4533,17 @@ export default function InboxApp() {
                   {/* "Comenzar conversación" solo existe en Staff: en Huéspedes
                       la misma acción es el botón rojo "Nueva" del encabezado.
                       Misma acción, mismo gate `templatesEnabled`. */}
-                  {templatesEnabled && (
-                    <button
-                      type="button"
-                      onClick={() => openStartConversation()}
-                      className="grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-bold text-white transition-colors hover:bg-[var(--accent-hover)]"
-                    >
-                      <IconCompose className="h-4 w-4 shrink-0" aria-hidden />
-                      Comenzar conversación
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => openStartConversation()}
+                    disabled={templatesDisabled}
+                    aria-disabled={templatesDisabled}
+                    title={templatesDisabled ? TEMPLATES_DISABLED_NOTE : undefined}
+                    className="grotesk inline-flex shrink-0 items-center gap-1.5 rounded-[var(--radius-chip)] bg-[var(--accent)] px-3 py-1.5 text-[12px] font-bold text-white transition-colors enabled:hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <IconCompose className="h-4 w-4 shrink-0" aria-hidden />
+                    Comenzar conversación
+                  </button>
                   <button
                     type="button"
                     onClick={() => setStaffContactsOpen(true)}
@@ -4523,6 +4565,7 @@ export default function InboxApp() {
                       angosta baja a su propio renglón en vez de aplastarse. */}
                   {renderHotelSelector("en-fila")}
                 </div>
+                {showTemplatesDisabledNote && <TemplatesDisabledNote className="mt-2" />}
               </div>
             ) : (
               <>
@@ -5360,20 +5403,21 @@ export default function InboxApp() {
 
                       `templatesEnabled` es el gate del hotel: hay hoteles donde
                       las plantillas no se pueden facturar en Meta y recepción no
-                      debe poder mandarlas. Arranca en `false` hasta que el
-                      servidor responda, así que mientras el hotel no cargó
-                      tampoco se pinta. Es gate de UI: el candado real está en
+                      debe poder mandarlas. Ahí el botón se pinta igual pero
+                      deshabilitado —esconderlo dejaba el aviso de las 24 horas
+                      sin salida visible y parecía un bug— con el aviso debajo.
+                      Es gate de UI: el candado real está en
                       `POST /api/send-whatsapp-template`.
                     */}
-                    {templatesEnabled &&
-                      selectedPhoneDigits &&
+                    {selectedPhoneDigits &&
                       (selected.isStaff ? (
                         <button
                           type="button"
                           onClick={() => void sendStaffContactTemplate()}
-                          disabled={sendingStaffTemplate || !conversationHotelId}
+                          disabled={sendingStaffTemplate || !conversationHotelId || templatesDisabled}
+                          aria-disabled={sendingStaffTemplate || !conversationHotelId || templatesDisabled}
                           aria-busy={sendingStaffTemplate}
-                          className="ibx-press grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="ibx-press grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm enabled:hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
                           style={{ background: "var(--staff)" }}
                         >
                           {sendingStaffTemplate && <Spinner className="h-4 w-4 animate-spin" />}
@@ -5383,7 +5427,9 @@ export default function InboxApp() {
                         <button
                           type="button"
                           onClick={() => openStartConversation(selectedPhoneDigits)}
-                          className="ibx-press grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold shadow-sm hover:bg-[var(--border-soft)]"
+                          disabled={templatesDisabled}
+                          aria-disabled={templatesDisabled}
+                          className="ibx-press grotesk mt-2.5 inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-semibold shadow-sm enabled:hover:bg-[var(--border-soft)] disabled:cursor-not-allowed disabled:opacity-60"
                           style={{
                             border: "1px solid var(--border-soft)",
                             background: "var(--bg-card)",
@@ -5394,6 +5440,10 @@ export default function InboxApp() {
                           Enviar plantilla para reabrir
                         </button>
                       ))}
+                    {/* Un solo aviso para las dos variantes del botón. */}
+                    {selectedPhoneDigits && showTemplatesDisabledNote && (
+                      <TemplatesDisabledNote className="mt-2" />
+                    )}
                   </div>
                 )}
                 </div>
