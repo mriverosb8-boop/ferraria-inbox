@@ -41,7 +41,12 @@ import {
   languageShortLabel,
   normalizeLanguageCode,
 } from "@/lib/language-names";
-import { isOtaChannel } from "@/lib/channels";
+import {
+  channelBrandColor,
+  channelLabel,
+  isOtaChannel,
+  type MessageChannel,
+} from "@/lib/channels";
 import {
   COLOMBIA_TIME_ZONE,
   isReplyBlockedByMetaPolicy,
@@ -138,6 +143,41 @@ function BlockedBadge({ className = "" }: { className?: string }) {
       className={`inline-flex shrink-0 items-center rounded-md bg-[#ebe6e0] px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#6b665e] ring-1 ring-[#d4cdc3] ${className}`}
     >
       Bloqueado
+    </span>
+  );
+}
+
+/**
+ * Chip del canal cuando la conversación NO entró por WhatsApp.
+ *
+ * Devuelve `null` en WhatsApp: la bandeja es casi toda WhatsApp y ponerle chip a
+ * todas las filas haría que el distintivo dejara de distinguir. El chip aparece
+ * justo cuando hay algo distinto que avisar.
+ *
+ * El color sale de `channelBrandColor`, el mismo que usa el encabezado del hilo:
+ * si la lista pintara un azul y el encabezado otro, el mismo canal se leería
+ * como dos cosas según dónde se mire.
+ *
+ * Lleva el nombre escrito y no solo el color: recepción no tiene por qué
+ * memorizar que azul = Booking, y un chip de color pelado no dice nada en una
+ * pantalla en blanco y negro o para alguien que no distingue colores.
+ */
+function ChannelBadge({
+  channel,
+  className = "",
+}: {
+  channel: MessageChannel;
+  className?: string;
+}) {
+  const color = channelBrandColor(channel);
+  if (!color) return null;
+
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-white ${className}`}
+      style={{ background: color }}
+    >
+      {channelLabel(channel)}
     </span>
   );
 }
@@ -580,22 +620,6 @@ function IconClose(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-    </svg>
-  );
-}
-
-/**
- * Canal de agencia externa (Booking, Expedia, Airbnb).
- *
- * Ícono propio y no `IconGlobe` a propósito: el globo ya significa "idioma" en
- * las burbujas traducidas, y darle un segundo significado en el encabezado hace
- * que ninguno de los dos se lea rápido. Un edificio dice "agencia" sin fingir
- * ser el logo de ninguna marca.
- */
-function IconOtaChannel(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 20.25h16.5M5.25 20.25V5.25a1.5 1.5 0 011.5-1.5h10.5a1.5 1.5 0 011.5 1.5v15M9 7.5h1.5M13.5 7.5H15M9 11.25h1.5M13.5 11.25H15M10.5 20.25v-3.75h3v3.75" />
     </svg>
   );
 }
@@ -4168,6 +4192,9 @@ export default function InboxApp() {
             >
               {(emoji ? emoji + " " : "") + rest}
             </span>
+            {/* Va pegado al nombre, antes de la hora: es contexto de CON QUIÉN se
+                está hablando, no un estado de la conversación. */}
+            <ChannelBadge channel={c.channel} />
             {c.blocked && <BlockedBadge className="shrink-0" />}
             <span className="ibx-mono ml-auto shrink-0" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
               {c.lastMessageAt}
@@ -5000,14 +5027,20 @@ export default function InboxApp() {
                       se dibujan logos de Booking, Expedia ni Airbnb: el nombre
                       ya distingue, y un logo mal hecho se lee como error.
                     */}
-                    <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                      {isOtaChannel(selected.channel) ? (
-                        <IconOtaChannel className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--text-secondary)" }} aria-hidden />
-                      ) : (
+                    {/*
+                      En OTA va el MISMO chip relleno que la lista, no el color
+                      de marca como color de texto: el azul de Booking sobre el
+                      fondo del tema oscuro queda ilegible, mientras que el chip
+                      relleno con texto blanco se lee igual en los dos temas.
+                    */}
+                    {isOtaChannel(selected.channel) ? (
+                      <ChannelBadge channel={selected.channel} />
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
                         <IconWhatsApp className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--live)" }} aria-hidden />
-                      )}
-                      <span className="truncate">{selected.channelLabel}</span>
-                    </span>
+                        <span className="truncate">{selected.channelLabel}</span>
+                      </span>
+                    )}
                     {selected.blocked && selected.blockedAt && (
                       <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                         {formatBlockedAtColombia(selected.blockedAt)}

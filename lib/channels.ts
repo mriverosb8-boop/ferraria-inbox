@@ -20,6 +20,27 @@ const CHANNEL_LABELS: Record<MessageChannel, string> = {
 };
 
 /**
+ * Color de marca del canal, para el chip de la lista y el badge del encabezado.
+ *
+ * Fuente ÚNICA: la lista de la izquierda y el encabezado del hilo tienen que
+ * pintar exactamente el mismo color, o el mismo canal se lee como dos cosas
+ * distintas según dónde lo mires.
+ *
+ * `whatsapp` es `null` a propósito, no un verde: el canal mayoritario NO lleva
+ * chip. Si todas las filas llevaran uno, el chip dejaría de significar algo.
+ *
+ * Los tres son colores de marca sobre los que va texto blanco. El de Booking lo
+ * fijó Matías; los de Expedia y Airbnb quedan acá listos para cuando entren esos
+ * canales y se cambian en este solo punto.
+ */
+const CHANNEL_BRAND_COLORS: Record<MessageChannel, string | null> = {
+  whatsapp: null,
+  booking: "#003580",
+  expedia: "#00355F",
+  airbnb: "#FF5A5F",
+};
+
+/**
  * Valor de la columna → canal conocido. Cualquier cosa que no reconozcamos
  * (null, texto raro, canal nuevo del engine) cae a `whatsapp`, que es el default
  * de la columna y el canal del 100% del histórico.
@@ -33,6 +54,16 @@ export function normalizeChannel(raw: unknown): MessageChannel {
 /** Nombre del canal tal como lo lee recepción. Es la marca, no el valor crudo. */
 export function channelLabel(channel: MessageChannel): string {
   return CHANNEL_LABELS[channel];
+}
+
+/**
+ * Color de marca del canal, o `null` cuando el canal no lleva distintivo.
+ *
+ * `null` es la señal de "no pintes chip", no un color faltante: hoy solo
+ * WhatsApp cae ahí, y es a propósito.
+ */
+export function channelBrandColor(channel: MessageChannel): string | null {
+  return CHANNEL_BRAND_COLORS[channel];
 }
 
 /**

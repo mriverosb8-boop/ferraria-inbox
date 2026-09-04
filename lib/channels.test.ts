@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  channelBrandColor,
   channelLabel,
   isOtaChannel,
   normalizeChannel,
@@ -67,4 +68,25 @@ test("sin identidad cruda se cae a la normalizada en vez de mandar vacío", () =
   // es mejor que ninguno.
   assert.equal(pickEngineIdentity("booking", "", "573001112233"), "573001112233");
   assert.equal(pickEngineIdentity("booking", "   ", "573001112233"), "573001112233");
+});
+
+test("WhatsApp no tiene color de chip: el canal mayoritario no lleva distintivo", () => {
+  // `null` es la señal de "no pintes chip", no un color que falte por poner. Si
+  // todas las filas de la bandeja llevaran chip, el chip dejaría de distinguir.
+  assert.equal(channelBrandColor("whatsapp"), null);
+});
+
+test("cada canal de OTA trae su color de marca", () => {
+  assert.equal(channelBrandColor("booking"), "#003580");
+  assert.equal(channelBrandColor("expedia"), "#00355F");
+  assert.equal(channelBrandColor("airbnb"), "#FF5A5F");
+});
+
+test("los colores de marca son hex de 6 dígitos", () => {
+  // El chip los mete directo en un `style`, así que un valor mal escrito no
+  // rompe nada: simplemente el chip sale sin fondo y con texto blanco sobre
+  // blanco, invisible.
+  for (const canal of ["booking", "expedia", "airbnb"] as const) {
+    assert.match(String(channelBrandColor(canal)), /^#[0-9A-Fa-f]{6}$/);
+  }
 });
