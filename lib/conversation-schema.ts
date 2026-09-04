@@ -15,6 +15,7 @@ export const CONVERSATION_SELECT_COLUMNS = [
   "hotel_id",
   "guest_phone",
   "guest_name",
+  "channel",
   "status",
   "needs_human",
   "ai_active",
@@ -36,6 +37,18 @@ export type ConversationDbRow = {
   hotel_id?: string | null;
   guest_phone: string | null;
   guest_name: string | null;
+  /**
+   * Canal de origen: `whatsapp` (default de la columna) o uno de OTA
+   * (`booking`, `expedia`, `airbnb`), que entran por Channex.
+   *
+   * Se lee SIEMPRE con `normalizeChannel` (`lib/channels.ts`), nunca casteando:
+   * el engine puede agregar un canal nuevo antes que el inbox y un valor
+   * desconocido debe caer a `whatsapp`, no romper la fila.
+   *
+   * OJO: cuando NO es `whatsapp`, `guest_phone` no es un teléfono sino el UUID
+   * del hilo de Channex.
+   */
+  channel: string | null;
   status: string | null;
   needs_human: boolean | null;
   ai_active: boolean | null;

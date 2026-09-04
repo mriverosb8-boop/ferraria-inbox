@@ -1,3 +1,4 @@
+import { channelLabel, isOtaChannel, normalizeChannel } from "@/lib/channels";
 import type { ConversationDbRow } from "@/lib/conversation-schema";
 import type { ControlMode, Conversation, Message, MessageSender, OperationalStatus } from "@/lib/inbox-types";
 import {
@@ -947,13 +948,23 @@ function buildConversationFromRow(
   const guestPhone = normalizeWaIdentity(cr.guest_phone ?? "");
   const phoneDisplay = guestPhone || String(cr.guest_phone ?? "").trim() || "—";
 
+  const channel = normalizeChannel(cr.channel);
+  const isOta = isOtaChannel(channel);
+
   const { operationalStatus, controlMode } = mapOperationalFromConversationRow(cr);
   const cotizacion =
     cr.cotizacion != null && String(cr.cotizacion).trim() !== "" ? String(cr.cotizacion) : null;
 
   const guest = {
     id: cr.id,
-    name: displayGuestName(cr.guest_name, phoneDisplay),
+    // En OTA el respaldo NUNCA puede ser `phoneDisplay`: `guest_phone` guarda el
+    // UUID del hilo de Channex y, al no tener puntos, `normalizeWaIdentity` no
+    // lo reconoce como LID, le arranca los guiones y devuelve un número que
+    // parece un celular colombiano (`+5751834421987712503`). El engine ya manda
+    // "Huésped de Booking.com" cuando la OTA no reveló el nombre, así que este
+    // respaldo casi nunca corre; existe para que, si algún día llega vacío,
+    // recepción vea el canal y no un teléfono inventado.
+    name: displayGuestName(cr.guest_name, isOta ? channelLabel(channel) : phoneDisplay),
     phone: phoneDisplay,
     property: cotizacion ? cotizacion : "Sin propiedad indicada",
     language: "—",
@@ -991,7 +1002,8 @@ function buildConversationFromRow(
     lastGuestMessageAt: cr.last_guest_message_at ?? null,
     operationalStatus,
     controlMode,
-    channelLabel: "WhatsApp",
+    channel,
+    channelLabel: channelLabel(channel),
     messages: parts.messages,
     // El servidor nunca marca un hilo como autoritativo. En la bandeja
     // `messages` va directamente vacío; el hilo lo carga
@@ -1150,7 +1162,16 @@ export function applyConversationRowPatch(
   const normalizedPhone = normalizeWaIdentity(row.guest_phone ?? "");
   const phoneDisplay =
     normalizedPhone || String(row.guest_phone ?? "").trim() || existing.guestPhone;
-  const name = displayGuestName(row.guest_name, phoneDisplay);
+
+  const patchedChannel = normalizeChannel(row.channel);
+  // Mismo respaldo que en `buildConversationFromRow`: en OTA, `guest_phone` es
+  // el UUID del hilo de Channex y usarlo como nombre pinta un teléfono
+  // inventado. Los dos caminos tienen que coincidir o el nombre cambiaría solo
+  // al llegar un UPDATE por Realtime.
+  const name = displayGuestName(
+    row.guest_name,
+    isOtaChannel(patchedChannel) ? channelLabel(patchedChannel) : phoneDisplay
+  );
 
   const cotizacion =
     row.cotizacion != null && String(row.cotizacion).trim() !== ""
@@ -1190,5 +1211,13 @@ export function applyConversationRowPatch(
     unreadCount: readUnreadCount(row.unread_count),
     operationalStatus,
     controlMode,
+    // Se recalcula aunque hoy el canal no cambie después de creada la
+    // conversación. Este merge es el ÚNICO punto que recibe una fila fresca de
+    // la base sin reconstruir la conversación entera, así que un campo que no
+    // se copie acá queda congelado con el valor que tenía en memoria. Dejarlo
+    // afuera "porque no cambia" es exactamente cómo se cuela un dato viejo el
+    // día que sí cambie.
+    channel: patchedChannel,
+    channelLabel: channelLabel(patchedChannel),
   };
 }

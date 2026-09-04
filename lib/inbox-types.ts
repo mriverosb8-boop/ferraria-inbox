@@ -1,3 +1,5 @@
+import type { MessageChannel } from "@/lib/channels";
+
 /** Estado de la conversación en la operación (cola de recepción + IA). */
 export type OperationalStatus = "ai_active" | "requires_attention" | "closed";
 
@@ -165,6 +167,13 @@ export interface Conversation {
   lastGuestMessageAt: string | null;
   operationalStatus: OperationalStatus;
   controlMode: ControlMode;
+  /**
+   * Canal real de la conversación, ya normalizado. Decide el badge del
+   * encabezado, si aplica la ventana de 24 h de Meta y si `guestPhone` se puede
+   * mostrar como teléfono. Ver `lib/channels.ts`.
+   */
+  channel: MessageChannel;
+  /** Nombre del canal para pintar (marca, no el valor crudo de la columna). */
   channelLabel: string;
   /**
    * Hilo de la conversación. Ojo: cuando llega desde `GET /api/inbox` es un

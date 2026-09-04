@@ -40,6 +40,7 @@ import {
   languageShortLabel,
   normalizeLanguageCode,
 } from "@/lib/language-names";
+import { isOtaChannel, otaReplyUnavailableCopy } from "@/lib/channels";
 import {
   COLOMBIA_TIME_ZONE,
   isReplyBlockedByMetaPolicy,
@@ -276,11 +277,18 @@ function sortGuestConversations(list: Conversation[]): Conversation[] {
  * columna vacía y el inbox lo interpretaba como "el huésped nunca escribió",
  * aunque el hilo mostrara el mensaje recién llegado.
  *
+ * SOLO aplica a WhatsApp. La ventana de 24 h es una regla de Meta, no una regla
+ * del hotel: en un hilo de Booking, Expedia o Airbnb no existe, y citarla ahí le
+ * decía a recepción que "no puede responder por política de Meta" en un canal
+ * donde Meta no participa. Los hilos de OTA se bloquean por otra razón y con
+ * otro texto (`otaReplyUnavailableCopy`), no por esta.
+ *
  * Llamadores (únicos, ambos en este archivo): `replyBlockedByMeta`, que habilita
  * el composer, y `sendMessage`.
  */
 function isConversationReplyBlocked(conversation: Conversation | null | undefined): boolean {
   if (!conversation) return false;
+  if (isOtaChannel(conversation.channel)) return false;
   return isReplyBlockedByMetaPolicy({
     lastGuestMessageAt: conversation.lastGuestMessageAt,
     messages: conversation.messages,
@@ -571,6 +579,22 @@ function IconClose(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+/**
+ * Canal de agencia externa (Booking, Expedia, Airbnb).
+ *
+ * Ícono propio y no `IconGlobe` a propósito: el globo ya significa "idioma" en
+ * las burbujas traducidas, y darle un segundo significado en el encabezado hace
+ * que ninguno de los dos se lea rápido. Un edificio dice "agencia" sin fingir
+ * ser el logo de ninguna marca.
+ */
+function IconOtaChannel(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 20.25h16.5M5.25 20.25V5.25a1.5 1.5 0 011.5-1.5h10.5a1.5 1.5 0 011.5 1.5v15M9 7.5h1.5M13.5 7.5H15M9 11.25h1.5M13.5 11.25H15M10.5 20.25v-3.75h3v3.75" />
     </svg>
   );
 }
@@ -4228,7 +4252,23 @@ export default function InboxApp() {
    * suelte. Ignorar el cierre en staff cierra ese callejón sin salida.
    */
   const conversationClosed = selected?.operationalStatus === "closed" && !selectedIsStaff;
-  const inputDisabled = Boolean(conversationClosed || replyBlockedByMeta);
+  /**
+   * Hilo de OTA (Booking, Expedia, Airbnb): el engine todavía no tiene camino de
+   * SALIDA por estos canales, así que el compositor va apagado.
+   *
+   * Ojo con la diferencia: quitarle la ventana de 24 h de Meta a estos hilos
+   * (`isConversationReplyBlocked`) NO significa que ya se pueda responder. Si se
+   * dejara escribir, el texto saldría por el camino de WhatsApp contra el UUID
+   * del hilo de Channex —que no es un teléfono— y recepción creería que
+   * contestó cuando no salió nada. Se apaga con el motivo a la vista, no se
+   * esconde.
+   *
+   * Cuando el engine cierre el egreso de OTA, esto se prende borrando esta sola
+   * condición de `inputDisabled`.
+   */
+  const selectedChannel = selected?.channel ?? "whatsapp";
+  const otaReplyUnavailable = Boolean(selected && isOtaChannel(selectedChannel));
+  const inputDisabled = Boolean(conversationClosed || replyBlockedByMeta || otaReplyUnavailable);
   const selectedFileIsPdf = isPdfFile(selectedFile);
   const selectedFileSizeLabel = selectedFile ? formatFileSize(selectedFile.size) : "";
 
@@ -4941,9 +4981,20 @@ export default function InboxApp() {
                         Resuelto
                       </span>
                     )}
+                    {/*
+                      Canal real del hilo. El ícono de WhatsApp es su marca, así
+                      que solo se usa cuando de verdad es WhatsApp; los canales
+                      de OTA van con el ícono de agencia y el nombre al lado. No
+                      se dibujan logos de Booking, Expedia ni Airbnb: el nombre
+                      ya distingue, y un logo mal hecho se lee como error.
+                    */}
                     <span className="inline-flex items-center gap-1.5" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                      <IconWhatsApp className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--live)" }} aria-hidden />
-                      <span className="truncate">WhatsApp</span>
+                      {isOtaChannel(selected.channel) ? (
+                        <IconOtaChannel className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--text-secondary)" }} aria-hidden />
+                      ) : (
+                        <IconWhatsApp className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--live)" }} aria-hidden />
+                      )}
+                      <span className="truncate">{selected.channelLabel}</span>
                     </span>
                     {selected.blocked && selected.blockedAt && (
                       <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
@@ -5315,7 +5366,9 @@ export default function InboxApp() {
                     placeholder={
                       conversationClosed
                         ? "Conversación completada"
-                        : replyBlockedByMeta
+                        : otaReplyUnavailable
+                          ? otaReplyUnavailableCopy(selectedChannel)
+                          : replyBlockedByMeta
                           ? "No puedes responder (política Meta / ventana 24 h)"
                           : selectedFile
                             ? selectedFileIsPdf
@@ -5387,6 +5440,24 @@ export default function InboxApp() {
                     )}
                   </button>
                 </div>
+                {/*
+                  Hilo de OTA sin egreso todavía. Va en su propio bloque y no
+                  dentro del aviso de las 24 h a propósito: son dos razones
+                  distintas y mezclarlas volvería a citarle a recepción una
+                  política de Meta que en este canal no existe.
+
+                  No lleva botón de plantilla: las plantillas son de WhatsApp y
+                  acá no hay a qué número mandarlas. Que no haya salida es el
+                  estado real y completo; inventarle una acción sería peor.
+                */}
+                {otaReplyUnavailable && (
+                  <div className="mt-2.5 w-full min-w-0">
+                    <p className="text-[12px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-primary)" }}>
+                      {otaReplyUnavailableCopy(selectedChannel)} Los mensajes del huésped sí llegan
+                      acá, y recepción los atiende por el canal de {selected.channelLabel}.
+                    </p>
+                  </div>
+                )}
                 {replyBlockedByMeta && (
                   <div className="mt-2.5 w-full min-w-0">
                     <p className="text-[12px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-primary)" }}>
@@ -5897,6 +5968,22 @@ function GuestPanelContent({
 }) {
   const { guest } = conversation;
   /**
+   * En OTA, `guest.phone` NO es un teléfono: es el UUID del hilo de Channex, y
+   * el normalizador de teléfonos lo convierte en algo con forma de celular
+   * colombiano (`+5751834421987712503`). Recepción no tiene cómo saber que ese
+   * número es basura: lo lee como el contacto del huésped y el botón de copiar
+   * se lo entrega.
+   *
+   * Por eso el identificador se OCULTA en estos canales en vez de mostrarse
+   * crudo. No es esconder información útil: es no publicar un dato falso. Lo que
+   * de verdad identifica el hilo —el canal y el nombre del huésped— sigue
+   * visible arriba.
+   *
+   * Se toca solo la presentación: `conversation.guestPhone` queda intacto
+   * porque es la identidad con la que se emparejan mensajes y realtime.
+   */
+  const guestIdentifierIsPhone = !isOtaChannel(conversation.channel);
+  /**
    * En la ficha de un contacto de staff no van ni "Acciones" (todas son gestión
    * huésped/IA) ni "Resumen del chat" (es la IA leyendo el hilo, lo mismo que
    * acá no interviene). Los datos crudos de abajo sí se quedan: son lectura y
@@ -6080,8 +6167,10 @@ function GuestPanelContent({
           <div className="grotesk truncate" style={{ fontSize: 15.5, fontWeight: 700, color: "var(--text-primary)" }}>
             {guest.name}
           </div>
+          {/* En OTA el renglón muestra el canal, que es lo único cierto que
+              tenemos como segundo dato del contacto. */}
           <div className="ibx-mono mt-0.5 truncate" style={{ fontSize: 11.5, color: "var(--text-secondary)" }}>
-            {guest.phone}
+            {guestIdentifierIsPhone ? guest.phone : conversation.channelLabel}
           </div>
         </div>
         <button
@@ -6343,10 +6432,13 @@ function GuestPanelContent({
         </button>
         {techOpen && (
           <div className="px-3.5 pb-3.5">
-            <MonoRow
-              k={isWaLidIdentifier(guest.phone) ? "ID de WhatsApp" : "Teléfono"}
-              v={guest.phone}
-            />
+            {guestIdentifierIsPhone && (
+              <MonoRow
+                k={isWaLidIdentifier(guest.phone) ? "ID de WhatsApp" : "Teléfono"}
+                v={guest.phone}
+              />
+            )}
+            <MonoRow k="Canal" v={conversation.channelLabel} />
             <MonoRow k="Estado IA" v={iaEstado} />
             <MonoRow k="Mensajes" v={String(conversation.messages.length)} />
             <MonoRow k="Requiere humano" v={conversation.needsHuman ? "Sí" : "No"} />
@@ -6360,15 +6452,19 @@ function GuestPanelContent({
             {conversation.blockedAt && (
               <MonoRow k="blocked_at" v={formatActivityIso(conversation.blockedAt)} />
             )}
-            <button
-              type="button"
-              onClick={() => void navigator.clipboard?.writeText(guest.phone)}
-              className="d-act grotesk mt-3 flex w-full items-center justify-center gap-2"
-              style={{ padding: "10px", borderRadius: 11, border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-primary)", fontSize: 12, fontWeight: 600 }}
-            >
-              <IconPhone className="h-4 w-4" />
-              {isWaLidIdentifier(guest.phone) ? "Copiar ID" : "Copiar teléfono"}
-            </button>
+            {/* Sin botón de copiar en OTA: lo único que había para copiar era el
+                teléfono inventado. */}
+            {guestIdentifierIsPhone && (
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard?.writeText(guest.phone)}
+                className="d-act grotesk mt-3 flex w-full items-center justify-center gap-2"
+                style={{ padding: "10px", borderRadius: 11, border: "1px solid var(--border-soft)", background: "var(--bg-card)", color: "var(--text-primary)", fontSize: 12, fontWeight: 600 }}
+              >
+                <IconPhone className="h-4 w-4" />
+                {isWaLidIdentifier(guest.phone) ? "Copiar ID" : "Copiar teléfono"}
+              </button>
+            )}
           </div>
         )}
       </PanelCard>
