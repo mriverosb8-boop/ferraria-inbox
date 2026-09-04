@@ -5,7 +5,7 @@ import {
   channelLabel,
   isOtaChannel,
   normalizeChannel,
-  otaReplyUnavailableCopy,
+  pickEngineIdentity,
 } from "./channels.ts";
 
 test("los cuatro canales del engine se reconocen tal cual", () => {
@@ -47,16 +47,24 @@ test("las etiquetas son la marca, no el valor crudo de la columna", () => {
   assert.equal(channelLabel("airbnb"), "Airbnb");
 });
 
-test("el aviso nombra el canal y no menciona el stack", () => {
-  const copy = otaReplyUnavailableCopy("booking");
-  assert.equal(copy, "Todavía no puedes responder por Booking.com desde aquí.");
+test("en WhatsApp se le manda al engine la identidad normalizada", () => {
+  assert.equal(pickEngineIdentity("whatsapp", "+573001112233", "573001112233"), "573001112233");
+});
 
-  // Recepción no sabe qué es Channex ni el engine, y saberlo no la ayuda a
-  // atender al huésped.
-  for (const canal of ["whatsapp", "booking", "expedia", "airbnb"] as const) {
-    const texto = otaReplyUnavailableCopy(canal).toLowerCase();
-    for (const prohibido of ["channex", "engine", "supabase", "ota", "api", "uuid"]) {
-      assert.equal(texto.includes(prohibido), false, `"${prohibido}" no puede salir en la UI`);
-    }
-  }
+test("en OTA se le manda al engine el UUID del hilo SIN normalizar", () => {
+  // Es lo que decide por qué canal sale el mensaje: el engine busca la
+  // conversación con `guest_phone = ?` exacto. Con los dígitos mutilados no
+  // encuentra nada y responde por WhatsApp a un número que no existe.
+  const uuid = "e575ba18-3f4c-4a21-9b8e-7712d5aa0c3f";
+  const mutilado = "5751834421987712503";
+  assert.equal(pickEngineIdentity("booking", uuid, mutilado), uuid);
+  assert.equal(pickEngineIdentity("expedia", uuid, mutilado), uuid);
+  assert.equal(pickEngineIdentity("airbnb", uuid, mutilado), uuid);
+});
+
+test("sin identidad cruda se cae a la normalizada en vez de mandar vacío", () => {
+  // El engine rechaza de plano un `guestPhone` vacío, así que un respaldo malo
+  // es mejor que ninguno.
+  assert.equal(pickEngineIdentity("booking", "", "573001112233"), "573001112233");
+  assert.equal(pickEngineIdentity("booking", "   ", "573001112233"), "573001112233");
 });

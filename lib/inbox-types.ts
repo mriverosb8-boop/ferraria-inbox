@@ -191,6 +191,20 @@ export interface Conversation {
   messagesLoaded: boolean;
   /** Teléfono huésped normalizado (+E.164) para envío / matching */
   guestPhone: string;
+  /**
+   * `conversations.guest_phone` TAL CUAL viene de la base, sin normalizar.
+   *
+   * Existe porque en OTA el identificador del hilo es un UUID de Channex, y
+   * `guestPhone` lo pasa por el normalizador de teléfonos, que le arranca los
+   * guiones y deja un número inservible. El engine busca la conversación de OTA
+   * con una comparación EXACTA contra esta columna, así que mandarle la versión
+   * normalizada hace que no encuentre nada.
+   *
+   * Regla: para MOSTRAR y para emparejar mensajes en el cliente se usa
+   * `guestPhone`; para hablarle al engine se usa el valor que devuelve
+   * `resolveEngineGuestIdentity`, que elige entre los dos según el canal.
+   */
+  guestPhoneRaw: string;
   /** Copia de `conversations.needs_human` */
   needsHuman: boolean;
   /** Copia de `conversations.ai_active` */

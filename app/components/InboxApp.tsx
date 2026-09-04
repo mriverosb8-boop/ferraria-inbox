@@ -14,6 +14,7 @@ import {
   isWaLidIdentifier,
   messageNeedsHumanAlert,
   normalizeGuestIdentityKey,
+  resolveEngineGuestIdentity,
   resolveMediaKind,
 } from "@/lib/chat-utils";
 import type { MediaKind } from "@/lib/chat-utils";
@@ -40,7 +41,7 @@ import {
   languageShortLabel,
   normalizeLanguageCode,
 } from "@/lib/language-names";
-import { isOtaChannel, otaReplyUnavailableCopy } from "@/lib/channels";
+import { isOtaChannel } from "@/lib/channels";
 import {
   COLOMBIA_TIME_ZONE,
   isReplyBlockedByMetaPolicy,
@@ -281,7 +282,7 @@ function sortGuestConversations(list: Conversation[]): Conversation[] {
  * del hotel: en un hilo de Booking, Expedia o Airbnb no existe, y citarla ahí le
  * decía a recepción que "no puede responder por política de Meta" en un canal
  * donde Meta no participa. Los hilos de OTA se bloquean por otra razón y con
- * otro texto (`otaReplyUnavailableCopy`), no por esta.
+ * otro texto propio del canal, no por esta.
  *
  * Llamadores (únicos, ambos en este archivo): `replyBlockedByMeta`, que habilita
  * el composer, y `sendMessage`.
@@ -3207,6 +3208,10 @@ export default function InboxApp() {
   };
 
   const handleComposerPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    // Pegar una imagen es la otra puerta para adjuntar, y en OTA el cuadro de
+    // texto está habilitado: sin esta guarda, el clip apagado se saltaba
+    // pegando desde el portapapeles y el envío moría con un 400 del engine.
+    if (selectedIsOta) return;
     const items = Array.from(event.clipboardData?.items ?? []);
     const imageItem = items.find((item) => item.type.startsWith("image/"));
     if (!imageItem) return;
@@ -3497,9 +3502,11 @@ export default function InboxApp() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // LID-aware: un identificador de Meta viaja crudo al engine; un
-          // teléfono sigue yendo en dígitos, igual que siempre.
-          guestPhone: normalizeGuestIdentityKey(selectedConv!.guestPhone),
+          // LID-aware y canal-aware: un identificador de Meta viaja crudo, un
+          // teléfono en dígitos, y el UUID del hilo de una OTA sin tocar, que es
+          // con lo que el engine encuentra la conversación para responder por
+          // Channex.
+          guestPhone: resolveEngineGuestIdentity(selectedConv!),
           message: text,
           conversationId: selectedConv!.id,
           hotelId: activeHotelId,
@@ -4253,22 +4260,27 @@ export default function InboxApp() {
    */
   const conversationClosed = selected?.operationalStatus === "closed" && !selectedIsStaff;
   /**
-   * Hilo de OTA (Booking, Expedia, Airbnb): el engine todavía no tiene camino de
-   * SALIDA por estos canales, así que el compositor va apagado.
+   * Hilo de OTA (Booking, Expedia, Airbnb). El engine ya sabe responder por
+   * estos canales, así que el compositor de TEXTO va habilitado como el de
+   * WhatsApp: no lleva la ventana de 24 h de Meta (esa regla no existe acá) ni
+   * botón de plantilla (las plantillas son de Meta).
    *
-   * Ojo con la diferencia: quitarle la ventana de 24 h de Meta a estos hilos
-   * (`isConversationReplyBlocked`) NO significa que ya se pueda responder. Si se
-   * dejara escribir, el texto saldría por el camino de WhatsApp contra el UUID
-   * del hilo de Channex —que no es un teléfono— y recepción creería que
-   * contestó cuando no salió nada. Se apaga con el motivo a la vista, no se
-   * esconde.
-   *
-   * Cuando el engine cierre el egreso de OTA, esto se prende borrando esta sola
-   * condición de `inputDisabled`.
+   * Lo que lo hace funcionar no es haber quitado el bloqueo, sino mandarle al
+   * engine el identificador correcto: ver `resolveEngineGuestIdentity`.
    */
   const selectedChannel = selected?.channel ?? "whatsapp";
-  const otaReplyUnavailable = Boolean(selected && isOtaChannel(selectedChannel));
-  const inputDisabled = Boolean(conversationClosed || replyBlockedByMeta || otaReplyUnavailable);
+  const selectedIsOta = Boolean(selected && isOtaChannel(selectedChannel));
+  const inputDisabled = Boolean(conversationClosed || replyBlockedByMeta);
+  /**
+   * El clip va aparte del cuadro de texto: en OTA se puede responder, pero NO
+   * mandar archivos. `POST /inbox/human-media` corta con 400
+   * (`attachments_not_supported_on_channel`) antes de tocar nada, así que
+   * dejarlo activo solo sirve para que recepción elija un PDF y se coma un
+   * error después de haberlo subido.
+   *
+   * Se deshabilita, no se esconde, y el motivo va escrito abajo.
+   */
+  const attachDisabled = Boolean(inputDisabled || selectedIsOta);
   const selectedFileIsPdf = isPdfFile(selectedFile);
   const selectedFileSizeLabel = selectedFile ? formatFileSize(selectedFile.size) : "";
 
@@ -5331,12 +5343,12 @@ export default function InboxApp() {
                     accept="image/jpeg,image/png,image/webp,application/pdf"
                     className="hidden"
                     onChange={(e) => handleFileSelection(e.target.files?.[0] ?? null)}
-                    disabled={inputDisabled || sendingMedia}
+                    disabled={attachDisabled || sendingMedia}
                   />
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={inputDisabled || sendingMedia}
+                    disabled={attachDisabled || sendingMedia}
                     className="ibx-press flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-[var(--bg-app)] disabled:cursor-not-allowed disabled:opacity-35"
                     style={{ background: "transparent", color: "var(--text-secondary)" }}
                     aria-label="Adjuntar archivo"
@@ -5366,9 +5378,7 @@ export default function InboxApp() {
                     placeholder={
                       conversationClosed
                         ? "Conversación completada"
-                        : otaReplyUnavailable
-                          ? otaReplyUnavailableCopy(selectedChannel)
-                          : replyBlockedByMeta
+                        : replyBlockedByMeta
                           ? "No puedes responder (política Meta / ventana 24 h)"
                           : selectedFile
                             ? selectedFileIsPdf
@@ -5441,20 +5451,15 @@ export default function InboxApp() {
                   </button>
                 </div>
                 {/*
-                  Hilo de OTA sin egreso todavía. Va en su propio bloque y no
-                  dentro del aviso de las 24 h a propósito: son dos razones
-                  distintas y mezclarlas volvería a citarle a recepción una
-                  política de Meta que en este canal no existe.
-
-                  No lleva botón de plantilla: las plantillas son de WhatsApp y
-                  acá no hay a qué número mandarlas. Que no haya salida es el
-                  estado real y completo; inventarle una acción sería peor.
+                  En OTA se responde con texto, pero el clip queda apagado. El
+                  motivo va acá y no en un `title` porque recepción trabaja desde
+                  tablet, donde el tooltip no existe.
                 */}
-                {otaReplyUnavailable && (
+                {selectedIsOta && !inputDisabled && (
                   <div className="mt-2.5 w-full min-w-0">
-                    <p className="text-[12px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-primary)" }}>
-                      {otaReplyUnavailableCopy(selectedChannel)} Los mensajes del huésped sí llegan
-                      acá, y recepción los atiende por el canal de {selected.channelLabel}.
+                    <p className="text-[12px] leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-secondary)" }}>
+                      Por {selected.channelLabel} solo puedes mandar texto. Si necesitas enviarle un
+                      archivo, pídele el WhatsApp al huésped.
                     </p>
                   </div>
                 )}

@@ -1,4 +1,10 @@
-import { channelLabel, isOtaChannel, normalizeChannel } from "@/lib/channels";
+import {
+  channelLabel,
+  isOtaChannel,
+  normalizeChannel,
+  pickEngineIdentity,
+  type MessageChannel,
+} from "@/lib/channels";
 import type { ConversationDbRow } from "@/lib/conversation-schema";
 import type { ControlMode, Conversation, Message, MessageSender, OperationalStatus } from "@/lib/inbox-types";
 import {
@@ -58,6 +64,33 @@ export function readWaLid(value: string | null | undefined): string {
 export function normalizeGuestIdentityKey(value: string | null | undefined): string {
   if (isWaLidIdentifier(value)) return readWaLid(value);
   return normalizePhoneDigits(value);
+}
+
+/**
+ * Identidad del huésped tal como la espera el engine en `/inbox/human-reply`.
+ *
+ * Son DOS reglas distintas según el canal y mezclarlas rompe el envío:
+ *
+ * - WhatsApp: dígitos del teléfono (o el LID crudo). Es lo de siempre.
+ * - OTA: el `guest_phone` SIN TOCAR, porque es el UUID del hilo de Channex y el
+ *   engine busca la conversación con `guest_phone = ?` exacto. Si se le manda la
+ *   versión normalizada —que le arranca los guiones— la búsqueda no encuentra
+ *   nada, el engine concluye que no es OTA y se va por el camino de WhatsApp
+ *   con un número inventado de 19 dígitos.
+ *
+ * Por eso no alcanza con "dejar de bloquear el compositor": sin esto, responder
+ * en un hilo de Booking se sale por el canal equivocado.
+ */
+export function resolveEngineGuestIdentity(conversation: {
+  channel: MessageChannel;
+  guestPhone: string;
+  guestPhoneRaw: string;
+}): string {
+  return pickEngineIdentity(
+    conversation.channel,
+    conversation.guestPhoneRaw,
+    normalizeGuestIdentityKey(conversation.guestPhone)
+  );
 }
 
 export function parseHotelPhoneDigitsCsv(raw: string | null | undefined): string[] {
@@ -999,6 +1032,7 @@ function buildConversationFromRow(
     lastMessageAt: parts.lastMessageAt,
     lastActivityIso: parts.lastActivityIso,
     unreadCount: readUnreadCount(cr.unread_count),
+    guestPhoneRaw: String(cr.guest_phone ?? "").trim(),
     lastGuestMessageAt: cr.last_guest_message_at ?? null,
     operationalStatus,
     controlMode,
@@ -1189,6 +1223,10 @@ export function applyConversationRowPatch(
       tags: cotizacion ? [cotizacion.slice(0, 24)] : existing.guest.tags,
     },
     guestPhone: phoneDisplay,
+    // Mismo respaldo que `phoneDisplay`: si la fila del UPDATE llegara sin
+    // `guest_phone`, se conserva el que ya teníamos en vez de dejar vacío el
+    // identificador con el que se le habla al engine.
+    guestPhoneRaw: String(row.guest_phone ?? "").trim() || existing.guestPhoneRaw,
     needsHuman: row.needs_human ?? false,
     aiActive: row.ai_active ?? true,
     dbStatus: row.status,

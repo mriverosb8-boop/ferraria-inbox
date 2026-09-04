@@ -38,27 +38,41 @@ export function channelLabel(channel: MessageChannel): string {
 /**
  * ¿Es un canal de OTA (agencia externa) y no WhatsApp?
  *
- * Marca la frontera de TRES comportamientos distintos del inbox:
+ * Marca la frontera de CUATRO comportamientos distintos del inbox:
  *
  * 1. La ventana de 24 h de Meta no aplica: es una regla de WhatsApp Business y
- *    citarla en un hilo de Booking es mentirle a recepción.
+ *    citarla en un hilo de Booking es mentirle a recepción. Tampoco hay botón
+ *    de plantilla, que también es de Meta.
  * 2. `conversations.guest_phone` NO es un teléfono, es el UUID del hilo de
- *    Channex. Mostrarlo como teléfono produce un número inventado (ver
- *    `isOtaIdentifierDisplayable` abajo).
- * 3. Todavía no hay egreso por estos canales en el engine, así que el
- *    compositor va deshabilitado.
+ *    Channex. Mostrarlo como teléfono produce un número inventado.
+ * 3. Al engine hay que mandarle ese UUID SIN normalizar, o el envío se va por
+ *    el canal equivocado. Ver `pickEngineIdentity`.
+ * 4. No se pueden mandar archivos: el engine rechaza los adjuntos en estos
+ *    canales. El texto sí sale.
  */
 export function isOtaChannel(channel: MessageChannel): boolean {
   return channel !== "whatsapp";
 }
 
 /**
- * Motivo visible por el que recepción todavía no puede responder por un canal
- * de OTA. Es el texto que reemplaza al de la ventana de 24 h de Meta.
+ * Cuál de las dos formas del identificador del huésped se le manda al engine.
  *
- * No nombra el engine, Channex ni ninguna tabla: recepción no sabe qué es eso y
- * saberlo no la ayuda a atender al huésped.
+ * El engine busca la conversación de OTA con una comparación EXACTA contra
+ * `conversations.guest_phone`. En OTA esa columna guarda el UUID del hilo de
+ * Channex, y la versión normalizada le arranca los guiones: la búsqueda no
+ * encuentra nada, el engine concluye que la conversación no es de OTA y manda
+ * la respuesta por WhatsApp a un número de 19 dígitos que no existe.
+ *
+ * Recibe las dos cadenas ya calculadas en vez de calcularlas, para que la regla
+ * —que es la que decide por qué canal sale el mensaje— quede en un módulo sin
+ * dependencias y se pueda probar sola.
  */
-export function otaReplyUnavailableCopy(channel: MessageChannel): string {
-  return `Todavía no puedes responder por ${channelLabel(channel)} desde aquí.`;
+export function pickEngineIdentity(
+  channel: MessageChannel,
+  rawIdentity: string,
+  normalizedIdentity: string
+): string {
+  if (!isOtaChannel(channel)) return normalizedIdentity;
+  // El respaldo evita mandar vacío, que el engine rechaza de plano.
+  return rawIdentity.trim() || normalizedIdentity;
 }
